@@ -519,7 +519,7 @@ def _dump_verbs_and_exit() -> None:
             sub = group.get_command(ctx, name)
             path = f"{prefix}{name}"
             paths.append(path)
-            if isinstance(sub, click.MultiCommand):
+            if isinstance(sub, click.Group):  # Group, not MultiCommand (removed in Click 9)
                 walk(sub, f"{path} ")
 
     walk(fleet, "")

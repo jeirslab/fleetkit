@@ -61,6 +61,10 @@ python3.pkgs.buildPythonApplication {
     "--set-default FLEET_IMAGES_DIR ${imagesTree}"
   ];
 
+  # Unit + integration tests (CLI composition, --dump-verbs introspection,
+  # fleet smoke) run in the sandbox via pytest.
+  nativeCheckInputs = with python3.pkgs; [ pytestCheckHook ];
+
   pythonImportsCheck = [ "fleet_launcher" ];
 
   meta = {
