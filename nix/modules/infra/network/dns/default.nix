@@ -1,6 +1,12 @@
+# infra.network.dns — CoreDNS internal DNS server.
+#
+# Options are declared in ./options (component model — the schema-locked
+# interface); this file consumes them. Importing the directory still yields
+# the full module (options + config) by additive merge, so every existing
+# `imports = [ …/infra/network/dns ]` is unaffected.
 { config, lib, ... }:
 let
-  inherit (lib) mkEnableOption mkOption mkIf types concatStringsSep mapAttrsToList;
+  inherit (lib) mkIf concatStringsSep mapAttrsToList;
   cfg = config.infra.network.dns;
 
   # Generate zone file content from records attrset (skip empty IPs)
@@ -81,71 +87,7 @@ let
   extraZoneFiles = lib.mapAttrs mkZoneFile cfg.extraZones;
 in
 {
-  options.infra.network.dns = {
-    enable = mkEnableOption "CoreDNS internal DNS server";
-
-    domain = mkOption {
-      type = types.nullOr types.str;
-      default = config.fleet.settings.domain.internal;
-      defaultText = lib.literalExpression "config.fleet.settings.domain.internal";
-      description = "DNS zone to serve. Must be non-null when infra.network.dns is enabled (asserted).";
-    };
-
-    listenAddress = mkOption {
-      type = types.str;
-      default = "0.0.0.0";
-      description = "Address CoreDNS listens on.";
-    };
-
-    port = mkOption {
-      type = types.port;
-      default = 53;
-      description = "Port CoreDNS listens on.";
-    };
-
-    forwarders = mkOption {
-      type = types.listOf types.str;
-      default = config.fleet.settings.network.upstreamResolvers;
-      defaultText = lib.literalExpression "config.fleet.settings.network.upstreamResolvers";
-      description = "Upstream DNS servers for non-local queries.";
-    };
-
-    records = mkOption {
-      type = types.attrsOf types.str;
-      default = {};
-      example = lib.literalExpression ''{ app-db = "192.0.2.104"; grafana = "192.0.2.4"; }'';
-      description = "Hostname → IP mapping for A records in the internal zone.";
-    };
-
-    publicDomain = mkOption {
-      type = types.nullOr types.str;
-      default = config.fleet.settings.domain.base;
-      defaultText = lib.literalExpression "config.fleet.settings.domain.base";
-      description = "Public DNS zone for internal (split-horizon) resolution of public names. Only forced when publicRecords is non-empty (asserted non-null then).";
-    };
-
-    publicRecords = mkOption {
-      type = types.attrsOf types.str;
-      default = {};
-      example = lib.literalExpression ''{ vpn = "192.0.2.2"; }'';
-      description = "Hostname → IP mapping for the public domain zone (internal resolution only).";
-    };
-
-    extraZones = mkOption {
-      type = types.attrsOf (types.attrsOf types.str);
-      default = {};
-      example = lib.literalExpression ''
-        { "example.xen" = { pbs = "192.0.2.99"; "platform.pve" = "192.0.2.98"; }; }
-      '';
-      description = ''
-        Additional internal DNS zones beyond `domain`. Outer attrset
-        key is the zone name; inner attrset is `record-name → IP`.
-        Record names can be multi-label (e.g., "platform.pve",
-        "nodes.btc.pve") to express hierarchy within the zone.
-        Empty IPs are skipped, same as `records`.
-      '';
-    };
-  };
+  imports = [ ./options ];
 
   config = mkIf cfg.enable {
     assertions = [

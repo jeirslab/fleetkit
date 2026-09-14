@@ -11,13 +11,12 @@ let
 in
 {
   modules = [
-    # M1 registers the pilot here, e.g.:
-    # (mkComponent {
-    #   family = "module";
-    #   name = "infra.network.dns";
-    #   src = ../modules/infra/network/dns;
-    #   requires = [ "options" ];
-    # })
+    (mkComponent {
+      family = "module";
+      name = "infra.network.dns";
+      src = ../modules/infra/network/dns;
+      requires = [ "options" ];
+    })
   ];
   tf = [ ]; # M3
   images = [ ]; # M4

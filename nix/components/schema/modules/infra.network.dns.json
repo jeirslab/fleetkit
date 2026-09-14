@@ -1,0 +1,29 @@
+{
+  "infra.network.dns.domain": {
+    "type": "null or string"
+  },
+  "infra.network.dns.enable": {
+    "type": "boolean"
+  },
+  "infra.network.dns.extraZones": {
+    "type": "attribute set of attribute set of string"
+  },
+  "infra.network.dns.forwarders": {
+    "type": "list of string"
+  },
+  "infra.network.dns.listenAddress": {
+    "type": "string"
+  },
+  "infra.network.dns.port": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.network.dns.publicDomain": {
+    "type": "null or string"
+  },
+  "infra.network.dns.publicRecords": {
+    "type": "attribute set of string"
+  },
+  "infra.network.dns.records": {
+    "type": "attribute set of string"
+  }
+}
