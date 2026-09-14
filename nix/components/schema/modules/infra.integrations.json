@@ -1,0 +1,26 @@
+{
+  "infra.integrations.argocd.argocdVersion": {
+    "type": "string"
+  },
+  "infra.integrations.argocd.clusterName": {
+    "type": "string"
+  },
+  "infra.integrations.argocd.enable": {
+    "type": "boolean"
+  },
+  "infra.integrations.argocd.nodeIndex": {
+    "type": "signed integer"
+  },
+  "infra.integrations.docker.dataRoot": {
+    "type": "string"
+  },
+  "infra.integrations.docker.enable": {
+    "type": "boolean"
+  },
+  "infra.integrations.docker.logDriver": {
+    "type": "string"
+  },
+  "infra.integrations.docker.registryMirror": {
+    "type": "string"
+  }
+}

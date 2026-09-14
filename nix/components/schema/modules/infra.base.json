@@ -1,0 +1,29 @@
+{
+  "infra.githubAccessToken": {
+    "type": "boolean"
+  },
+  "infra.networking.externalIp": {
+    "type": "string"
+  },
+  "infra.networking.internalGateway": {
+    "type": "string"
+  },
+  "infra.networking.internalIp": {
+    "type": "string"
+  },
+  "infra.networking.singleInterface": {
+    "type": "boolean"
+  },
+  "infra.nix.gc.keepGenerations": {
+    "type": "null or (positive integer, meaning >0)"
+  },
+  "infra.platform.pve.lxc.deviceGids": {
+    "type": "attribute set of signed integer"
+  },
+  "infra.platform.pve.lxc.gpu.enable": {
+    "type": "boolean"
+  },
+  "infra.platform.type": {
+    "type": "one of \"pve.lxc\", \"pve.qemu\", \"xcpng.vm\""
+  }
+}

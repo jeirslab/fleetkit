@@ -1,0 +1,11 @@
+{
+  "infra.observability.alerts.enable": {
+    "type": "boolean"
+  },
+  "infra.observability.alerts.group": {
+    "type": "string"
+  },
+  "infra.observability.alerts.rules": {
+    "type": "list of (attribute set)"
+  }
+}

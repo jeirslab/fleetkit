@@ -1,0 +1,47 @@
+{
+  "infra.mail.internal.domain": {
+    "type": "string"
+  },
+  "infra.mail.internal.enable": {
+    "type": "boolean"
+  },
+  "infra.mail.internal.hostname": {
+    "type": "null or string"
+  },
+  "infra.mail.internal.imap.enable": {
+    "type": "boolean"
+  },
+  "infra.mail.internal.imap.port": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.mail.internal.listenAddress": {
+    "type": "null or string"
+  },
+  "infra.mail.internal.mailboxes": {
+    "type": "attribute set of (submodule)"
+  },
+  "infra.mail.internal.mailboxes.<name>.passwordFile": {
+    "type": "string"
+  },
+  "infra.mail.internal.stateDir": {
+    "type": "string"
+  },
+  "infra.mail.internal.submission.enable": {
+    "type": "boolean"
+  },
+  "infra.mail.internal.submission.port": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.mail.internal.tls": {
+    "type": "null or (submodule)"
+  },
+  "infra.mail.internal.tls.certFile": {
+    "type": "string"
+  },
+  "infra.mail.internal.tls.keyFile": {
+    "type": "string"
+  },
+  "infra.mail.internal.trustedNetworks": {
+    "type": "list of string"
+  }
+}

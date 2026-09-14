@@ -121,6 +121,16 @@ fleet.add_command(_pbs)
 from .s3 import s3 as _s3
 fleet.add_command(_s3)
 
+# ── Component families (CLIs resolve upward) ──────────────────
+# Each component family exposes a COMMANDS/ATTACH manifest; register_cli_manifest
+# folds it onto the root, the same code path consumer cli-ext modules use.
+# Registered at MODULE level (not in main()) so --dump-verbs sees the full
+# surface. The images family gives `fleet images` (build) and `fleet templates`
+# (register per platform), folded in from the former fleetkit-deployer.
+from .config import register_cli_manifest as _register_cli_manifest
+from .components import images as _images_family
+_register_cli_manifest(fleet, _images_family, source="images family")
+
 
 
 def _find_sops() -> str | None:
@@ -500,7 +510,41 @@ def _maybe_reexec_for_missing_tools() -> None:
                       fleet_executable(), *argv])
 
 
+def _dump_verbs_and_exit() -> None:
+    """Print the framework CLI verb surface as sorted JSON, then return.
+
+    Walks the composed `fleet` group (framework groups only — consumer
+    extensions load AFTER this in main()). The cli-verbs-golden check diffs
+    this against a committed golden, so a renamed/removed/added verb is caught.
+    Deliberately touches no env, SOPS, re-exec, or extensions — safe to run in
+    the Nix sandbox.
+    """
+    import json
+
+    paths: list[str] = []
+
+    def walk(group: click.Group, prefix: str) -> None:
+        ctx = click.Context(group)
+        for name in group.list_commands(ctx):
+            sub = group.get_command(ctx, name)
+            path = f"{prefix}{name}"
+            paths.append(path)
+            if isinstance(sub, click.Group):  # Group, not MultiCommand (removed in Click 9)
+                walk(sub, f"{path} ")
+
+    walk(fleet, "")
+    print(json.dumps(sorted(paths), indent=2))
+
+
 def main() -> None:
+    # Fast path: dump the (framework) CLI verb surface with no env, SOPS,
+    # re-exec, or consumer extensions — used by the cli-verbs-golden check in
+    # the Nix sandbox. Must run before _setup_env / load_extensions so the
+    # golden captures the framework surface only.
+    import sys
+    if "--dump-verbs" in sys.argv[1:]:
+        _dump_verbs_and_exit()
+        return
     _maybe_reexec_for_missing_tools()
     _setup_env()
     # Consumer command groups from the repo's cli-ext/ (fleet.settings.cli.extensionsDir).

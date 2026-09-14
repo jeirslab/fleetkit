@@ -1,0 +1,26 @@
+{
+  "infra.auth.sssd.allowedGroups": {
+    "type": "list of string"
+  },
+  "infra.auth.sssd.baseDn": {
+    "type": "null or string"
+  },
+  "infra.auth.sssd.enable": {
+    "type": "boolean"
+  },
+  "infra.auth.sssd.ldapUri": {
+    "type": "null or string"
+  },
+  "infra.auth.sssd.probe.enable": {
+    "type": "boolean"
+  },
+  "infra.auth.sssd.probe.interval": {
+    "type": "string"
+  },
+  "infra.auth.sssd.probe.targets": {
+    "type": "attribute set of string"
+  },
+  "infra.auth.sssd.sudoGroups": {
+    "type": "list of string"
+  }
+}

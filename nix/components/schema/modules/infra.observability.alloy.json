@@ -1,0 +1,26 @@
+{
+  "infra.observability.alloy.enable": {
+    "type": "boolean"
+  },
+  "infra.observability.alloy.extraConfig": {
+    "type": "strings concatenated with \"\\n\""
+  },
+  "infra.observability.alloy.gateway.enable": {
+    "type": "boolean"
+  },
+  "infra.observability.alloy.gateway.otlpGrpcAddress": {
+    "type": "string"
+  },
+  "infra.observability.alloy.gateway.otlpHttpAddress": {
+    "type": "string"
+  },
+  "infra.observability.alloy.gateway.tempoOtlpEndpoint": {
+    "type": "string"
+  },
+  "infra.observability.alloy.lokiUrl": {
+    "type": "null or string"
+  },
+  "infra.observability.alloy.prometheusUrl": {
+    "type": "null or string"
+  }
+}

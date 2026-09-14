@@ -1,0 +1,23 @@
+{
+  "infra.pki.ca.address": {
+    "type": "string"
+  },
+  "infra.pki.ca.caName": {
+    "type": "string"
+  },
+  "infra.pki.ca.domain": {
+    "type": "null or string"
+  },
+  "infra.pki.ca.enable": {
+    "type": "boolean"
+  },
+  "infra.pki.ca.metricsPort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.pki.ca.port": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.pki.ca.provisioner": {
+    "type": "string"
+  }
+}

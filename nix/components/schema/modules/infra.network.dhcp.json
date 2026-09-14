@@ -1,0 +1,41 @@
+{
+  "infra.network.dhcp.dnsServers": {
+    "type": "list of string"
+  },
+  "infra.network.dhcp.domain": {
+    "type": "null or string"
+  },
+  "infra.network.dhcp.enable": {
+    "type": "boolean"
+  },
+  "infra.network.dhcp.gateway": {
+    "type": "string"
+  },
+  "infra.network.dhcp.interface": {
+    "type": "string"
+  },
+  "infra.network.dhcp.poolEnd": {
+    "type": "string"
+  },
+  "infra.network.dhcp.poolStart": {
+    "type": "string"
+  },
+  "infra.network.dhcp.reservations": {
+    "type": "list of (submodule)"
+  },
+  "infra.network.dhcp.reservations.*.hostname": {
+    "type": "string"
+  },
+  "infra.network.dhcp.reservations.*.hw-address": {
+    "type": "string"
+  },
+  "infra.network.dhcp.reservations.*.ip-address": {
+    "type": "string"
+  },
+  "infra.network.dhcp.subnet": {
+    "type": "string"
+  },
+  "infra.network.dhcp.validLifetime": {
+    "type": "signed integer"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "infra.data.pgweb.auth.enable": {
+    "type": "boolean"
+  },
+  "infra.data.pgweb.authUser": {
+    "type": "string"
+  },
+  "infra.data.pgweb.enable": {
+    "type": "boolean"
+  },
+  "infra.data.pgweb.httpPort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  }
+}

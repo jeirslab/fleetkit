@@ -34,9 +34,17 @@
       url = "github:oddlama/nix-topology";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # One golden config → many bootstrap image formats (proxmox-lxc, proxmox
+    # VM, raw-efi, docker). Folded in from fleetkit-deployer as the images
+    # component family; used only by nix/images/deployer, never the eval path.
+    nixos-generators = {
+      url = "github:nix-community/nixos-generators";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixlib.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, terranix, sops-nix, disko, nix-topology }:
+  outputs = { self, nixpkgs, flake-utils, terranix, sops-nix, disko, nix-topology, nixos-generators }:
   let
     nixLib = import ./nix/lib { inherit nixpkgs; };
 
@@ -389,6 +397,11 @@
       mkDevShell = import ./nix/shell.nix;
       # Lower-level helpers for consumers with bespoke assembly needs.
       inherit (nixLib) mkHosts mkNixosConfigurations mkColmenaNodes;
+      # Bootstrap image builders (images component family): mkBootstrapImage(s),
+      # the target table, and the ADR-0003 template references. Self-contained
+      # (nixpkgs + nixos-generators + modules-as-arguments); never imports the
+      # fleet/module eval path.
+      images = import ./nix/images/deployer/lib { inherit nixpkgs nixos-generators; };
     };
 
     # Generic NixOS modules + the fleet schema, importable piecemeal by
@@ -408,8 +421,14 @@
     # hostsJson → full NixOS module stack). `nix eval
     # .#checks.x86_64-linux.example-fleet.drvPath` forces it without
     # building; `nix flake check` builds it.
-    checks.x86_64-linux = import ./nix/checks.nix {
-      inherit nixpkgs mkFleet sops-nix disko;
-    };
+    checks.x86_64-linux =
+      (import ./nix/checks.nix {
+        inherit nixpkgs mkFleet sops-nix disko;
+      })
+      # Component interface-schema gates (component-<family>-<name>) — a
+      # keyspace disjoint from the checks above (ADR: component model).
+      // (import ./nix/components/checks.nix {
+        inherit nixpkgs sops-nix disko nixos-generators;
+      });
   };
 }

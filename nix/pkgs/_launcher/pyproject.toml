@@ -9,6 +9,11 @@ dependencies = [
     "pyyaml>=6.0",
     "proxmoxer>=2.0",
     "requests>=2.32",
+    # images component (folded from fleetkit-deployer): proxmoxer (above) +
+    # paramiko for Proxmox template registration; websocket-client for the
+    # Xen Orchestra JSON-RPC path. All imported lazily by the back-ends.
+    "paramiko>=3.4",
+    "websocket-client>=1.8",
 ]
 
 [project.scripts]
@@ -20,3 +25,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["fleet_launcher*"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -44,6 +44,11 @@ python3.pkgs.buildPythonApplication {
     pyyaml
     proxmoxer
     requests
+    # images component (folded from fleetkit-deployer): Proxmox template
+    # registration (paramiko) + the Xen Orchestra JSON-RPC path
+    # (websocket-client). Lazy-imported by the back-ends.
+    paramiko
+    websocket-client
   ]) ++ [
     xoa-cli  # importable: xoa_cli.api.XoRpc for adopt JSON-RPC lookups
   ];
@@ -60,6 +65,10 @@ python3.pkgs.buildPythonApplication {
     "--set-default FLEET_MODULES_DIR ${modulesTree}"
     "--set-default FLEET_IMAGES_DIR ${imagesTree}"
   ];
+
+  # Unit + integration tests (CLI composition, --dump-verbs introspection,
+  # fleet smoke) run in the sandbox via pytest.
+  nativeCheckInputs = with python3.pkgs; [ pytestCheckHook ];
 
   pythonImportsCheck = [ "fleet_launcher" ];
 

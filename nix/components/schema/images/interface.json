@@ -1,0 +1,81 @@
+{
+  "targetsData": {
+    "docker": {
+      "artifact": "tarball/*.tar.xz",
+      "description": "Docker/OCI root filesystem of the same template (.tar.xz, docker import)",
+      "format": "docker",
+      "register": "docker"
+    },
+    "proxmox-lxc": {
+      "artifact": "tarball/*.tar.xz",
+      "description": "Proxmox VE LXC container template (.tar.xz, pct/vztmpl)",
+      "format": "proxmox-lxc",
+      "register": "proxmox-lxc"
+    },
+    "proxmox-vm": {
+      "artifact": "*.vma.zst",
+      "description": "Proxmox VE QEMU VM image (vzdump .vma.zst, qmrestore → qm template). Upstream proxmoxVMA/proxmoxImage — the same artifact.",
+      "format": "proxmox",
+      "register": "proxmox-vm"
+    },
+    "proxmox-vm-cloud": {
+      "artifact": "*.img",
+      "description": "Proxmox VE cloud-init VM disk (raw .img; register as a template, clone via a cloud-init drive). Upstream proxmoxCloudImage.",
+      "format": "proxmox-cloud",
+      "register": "proxmox-vm"
+    },
+    "xen-orchestra": {
+      "artifact": "*.img",
+      "description": "Xen Orchestra / XCP-ng UEFI VM disk (raw .img, imported as a VDI → template)",
+      "format": "raw-efi",
+      "register": "xen-orchestra"
+    }
+  },
+  "templatesData": {
+    "docker": {
+      "fromTarget": "docker",
+      "kind": "container",
+      "latest": "nixos-bootstrap:latest",
+      "name": "nixos-bootstrap",
+      "platform": "docker"
+    },
+    "proxmox-lxc": {
+      "ext": ".tar.xz",
+      "fromTarget": "proxmox-lxc",
+      "kind": "lxc",
+      "latest": "nixos-bootstrap-lxc-latest.tar.xz",
+      "name": "nixos-bootstrap-lxc",
+      "ostype": "nixos",
+      "platform": "proxmox",
+      "unprivileged": true
+    },
+    "proxmox-vm": {
+      "cloudInit": true,
+      "firmware": "seabios",
+      "fromTarget": "proxmox-vm",
+      "kind": "vm",
+      "latest": "nixos-bootstrap-vm-latest",
+      "name": "nixos-bootstrap-vm",
+      "platform": "proxmox",
+      "vmid": 9000
+    },
+    "proxmox-vm-cloud": {
+      "cloudInit": true,
+      "firmware": "seabios",
+      "fromTarget": "proxmox-vm-cloud",
+      "kind": "vm",
+      "latest": "nixos-bootstrap-cloud-latest",
+      "name": "nixos-bootstrap-cloud",
+      "platform": "proxmox",
+      "vmid": 9001
+    },
+    "xen-orchestra": {
+      "firmware": "uefi",
+      "fromTarget": "xen-orchestra",
+      "kind": "vm",
+      "latest": "nixos-bootstrap-xcpng-latest",
+      "name": "nixos-bootstrap-xcpng",
+      "platform": "xen-orchestra"
+    }
+  }
+}

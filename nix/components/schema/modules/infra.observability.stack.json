@@ -1,0 +1,68 @@
+{
+  "infra.observability.stack.alertRulesDirs": {
+    "type": "list of absolute path"
+  },
+  "infra.observability.stack.alerting.groupByAlertnameOnly": {
+    "type": "list of string"
+  },
+  "infra.observability.stack.alerting.repeatIntervals.critical": {
+    "type": "string"
+  },
+  "infra.observability.stack.alerting.repeatIntervals.default": {
+    "type": "string"
+  },
+  "infra.observability.stack.alerting.repeatIntervals.warning": {
+    "type": "string"
+  },
+  "infra.observability.stack.alerting.slack.criticalWebhookSecret": {
+    "type": "null or string"
+  },
+  "infra.observability.stack.dashboardsDirs": {
+    "type": "attribute set of absolute path"
+  },
+  "infra.observability.stack.dataDir": {
+    "type": "string"
+  },
+  "infra.observability.stack.enable": {
+    "type": "boolean"
+  },
+  "infra.observability.stack.extraDatasources": {
+    "type": "list of (attribute set)"
+  },
+  "infra.observability.stack.grafana.domain": {
+    "type": "null or string"
+  },
+  "infra.observability.stack.grafana.httpPort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.observability.stack.loki.httpPort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.observability.stack.loki.retentionPeriod": {
+    "type": "string"
+  },
+  "infra.observability.stack.oidc.clientId": {
+    "type": "string"
+  },
+  "infra.observability.stack.oidc.enable": {
+    "type": "boolean"
+  },
+  "infra.observability.stack.prometheus.httpPort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.observability.stack.prometheus.retentionPeriod": {
+    "type": "string"
+  },
+  "infra.observability.stack.prometheus.scrapeInterval": {
+    "type": "string"
+  },
+  "infra.observability.stack.smtp.enable": {
+    "type": "boolean"
+  },
+  "infra.observability.stack.smtp.fromAddress": {
+    "type": "null or string"
+  },
+  "infra.observability.stack.smtp.fromName": {
+    "type": "string"
+  }
+}

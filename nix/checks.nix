@@ -373,6 +373,21 @@ in {
     touch $out
   '';
 
+  # The CLI verb surface is locked: `fleet --dump-verbs` (a sandbox-safe
+  # introspection that touches no env/SOPS) prints the framework command tree,
+  # diffed against a committed golden. A renamed/removed/added verb — including
+  # as component families fold their CLIs upward — fails here until the golden
+  # is refreshed. Structural (verb paths only), not help text, to avoid churn.
+  cli-verbs-golden = pkgs.runCommand "fleetkit-cli-verbs-golden" {
+    nativeBuildInputs = [ fleetPkg pkgs.jq pkgs.diffutils ];
+    golden = ./checks/golden/cli-verbs.json;
+  } ''
+    fleet --dump-verbs > verbs.json
+    diff -u <(jq -S . "$golden") <(jq -S . verbs.json) \
+      || { echo "CLI verb surface changed — if intended, run nix/checks/update-cli-verbs.sh"; exit 1; }
+    touch $out
+  '';
+
   # Framework playbooks parse and their roles resolve. Syntax-only: no
   # host is contacted (`-i localhost,` satisfies inventory loading).
   ansible-syntax = pkgs.runCommand "fleetkit-ansible-syntax-check" {

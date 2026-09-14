@@ -1,0 +1,95 @@
+{
+  "infra.network.tailnet.advertiseExitNode": {
+    "type": "boolean"
+  },
+  "infra.network.tailnet.advertiseRoutes": {
+    "type": "list of string"
+  },
+  "infra.network.tailnet.advertiseTags": {
+    "type": "list of string"
+  },
+  "infra.network.tailnet.authKeyFile": {
+    "type": "null or absolute path"
+  },
+  "infra.network.tailnet.enable": {
+    "type": "boolean"
+  },
+  "infra.network.tailnet.extraUpFlags": {
+    "type": "list of string"
+  },
+  "infra.network.tailnet.fetchAuthKey": {
+    "type": "null or (submodule)"
+  },
+  "infra.network.tailnet.fetchAuthKey.outputPath": {
+    "type": "string"
+  },
+  "infra.network.tailnet.fetchAuthKey.url": {
+    "type": "string"
+  },
+  "infra.network.tailnet.fleetNode": {
+    "type": "boolean"
+  },
+  "infra.network.tailnet.funnel.enable": {
+    "type": "boolean"
+  },
+  "infra.network.tailnet.funnel.routes": {
+    "type": "attribute set of (submodule)"
+  },
+  "infra.network.tailnet.funnel.routes.<name>.backendAddress": {
+    "type": "string"
+  },
+  "infra.network.tailnet.funnel.routes.<name>.backendPort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.network.tailnet.funnel.routes.<name>.path": {
+    "type": "string"
+  },
+  "infra.network.tailnet.outboundProxy": {
+    "type": "null or 16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.network.tailnet.serve": {
+    "type": "attribute set of (submodule)"
+  },
+  "infra.network.tailnet.serve.<name>.backendAddress": {
+    "type": "string"
+  },
+  "infra.network.tailnet.serve.<name>.backendPort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.network.tailnet.serve.<name>.enable": {
+    "type": "boolean"
+  },
+  "infra.network.tailnet.serve.<name>.servePort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.network.tailnet.serveUI": {
+    "type": "attribute set of (submodule)"
+  },
+  "infra.network.tailnet.serveUI.<name>.backendAddress": {
+    "type": "string"
+  },
+  "infra.network.tailnet.serveUI.<name>.backendPort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.network.tailnet.serveUI.<name>.description": {
+    "type": "string"
+  },
+  "infra.network.tailnet.serveUI.<name>.enable": {
+    "type": "boolean"
+  },
+  "infra.network.tailnet.serveUI.<name>.path": {
+    "type": "string"
+  },
+  "infra.network.tailnet.serveUI.<name>.servePort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.network.tailnet.serveUIDomain": {
+    "type": "null or string"
+  },
+  "infra.network.tailnet.tailnetName": {
+    "type": "null or string"
+  },
+  "infra.network.tailnet.userspace": {
+    "type": "boolean"
+  }
+}

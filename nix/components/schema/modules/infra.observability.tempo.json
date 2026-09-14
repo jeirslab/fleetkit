@@ -1,0 +1,17 @@
+{
+  "infra.observability.tempo.enable": {
+    "type": "boolean"
+  },
+  "infra.observability.tempo.httpPort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.observability.tempo.mcpServer.enable": {
+    "type": "boolean"
+  },
+  "infra.observability.tempo.otlpGrpcAddress": {
+    "type": "string"
+  },
+  "infra.observability.tempo.retention": {
+    "type": "string"
+  }
+}

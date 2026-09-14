@@ -1,0 +1,65 @@
+{
+  "infra.provisioning.pveInstallerAnswers.bindAddress": {
+    "type": "string"
+  },
+  "infra.provisioning.pveInstallerAnswers.enable": {
+    "type": "boolean"
+  },
+  "infra.provisioning.pveInstallerAnswers.hosts": {
+    "type": "list of (submodule)"
+  },
+  "infra.provisioning.pveInstallerAnswers.hosts.*.cidr": {
+    "type": "string"
+  },
+  "infra.provisioning.pveInstallerAnswers.hosts.*.country": {
+    "type": "string"
+  },
+  "infra.provisioning.pveInstallerAnswers.hosts.*.dns": {
+    "type": "null or string"
+  },
+  "infra.provisioning.pveInstallerAnswers.hosts.*.domain": {
+    "type": "string"
+  },
+  "infra.provisioning.pveInstallerAnswers.hosts.*.filesystem": {
+    "type": "one of \"ext4\", \"xfs\", \"zfs (raid0)\", \"zfs (raid1)\", \"zfs (raid10)\", \"zfs (raidz-1)\", \"zfs (raidz-2)\", \"zfs (raidz-3)\", \"btrfs (raid0)\", \"btrfs (raid1)\", \"btrfs (raid10)\""
+  },
+  "infra.provisioning.pveInstallerAnswers.hosts.*.firstBootScript": {
+    "type": "string"
+  },
+  "infra.provisioning.pveInstallerAnswers.hosts.*.gateway": {
+    "type": "null or string"
+  },
+  "infra.provisioning.pveInstallerAnswers.hosts.*.hostname": {
+    "type": "string"
+  },
+  "infra.provisioning.pveInstallerAnswers.hosts.*.installDisk": {
+    "type": "string"
+  },
+  "infra.provisioning.pveInstallerAnswers.hosts.*.ip": {
+    "type": "string"
+  },
+  "infra.provisioning.pveInstallerAnswers.hosts.*.keyboard": {
+    "type": "string"
+  },
+  "infra.provisioning.pveInstallerAnswers.hosts.*.mac": {
+    "type": "string matching the pattern ^[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}$"
+  },
+  "infra.provisioning.pveInstallerAnswers.hosts.*.mailto": {
+    "type": "null or string"
+  },
+  "infra.provisioning.pveInstallerAnswers.hosts.*.productType": {
+    "type": "one of \"pve\", \"pbs\", \"pmg\""
+  },
+  "infra.provisioning.pveInstallerAnswers.hosts.*.rootSshKeys": {
+    "type": "list of string"
+  },
+  "infra.provisioning.pveInstallerAnswers.hosts.*.timezone": {
+    "type": "string"
+  },
+  "infra.provisioning.pveInstallerAnswers.port": {
+    "type": "signed integer"
+  },
+  "infra.provisioning.pveInstallerAnswers.publicUrl": {
+    "type": "null or string"
+  }
+}

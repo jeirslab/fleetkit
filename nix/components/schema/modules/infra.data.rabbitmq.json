@@ -1,0 +1,17 @@
+{
+  "infra.data.rabbitmq.appPassword": {
+    "type": "string"
+  },
+  "infra.data.rabbitmq.appUser": {
+    "type": "string"
+  },
+  "infra.data.rabbitmq.enable": {
+    "type": "boolean"
+  },
+  "infra.data.rabbitmq.managementPort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.data.rabbitmq.port": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  }
+}
