@@ -25,6 +25,11 @@
   # and nothing reports the drift — the build just keeps succeeding against
   # a stale file.
 , imagesTree ? ../../images
+  # The images-family template references (lib.images.templatesData) as a JSON
+  # file, baked in as $FLEET_IMAGE_TEMPLATES so `fleet templates register`
+  # reads the contract eval-free (fleetkit convention: Nix data reaches the CLI
+  # via built artifacts, never `nix eval` at runtime).
+, imageTemplatesJson ? null
 }:
 
 python3.pkgs.buildPythonApplication {
@@ -64,7 +69,8 @@ python3.pkgs.buildPythonApplication {
     "--set-default FLEET_ANSIBLE_DIR ${ansibleTree}"
     "--set-default FLEET_MODULES_DIR ${modulesTree}"
     "--set-default FLEET_IMAGES_DIR ${imagesTree}"
-  ];
+  ] ++ lib.optional (imageTemplatesJson != null)
+    "--set-default FLEET_IMAGE_TEMPLATES ${imageTemplatesJson}";
 
   # Unit + integration tests (CLI composition, --dump-verbs introspection,
   # fleet smoke) run in the sandbox via pytest.

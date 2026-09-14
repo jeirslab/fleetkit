@@ -24,9 +24,22 @@ def _die(exc: Exception) -> None:
 
 
 def _ref(flake: str, key: str) -> dict:
-    """The `templates.<key>` reference object from the flake."""
-    url = nix.resolve_flake(flake)
-    table = nix.templates(url)
+    """The `templates.<key>` reference object.
+
+    Reads the refs baked into the package ($FLEET_IMAGE_TEMPLATES — the
+    eval-free artifact fleetkit ships, so this works from any consumer without
+    a `templates` flake output), falling back to a runtime `nix eval` of the
+    flake for dev/override.
+    """
+    import json
+    import os
+    from pathlib import Path
+
+    baked = os.environ.get("FLEET_IMAGE_TEMPLATES")
+    if baked and Path(baked).is_file():
+        table = json.loads(Path(baked).read_text())
+    else:
+        table = nix.templates(nix.resolve_flake(flake))
     if key not in table:
         raise DeployerError(f"no template reference {key!r} (have: {', '.join(sorted(table))})")
     return table[key]

@@ -353,7 +353,15 @@
         # The operator CLI (was `sk`; renamed in the extraction).
         # xoa-cli passed explicitly (it's a flake package, not in pkgs) so the
         # `tf adopt` resolvers can import xoa_cli.api.XoRpc (INFRA-274).
-        fleet = pkgs.callPackage ./nix/pkgs/_launcher { inherit xoa-cli; };
+        fleet = pkgs.callPackage ./nix/pkgs/_launcher {
+          inherit xoa-cli;
+          # Bake the images-family template refs so `fleet templates register`
+          # reads them eval-free (no runtime `nix eval`, no consumer-flake dep).
+          imageTemplatesJson = pkgs.writeText "fleet-image-templates.json"
+            (builtins.toJSON (import ./nix/images/deployer/lib {
+              inherit nixpkgs nixos-generators;
+            }).templatesData);
+        };
         default = fleet;
 
         # pve-cli (wraps Corsinvest cv4pve) — kubectl-style remote CLI for Proxmox VE.

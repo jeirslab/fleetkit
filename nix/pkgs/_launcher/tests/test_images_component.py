@@ -116,6 +116,15 @@ def test_images_and_templates_resolve_under_fleet():
     assert "proxmox-lxc" in r2.output
 
 
+def test_ref_reads_baked_templates_eval_free(monkeypatch, tmp_path):
+    # $FLEET_IMAGE_TEMPLATES is read directly — no `nix eval`, no flake needed.
+    from fleet_launcher.components.images.templates import _ref
+    j = tmp_path / "image-templates.json"
+    j.write_text('{"proxmox-lxc": {"name": "nixos-bootstrap-lxc", "ostype": "nixos"}}')
+    monkeypatch.setenv("FLEET_IMAGE_TEMPLATES", str(j))
+    assert _ref(".", "proxmox-lxc")["name"] == "nixos-bootstrap-lxc"
+
+
 def test_templates_register_docker_dry_run():
     d = tempfile.mkdtemp()
     tarball = Path(d) / "sys.tar.xz"
