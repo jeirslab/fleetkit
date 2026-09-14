@@ -11,27 +11,13 @@
 { pkgs, nixpkgs, sops-nix, disko, lib ? pkgs.lib }:
 
 let
-  fleetkitRoot = toString ../.;
+  # One shared NixOS eval of fleetkit's option trees (fleet.* + infra.*),
+  # factored into nix/components/eval.nix so the component module-schema
+  # checks lock exactly the option paths these docs render.
+  shared = import ../nix/components/eval.nix { inherit pkgs nixpkgs sops-nix disko lib; };
+  inherit (shared) fleetkitRoot eval isOurs;
+
   githubBase = "https://github.com/alexanderjerome/fleetkit/blob/main";
-
-  eval = import (nixpkgs + "/nixos/lib/eval-config.nix") {
-    system = "x86_64-linux";
-    modules = [
-      sops-nix.nixosModules.sops
-      disko.nixosModules.disko
-      ../nix/modules
-      ../nix/fleet
-      # Minimal host stub so the eval closes.
-      {
-        fileSystems."/" = { device = "none"; fsType = "tmpfs"; };
-        boot.loader.grub.enable = false;
-        system.stateVersion = "24.05";
-      }
-    ];
-  };
-
-  isOurs = opt:
-    lib.any (d: lib.hasPrefix fleetkitRoot (toString d)) opt.declarations;
 
   optionsDoc = pkgs.nixosOptionsDoc {
     options = eval.options;

@@ -408,8 +408,14 @@
     # hostsJson → full NixOS module stack). `nix eval
     # .#checks.x86_64-linux.example-fleet.drvPath` forces it without
     # building; `nix flake check` builds it.
-    checks.x86_64-linux = import ./nix/checks.nix {
-      inherit nixpkgs mkFleet sops-nix disko;
-    };
+    checks.x86_64-linux =
+      (import ./nix/checks.nix {
+        inherit nixpkgs mkFleet sops-nix disko;
+      })
+      # Component interface-schema gates (component-<family>-<name>) — a
+      # keyspace disjoint from the checks above (ADR: component model).
+      // (import ./nix/components/checks.nix {
+        inherit nixpkgs sops-nix disko;
+      });
   };
 }
