@@ -111,7 +111,7 @@
       # hosts: consumer manifest modules (Grafana Cloud checks, PVE notes)
       # need the same builders at fleet-eval time, where no NixOS module
       # argument exists yet.
-      fleetLib = import ./nix/lib/module-args.nix { lib = nixpkgs.lib; inherit pkgs; };
+      fleetLib = import ./nix/lib/module-args.nix { lib = nixpkgs.lib; inherit pkgs nixpkgs nixos-generators; };
 
       fleetEval = (nixpkgs.lib.evalModules {
         modules = [ ./nix/fleet { _module.args.fleetLib = fleetLib; } ] ++ modules;

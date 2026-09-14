@@ -179,7 +179,7 @@ def build_template(host: str | None, image_type: str, builder_nix: str | None, t
 
     # Defaults based on image type
     if template_name is None:
-        template_name = "nixos-lxc-template-x86_64.tar.xz" if image_type == "lxc" else "nixos-vm-image-x86_64.vma.zst"
+        template_name = "nixos-bootstrap-lxc-latest.tar.xz" if image_type == "lxc" else "nixos-vm-image-x86_64.vma.zst"
 
     # Content type for PVE storage
     content_type = "vztmpl" if image_type == "lxc" else "images"

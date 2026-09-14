@@ -1,41 +1,51 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, fleetLib, ... }:
 
 # NixOS LXC template factory (INFRA-86 / ADR-047).
 #
 # Replaces the old hand-run `sk bootstraps`/tofu-file-upload path for
 # getting a NixOS LXC template onto PVE. The template is built from the
-# SAME nixpkgs this host is deployed with (so it always tracks the
-# fleet's pinned NixOS version) and published to the NFS template store
-# that every PVE node mounts cluster-wide as the `nix-store` SR.
+# images component family (fleetLib.images.mkBootstrapImage, target
+# "proxmox-lxc") and published to the NFS template store that every PVE
+# node mounts cluster-wide as the `nix-store` SR.
 #
-# Two artifacts land in the vztmpl dir:
-#   * nixos-lxc-template-x86_64.tar.xz            — stable "latest" alias
-#     (the bpg/proxmox emitter references this name verbatim, so a
-#     container apply always boots the newest published template)
-#   * nixos-lxc-template-<nixos-version>-x86_64.tar.xz  — version-labelled
-#     archive, kept for rollback / provenance.
+# NB: the bootstrap image is pinned to FLEETKIT's nixpkgs (nixos-generators
+# `follows`), not this host's — see the note in nix/lib/tf/proxmox.nix. It
+# no longer tracks the fleet's pinned NixOS version; it tracks fleetkit's,
+# which is the intended "bootstrap = pinned-library role" split. The
+# version label below is therefore provenance ("which fleet generation
+# published this"), not the image's own nixpkgs.
+#
+# Two artifacts land in the vztmpl dir, named from the ADR-0003 reference
+# (fleetLib.images.templates.proxmox-lxc):
+#   * <name>-latest.tar.xz                 — stable "latest" alias (the
+#     bpg/proxmox emitter references this name verbatim, so a container
+#     apply always boots the newest published template)
+#   * <name>-<nixos-version>.tar.xz        — version-labelled archive, kept
+#     for rollback / provenance.
 #
 # "A version of NixOS available that is not on disk" is decided by a
 # `.storepath` marker next to the latest alias: if it already names the
 # current template's realized store path, the run is a no-op. So the
 # service only does work when the deployed pin produces a template that
-# hasn't been published yet — i.e. after a `nix flake update nixpkgs`
-# + redeploy of this host, or the first run after the NFS export comes up.
+# hasn't been published yet — i.e. after a `nix flake update` bumps
+# fleetkit + redeploy of this host, or the first run after the NFS export
+# comes up.
 
 let
   inherit (lib) mkEnableOption mkOption mkIf types;
   cfg = config.infra.build.lxcTemplateFactory;
 
-  # Built here, at this host's deploy time, from this host's pkgs — the
-  # versioned wrapper gives the tarball a stable in-store filename.
-  template = pkgs.callPackage ../../../images/lxc-template {
-    sshPubKey = config.fleet.network.sysadmin_ssh_key;
+  # The images-family bootstrap LXC template + its ADR-0003 reference.
+  lxcRef = fleetLib.images.templatesData.proxmox-lxc;
+  template = fleetLib.images.mkBootstrapImage {
+    target = "proxmox-lxc";
+    deployKey = config.fleet.network.sysadmin_ssh_key;
     inherit (config.fleet.settings.cache) substituters trustedPublicKeys;
   };
   version = config.system.nixos.version;
 
-  latestName = "nixos-lxc-template-x86_64.tar.xz";
-  versionedName = "nixos-lxc-template-${version}-x86_64.tar.xz";
+  latestName = lxcRef.latest;                              # <name>-latest.tar.xz
+  versionedName = "${lxcRef.name}-${version}${lxcRef.ext}"; # <name>-<ver>.tar.xz
 
   publishScript = pkgs.writeShellApplication {
     name = "publish-lxc-template";
@@ -43,7 +53,8 @@ let
     text = ''
       set -euo pipefail
       dir="${cfg.nfsTemplateDir}"
-      src="${template}/nixos-lxc-template.tar.xz"
+      # nixos-generators emits a version-suffixed name under tarball/.
+      src="$(echo ${template}/tarball/*.tar.xz)"
       marker="$dir/${latestName}.storepath"
 
       if [ ! -d "$dir" ]; then

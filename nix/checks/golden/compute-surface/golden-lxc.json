@@ -179,7 +179,7 @@
         ],
         "node_name": "pve1",
         "operating_system": {
-          "template_file_id": "nix-store:vztmpl/nixos-lxc-template-x86_64.tar.xz",
+          "template_file_id": "nix-store:vztmpl/nixos-bootstrap-lxc-latest.tar.xz",
           "type": "nixos"
         },
         "provider": "proxmox.golden",
@@ -413,7 +413,7 @@
         ],
         "node_name": "pve1",
         "operating_system": {
-          "template_file_id": "nix-store:vztmpl/nixos-lxc-template-x86_64.tar.xz",
+          "template_file_id": "nix-store:vztmpl/nixos-bootstrap-lxc-latest.tar.xz",
           "type": "nixos"
         },
         "provider": "proxmox.golden",
@@ -498,7 +498,7 @@
         ],
         "node_name": "pve1",
         "operating_system": {
-          "template_file_id": "nix-store:vztmpl/nixos-lxc-template-x86_64.tar.xz",
+          "template_file_id": "nix-store:vztmpl/nixos-bootstrap-lxc-latest.tar.xz",
           "type": "nixos"
         },
         "provider": "proxmox.golden",
@@ -573,7 +573,7 @@
         ],
         "node_name": "pve1",
         "operating_system": {
-          "template_file_id": "nix-store:vztmpl/nixos-lxc-template-x86_64.tar.xz",
+          "template_file_id": "nix-store:vztmpl/nixos-bootstrap-lxc-latest.tar.xz",
           "type": "nixos"
         },
         "provider": "proxmox.golden",
@@ -638,7 +638,7 @@
         ],
         "node_name": "pve1",
         "operating_system": {
-          "template_file_id": "nix-store:vztmpl/nixos-lxc-template-x86_64.tar.xz",
+          "template_file_id": "nix-store:vztmpl/nixos-bootstrap-lxc-latest.tar.xz",
           "type": "nixos"
         },
         "provider": "proxmox.golden",
@@ -704,7 +704,7 @@
         ],
         "node_name": "pve1",
         "operating_system": {
-          "template_file_id": "nix-store:vztmpl/nixos-lxc-template-x86_64.tar.xz",
+          "template_file_id": "nix-store:vztmpl/nixos-bootstrap-lxc-latest.tar.xz",
           "type": "nixos"
         },
         "pool_id": "golden",
@@ -771,7 +771,7 @@
         ],
         "node_name": "pve1",
         "operating_system": {
-          "template_file_id": "nix-store:vztmpl/nixos-lxc-template-x86_64.tar.xz",
+          "template_file_id": "nix-store:vztmpl/nixos-bootstrap-lxc-latest.tar.xz",
           "type": "nixos"
         },
         "protection": true,
@@ -851,7 +851,7 @@
         ],
         "node_name": "pve1",
         "operating_system": {
-          "template_file_id": "nix-store:vztmpl/nixos-lxc-template-x86_64.tar.xz",
+          "template_file_id": "nix-store:vztmpl/nixos-bootstrap-lxc-latest.tar.xz",
           "type": "nixos"
         },
         "provider": "proxmox.golden",
@@ -929,7 +929,7 @@
         ],
         "node_name": "pve1",
         "operating_system": {
-          "template_file_id": "nix-store:vztmpl/nixos-lxc-template-x86_64.tar.xz",
+          "template_file_id": "nix-store:vztmpl/nixos-bootstrap-lxc-latest.tar.xz",
           "type": "nixos"
         },
         "provider": "proxmox.golden",

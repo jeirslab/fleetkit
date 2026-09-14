@@ -73,7 +73,15 @@ _dry = click.option("--dry-run", is_flag=True, help="Show what would run; touch 
 @_dry
 def register_proxmox_lxc(image: str, host: str, user: str, storage: str | None, name: str | None,
                          version: int | None, flake: str, dry_run: bool) -> None:
-    """Publish the CT template into <storage>:vztmpl/ as <name>-latest (+ optional -v<N>)."""
+    """Publish the CT template into <storage>:vztmpl/ as <name>-latest (+ optional -v<N>).
+
+    Note: containers created from this template MUST set the PVE `nesting=1`
+    feature (`pct set <id> --features nesting=1`, or `features.nesting = true`
+    on a fleetkit compute entry — the default). Without it an unprivileged
+    NixOS CT boots degraded on PVE 9 / systemd 260 (journald, networkd and
+    tmpfiles fail their mount-namespaced sandboxes) and never comes up on the
+    network or accepts SSH. fleetkit's tf LXC emitter sets it by default.
+    """
     try:
         ref = _ref(flake, "proxmox-lxc")
         proxmox.register_lxc(host=host, user=user, image=image, storage=storage, name=name,

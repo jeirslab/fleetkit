@@ -1,4 +1,12 @@
-{ lib, pkgs }:
+{ lib, pkgs
+  # Flake inputs, threaded so the images-family builder is reachable from
+  # the tf emitters and the LXC-template factory module (both build a
+  # bootstrap template). Optional: call sites that never touch `.images`
+  # (e.g. the collision negative-test in nix/checks.nix) may omit them —
+  # the field is lazy and only forces the deployer lib when accessed.
+, nixpkgs ? null
+, nixos-generators ? null
+}:
 
 # fleetkit's PUBLIC helper surface for consumer NixOS modules.
 #
@@ -54,4 +62,12 @@
   tf = {
     grafana = import ./tf/grafana.nix { inherit lib; };
   };
+
+  # Images component family (mkBootstrapImage / templates / targets). The
+  # single source of the bootstrap-template builder and the ADR-0003
+  # template references, shared by the tf LXC file-upload emitter
+  # (nix/lib/tf/proxmox.nix) and the LXC-template factory
+  # (nix/modules/infra/build/lxc-template-factory.nix). Lazy — see the
+  # nixpkgs/nixos-generators note in the argument list.
+  images = import ../images/deployer/lib { inherit nixpkgs nixos-generators; };
 }
