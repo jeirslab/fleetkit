@@ -80,6 +80,36 @@
   "infra.build.deployRunner.workingDir": {
     "type": "string"
   },
+  "infra.build.githubRunner.enable": {
+    "type": "boolean"
+  },
+  "infra.build.githubRunner.ephemeral": {
+    "type": "boolean"
+  },
+  "infra.build.githubRunner.extraPackages": {
+    "type": "list of package"
+  },
+  "infra.build.githubRunner.labels": {
+    "type": "list of string"
+  },
+  "infra.build.githubRunner.name": {
+    "type": "null or string"
+  },
+  "infra.build.githubRunner.sopsAgeKeyFile": {
+    "type": "null or string"
+  },
+  "infra.build.githubRunner.tokenFile": {
+    "type": "absolute path"
+  },
+  "infra.build.githubRunner.url": {
+    "type": "string"
+  },
+  "infra.build.githubRunner.user": {
+    "type": "string"
+  },
+  "infra.build.githubRunner.workDir": {
+    "type": "null or string"
+  },
   "infra.build.hydra.enable": {
     "type": "boolean"
   },

@@ -55,7 +55,8 @@
     ./build/attic # attic binary cache (infra.build.attic)
     ./build/hydra.nix
     ./build/lxc-template-factory.nix # infra.build.lxcTemplateFactory
-    ./build/deploy-runner.nix # infra.build.deployRunner (GitOps CD)
+    ./build/deploy-runner.nix # infra.build.deployRunner (GitOps CD, poll)
+    ./build/github-runner.nix # infra.build.githubRunner (GitOps CD, push)
     ./build/wiki-publisher.nix # infra.build.wikiPublisher
     ./build/registry-proxy.nix # infra.build.registryProxy
     ./build/apt-cache # apt-cacher-ng (infra.build.aptCache)
