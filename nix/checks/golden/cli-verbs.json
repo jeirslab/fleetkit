@@ -56,6 +56,7 @@
   "deploy tf state-push",
   "deploy tf state-rm",
   "deploy tf state-untaint",
+  "describe",
   "devtools",
   "devtools reset-connection",
   "devtools secrets",

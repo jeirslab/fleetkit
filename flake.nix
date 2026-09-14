@@ -378,6 +378,23 @@
         # declaring file per option).
         options-json = docs.passthru.optionsJSON;
 
+        # AI-agent discovery surface: fleetkit's whole "how do I use this"
+        # manifest in one JSON file — the CLI command tree (help + params),
+        # the option surface, and the component interfaces. An agent that
+        # imports fleetkit reads this with a single `nix build
+        # fleetkit#introspection` (no creds, no SOPS, no running server).
+        # Built by running the CLI's own eval-free `fleet describe`, so the
+        # commands portion cannot drift from the actual CLI, and options are
+        # supplied here (rather than baked into the base `fleet`) to keep the
+        # operator wrapper from pulling the docs closure.
+        introspection = pkgs.runCommand "fleetkit-introspection.json"
+          { nativeBuildInputs = [ fleet ]; }
+          ''
+            export FLEET_OPTIONS_JSON=${options-json}
+            export FLEET_COMPONENTS_DIR=${./nix/components/schema}
+            fleet describe > "$out"
+          '';
+
         # xoa-cli — standalone Xen Orchestra operator CLI. Reads over XO
         # REST, mutations over the JSON-RPC websocket. Drives the
         # size_add_gb disk-grow reconciler.

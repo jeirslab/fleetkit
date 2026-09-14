@@ -132,6 +132,19 @@ from .components import images as _images_family
 _register_cli_manifest(fleet, _images_family, source="images family")
 
 
+@fleet.command("describe")
+def _describe_cmd() -> None:
+    """Emit fleetkit's CLI + option + component surface as JSON (for AI agents).
+
+    A machine-readable "how do I drive fleetkit" manifest: every command with
+    its help + params, plus the option surface and component interfaces when
+    the wrapper baked them in. Eval-free and env-free — safe for an agent to
+    run straight after importing fleetkit (`nix run fleetkit#fleet -- describe`)
+    or to consume as the pre-built `nix build fleetkit#introspection` artifact.
+    """
+    _describe_and_exit()
+
+
 
 def _find_sops() -> str | None:
     """Locate the sops binary, checking PATH and common Nix store locations."""
@@ -536,6 +549,107 @@ def _dump_verbs_and_exit() -> None:
     print(json.dumps(sorted(paths), indent=2))
 
 
+def _describe_and_exit() -> None:
+    """Print fleetkit's full CLI + option + component surface as JSON.
+
+    The AI-agent discovery surface (ADR: agent introspection). A richer sibling
+    of --dump-verbs: each command's help + params, plus the option surface
+    (FLEET_OPTIONS_JSON) and component interfaces (FLEET_COMPONENTS_DIR) when
+    the wrapper/artifact baked them in. Eval-free and sandbox-safe — no env,
+    SOPS, re-exec, or consumer extensions — so it is identical whether run in
+    the Nix sandbox, from an operator shell, or as the `introspection` package.
+    """
+    import json
+    import os
+    from pathlib import Path
+
+    def json_safe(v):
+        # click uses non-serializable sentinels for some defaults; keep only
+        # plain JSON scalars/containers, stringify anything else.
+        if isinstance(v, (str, int, float, bool, type(None))):
+            return v
+        if isinstance(v, (list, tuple)):
+            return [json_safe(x) for x in v]
+        if isinstance(v, dict):
+            return {str(k): json_safe(x) for k, x in v.items()}
+        return str(v)
+
+    def describe_param(p) -> dict:
+        d: dict = {"name": p.name, "type": getattr(p.type, "name", str(p.type))}
+        if isinstance(p, click.Option):
+            d["opts"] = list(p.opts)
+            d["is_flag"] = bool(p.is_flag)
+            d["required"] = bool(p.required)
+            if not p.is_flag and p.default is not None:
+                safe = json_safe(p.default)
+                # skip opaque sentinels that stringify to a repr blob
+                if not (isinstance(safe, str) and safe.startswith("<")):
+                    d["default"] = safe
+            if p.help:
+                d["help"] = p.help
+        else:  # click.Argument
+            d["kind"] = "argument"
+            d["required"] = bool(p.required)
+        if getattr(p, "multiple", False):
+            d["multiple"] = True
+        return d
+
+    def describe_cmd(cmd, path: str) -> dict:
+        node: dict = {"path": path, "help": (cmd.help or cmd.short_help or "").strip()}
+        params = [describe_param(p) for p in cmd.params if p.name != "help"]
+        if params:
+            node["params"] = params
+        return node
+
+    commands: list[dict] = []
+
+    def walk(group: click.Group, prefix: str) -> None:
+        ctx = click.Context(group)
+        for name in group.list_commands(ctx):
+            sub = group.get_command(ctx, name)
+            path = f"{prefix}{name}"
+            node = describe_cmd(sub, path)
+            node["group"] = isinstance(sub, click.Group)
+            commands.append(node)
+            if isinstance(sub, click.Group):
+                walk(sub, f"{path} ")
+
+    walk(fleet, "")
+
+    manifest: dict = {
+        "fleet": describe_cmd(fleet, "fleet"),
+        "commands": sorted(commands, key=lambda c: c["path"]),
+    }
+
+    # Option surface (every option carries a CI-enforced description).
+    # Accept either the options.json file or the nixosOptionsDoc output dir
+    # (share/doc/nixos/options.json), so callers can pass the derivation.
+    opts_env = os.environ.get("FLEET_OPTIONS_JSON")
+    if opts_env:
+        opts_path = Path(opts_env)
+        if opts_path.is_dir():
+            opts_path = opts_path / "share" / "doc" / "nixos" / "options.json"
+        if opts_path.is_file():
+            manifest["options"] = json.loads(opts_path.read_text())
+
+    # Component interfaces (the committed, drift-gated schemas).
+    comp_dir = os.environ.get("FLEET_COMPONENTS_DIR")
+    if comp_dir and Path(comp_dir).is_dir():
+        comps: dict = {}
+        mod_dir = Path(comp_dir) / "modules"
+        if mod_dir.is_dir():
+            comps["modules"] = {
+                p.stem: json.loads(p.read_text()) for p in sorted(mod_dir.glob("*.json"))
+            }
+        img_iface = Path(comp_dir) / "images" / "interface.json"
+        if img_iface.is_file():
+            comps["images"] = json.loads(img_iface.read_text())
+        if comps:
+            manifest["components"] = comps
+
+    print(json.dumps(manifest, indent=2, sort_keys=True))
+
+
 def main() -> None:
     # Fast path: dump the (framework) CLI verb surface with no env, SOPS,
     # re-exec, or consumer extensions — used by the cli-verbs-golden check in
@@ -544,6 +658,12 @@ def main() -> None:
     import sys
     if "--dump-verbs" in sys.argv[1:]:
         _dump_verbs_and_exit()
+        return
+    # `fleet describe` is the agent-facing introspection surface — same
+    # env-free contract as --dump-verbs, so it short-circuits before
+    # _setup_env / re-exec / extensions (an agent can run it with no creds).
+    if sys.argv[1:2] == ["describe"]:
+        _describe_and_exit()
         return
     _maybe_reexec_for_missing_tools()
     _setup_env()

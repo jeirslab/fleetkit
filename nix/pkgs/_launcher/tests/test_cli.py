@@ -14,7 +14,7 @@ import click
 from click.testing import CliRunner
 
 from fleet_launcher.config import register_cli_manifest
-from fleet_launcher.main import _dump_verbs_and_exit, fleet
+from fleet_launcher.main import _describe_and_exit, _dump_verbs_and_exit, fleet
 
 
 def _module(commands=None, attach=None):
@@ -96,6 +96,42 @@ def test_dump_verbs_matches_walking_the_group(capsys):
 
     walk(fleet, "")
     assert dumped == reachable
+
+
+# ── fleet describe: the agent introspection surface (unit) ───────────
+
+def test_describe_emits_command_tree_with_help_and_params(capsys, monkeypatch):
+    # No baked env → commands only (options/components come from the wrapper).
+    monkeypatch.delenv("FLEET_OPTIONS_JSON", raising=False)
+    monkeypatch.delenv("FLEET_COMPONENTS_DIR", raising=False)
+    _describe_and_exit()
+    m = json.loads(capsys.readouterr().out)
+
+    assert m["fleet"]["path"] == "fleet"
+    paths = {c["path"] for c in m["commands"]}
+    assert "describe" in paths, "describe must list itself"
+    assert "templates register proxmox-lxc" in paths, "nested verbs are walked"
+    # A known command carries its params (the deploy-key note etc.).
+    lxc = next(c for c in m["commands"] if c["path"] == "templates register proxmox-lxc")
+    assert any(p["name"] == "version" for p in lxc.get("params", []))
+
+
+def test_describe_folds_in_options_and_components(capsys, monkeypatch, tmp_path):
+    opts = tmp_path / "options.json"
+    opts.write_text('{"fleet.settings.domain.internal": {"type": "str"}}')
+    comp = tmp_path / "schema"
+    (comp / "modules").mkdir(parents=True)
+    (comp / "modules" / "infra.network.dns.json").write_text('{"options": {}}')
+    (comp / "images").mkdir()
+    (comp / "images" / "interface.json").write_text('{"proxmox-lxc": {}}')
+    monkeypatch.setenv("FLEET_OPTIONS_JSON", str(opts))
+    monkeypatch.setenv("FLEET_COMPONENTS_DIR", str(comp))
+    _describe_and_exit()
+    m = json.loads(capsys.readouterr().out)
+
+    assert "fleet.settings.domain.internal" in m["options"]
+    assert "infra.network.dns" in m["components"]["modules"]
+    assert "proxmox-lxc" in m["components"]["images"]
 
 
 # ── fleet CLI smoke (integration) ────────────────────────────────────
