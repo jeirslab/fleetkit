@@ -1,0 +1,131 @@
+{
+  "infra.build.aptCache.bindAddress": {
+    "type": "string"
+  },
+  "infra.build.aptCache.cacheDir": {
+    "type": "absolute path"
+  },
+  "infra.build.aptCache.enable": {
+    "type": "boolean"
+  },
+  "infra.build.aptCache.expireDays": {
+    "type": "signed integer"
+  },
+  "infra.build.aptCache.logDir": {
+    "type": "absolute path"
+  },
+  "infra.build.aptCache.port": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.build.attic.cacheName": {
+    "type": "string"
+  },
+  "infra.build.attic.enable": {
+    "type": "boolean"
+  },
+  "infra.build.attic.fqdn": {
+    "type": "string"
+  },
+  "infra.build.attic.listenPort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.build.attic.postBuildHook": {
+    "type": "boolean"
+  },
+  "infra.build.attic.s3Bucket": {
+    "type": "string"
+  },
+  "infra.build.attic.s3Endpoint": {
+    "type": "string"
+  },
+  "infra.build.builder.cacheBindAddress": {
+    "type": "string"
+  },
+  "infra.build.builder.cores": {
+    "type": "signed integer"
+  },
+  "infra.build.builder.enable": {
+    "type": "boolean"
+  },
+  "infra.build.builder.maxJobs": {
+    "type": "signed integer"
+  },
+  "infra.build.builder.trustedUsers": {
+    "type": "list of string"
+  },
+  "infra.build.hydra.enable": {
+    "type": "boolean"
+  },
+  "infra.build.hydra.hydraUrl": {
+    "type": "null or string"
+  },
+  "infra.build.hydra.listenHost": {
+    "type": "string"
+  },
+  "infra.build.hydra.maxConcurrentEvals": {
+    "type": "signed integer"
+  },
+  "infra.build.hydra.notificationSender": {
+    "type": "null or string"
+  },
+  "infra.build.hydra.port": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.build.hydra.project": {
+    "type": "string"
+  },
+  "infra.build.hydra.smtp.enable": {
+    "type": "boolean"
+  },
+  "infra.build.lxcTemplateFactory.enable": {
+    "type": "boolean"
+  },
+  "infra.build.lxcTemplateFactory.interval": {
+    "type": "string"
+  },
+  "infra.build.lxcTemplateFactory.nfsTemplateDir": {
+    "type": "string"
+  },
+  "infra.build.registryProxy.cacheDir": {
+    "type": "string"
+  },
+  "infra.build.registryProxy.enable": {
+    "type": "boolean"
+  },
+  "infra.build.registryProxy.port": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.build.registryProxy.registries": {
+    "type": "string"
+  },
+  "infra.build.remote.enable": {
+    "type": "boolean"
+  },
+  "infra.build.remote.sshKeySopsFile": {
+    "type": "null or absolute path"
+  },
+  "infra.build.remote.sshKeySopsPath": {
+    "type": "string"
+  },
+  "infra.build.wikiPublisher.branch": {
+    "type": "string"
+  },
+  "infra.build.wikiPublisher.enable": {
+    "type": "boolean"
+  },
+  "infra.build.wikiPublisher.repoUrl": {
+    "type": "string"
+  },
+  "infra.build.wikiPublisher.schedule": {
+    "type": "string"
+  },
+  "infra.build.wikiPublisher.siteFlakeAttr": {
+    "type": "string"
+  },
+  "infra.build.wikiPublisher.target": {
+    "type": "string"
+  },
+  "infra.build.wikiPublisher.targetDir": {
+    "type": "string"
+  }
+}

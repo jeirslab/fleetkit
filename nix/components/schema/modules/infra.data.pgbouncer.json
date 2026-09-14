@@ -1,0 +1,26 @@
+{
+  "infra.data.pgbouncer.authType": {
+    "type": "string"
+  },
+  "infra.data.pgbouncer.backendPort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.data.pgbouncer.databases": {
+    "type": "list of string"
+  },
+  "infra.data.pgbouncer.defaultPoolSize": {
+    "type": "signed integer"
+  },
+  "infra.data.pgbouncer.enable": {
+    "type": "boolean"
+  },
+  "infra.data.pgbouncer.listenPort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.data.pgbouncer.maxClientConn": {
+    "type": "signed integer"
+  },
+  "infra.data.pgbouncer.poolMode": {
+    "type": "one of \"session\", \"transaction\", \"statement\""
+  }
+}

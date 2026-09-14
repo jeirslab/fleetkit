@@ -1,0 +1,29 @@
+{
+  "infra.pki.acmeDns.apiAddress": {
+    "type": "string"
+  },
+  "infra.pki.acmeDns.apiPort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.pki.acmeDns.dnsListen": {
+    "type": "string"
+  },
+  "infra.pki.acmeDns.domain": {
+    "type": "null or string"
+  },
+  "infra.pki.acmeDns.enable": {
+    "type": "boolean"
+  },
+  "infra.pki.acmeDns.nsadmin": {
+    "type": "null or string"
+  },
+  "infra.pki.acmeDns.nsname": {
+    "type": "null or string"
+  },
+  "infra.pki.acmeDns.publicIp": {
+    "type": "null or string"
+  },
+  "infra.pki.acmeDns.stateDir": {
+    "type": "string"
+  }
+}

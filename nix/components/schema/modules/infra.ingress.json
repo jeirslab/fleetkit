@@ -1,0 +1,77 @@
+{
+  "infra.ingress.acmeCA": {
+    "type": "null or string"
+  },
+  "infra.ingress.acmeCARootCert": {
+    "type": "null or string"
+  },
+  "infra.ingress.acmeDnsApiBase": {
+    "type": "string"
+  },
+  "infra.ingress.dataDir": {
+    "type": "string"
+  },
+  "infra.ingress.devCertIssuer": {
+    "type": "one of \"cloudflare\", \"acmedns\""
+  },
+  "infra.ingress.devDomain": {
+    "type": "boolean"
+  },
+  "infra.ingress.email": {
+    "type": "null or string"
+  },
+  "infra.ingress.enable": {
+    "type": "boolean"
+  },
+  "infra.ingress.forwardAuth": {
+    "type": "null or (submodule)"
+  },
+  "infra.ingress.forwardAuth.exclude": {
+    "type": "list of string"
+  },
+  "infra.ingress.forwardAuth.outpostUrl": {
+    "type": "null or string"
+  },
+  "infra.ingress.globalConfig": {
+    "type": "strings concatenated with \"\\n\""
+  },
+  "infra.ingress.letsencryptDirectory": {
+    "type": "string"
+  },
+  "infra.ingress.publicHttp01VirtualHosts": {
+    "type": "attribute set of (submodule)"
+  },
+  "infra.ingress.publicHttp01VirtualHosts.<name>.extraConfig": {
+    "type": "strings concatenated with \"\\n\""
+  },
+  "infra.ingress.publicVirtualHosts": {
+    "type": "attribute set of (submodule)"
+  },
+  "infra.ingress.publicVirtualHosts.<name>.extraConfig": {
+    "type": "strings concatenated with \"\\n\""
+  },
+  "infra.ingress.redirectPveToDev": {
+    "type": "boolean"
+  },
+  "infra.ingress.services": {
+    "type": "attribute set of (submodule)"
+  },
+  "infra.ingress.services.<name>.host": {
+    "type": "string"
+  },
+  "infra.ingress.services.<name>.name": {
+    "type": "string"
+  },
+  "infra.ingress.services.<name>.path": {
+    "type": "string"
+  },
+  "infra.ingress.services.<name>.port": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.ingress.virtualHosts": {
+    "type": "attribute set of (submodule)"
+  },
+  "infra.ingress.virtualHosts.<name>.extraConfig": {
+    "type": "strings concatenated with \"\\n\""
+  }
+}

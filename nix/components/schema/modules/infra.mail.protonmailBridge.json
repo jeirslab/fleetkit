@@ -1,0 +1,29 @@
+{
+  "infra.mail.protonmailBridge.enable": {
+    "type": "boolean"
+  },
+  "infra.mail.protonmailBridge.imap.bridgePort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.mail.protonmailBridge.imap.enable": {
+    "type": "boolean"
+  },
+  "infra.mail.protonmailBridge.imap.port": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.mail.protonmailBridge.listenAddress": {
+    "type": "string"
+  },
+  "infra.mail.protonmailBridge.logLevel": {
+    "type": "null or one of \"panic\", \"fatal\", \"error\", \"warn\", \"info\", \"debug\""
+  },
+  "infra.mail.protonmailBridge.package": {
+    "type": "package"
+  },
+  "infra.mail.protonmailBridge.smtp.bridgePort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.mail.protonmailBridge.smtp.port": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  }
+}

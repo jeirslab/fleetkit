@@ -10,24 +10,52 @@ let
   mkComponent = import ../lib/mkComponent.nix { inherit lib; };
 in
 {
-  modules = [
-    (mkComponent {
-      family = "module";
-      name = "infra.network.dns";
-      src = ../modules/infra/network/dns;
-      requires = [ "options" ];
-    })
-    # Multi-file leaf: options are declared across default.nix (.postgresql),
-    # pgbackrest.nix (.backup) and pgweb-access.nix (.pgwebAccess). No
-    # options/ split needed — the schema buckets every option path declared
-    # anywhere under `src`, so `requires = []` is enough to lock its interface.
-    (mkComponent {
-      family = "module";
-      name = "infra.data.postgresql";
-      src = ../modules/infra/data/postgresql;
-      requires = [ ];
-    })
-  ];
+  modules =
+    let
+      # A gated leaf whose interface is locked as-is (no options/ split): the
+      # schema buckets every option path declared anywhere under `src`.
+      leaf = name: src: mkComponent { family = "module"; inherit name src; requires = [ ]; };
+    in
+    [
+      # dns is the pilot with an explicit options/ split (crisp boundary).
+      (mkComponent {
+        family = "module";
+        name = "infra.network.dns";
+        src = ../modules/infra/network/dns;
+        requires = [ "options" ];
+      })
+
+      # ── strata that own several namespaces across sub-dirs: registered at
+      # stratum granularity so each component's src is non-overlapping (a
+      # component rooted at a parent would double-bucket its children). ──
+      (leaf "infra.base" ../modules/infra/base) # githubAccessToken, networking, nix.gc, platform.*
+      (leaf "infra.build" ../modules/infra/build) # hydra, attic, builder, aptCache, remote, …
+      (leaf "infra.integrations" ../modules/infra/integrations) # argocd, docker
+
+      # ── clean per-leaf components ──
+      (leaf "infra.auth.sssd" ../modules/infra/auth/sssd)
+      (leaf "infra.data.pgbouncer" ../modules/infra/data/pgbouncer)
+      (leaf "infra.data.pgweb" ../modules/infra/data/pgweb)
+      (leaf "infra.data.postgresql" ../modules/infra/data/postgresql) # multi-file (., .backup, .pgwebAccess)
+      (leaf "infra.data.rabbitmq" ../modules/infra/data/rabbitmq)
+      (leaf "infra.data.s3" ../modules/infra/data/s3)
+      (leaf "infra.data.valkey" ../modules/infra/data/valkey)
+      (leaf "infra.ingress" ../modules/infra/ingress)
+      (leaf "infra.mail.internal" ../modules/infra/mail/internal)
+      (leaf "infra.mail.protonmailBridge" ../modules/infra/mail/protonmail-bridge)
+      (leaf "infra.network.dhcp" ../modules/infra/network/dhcp)
+      (leaf "infra.network.tailnet" ../modules/infra/network/tailnet)
+      (leaf "infra.observability.alerts" ../modules/infra/observability/alerts)
+      (leaf "infra.observability.alloy" ../modules/infra/observability/alloy)
+      (leaf "infra.observability.stack" ../modules/infra/observability/stack)
+      (leaf "infra.observability.tempo" ../modules/infra/observability/tempo)
+      (leaf "infra.pki.acmeDns" ../modules/infra/pki/acme-dns)
+      (leaf "infra.pki.ca" ../modules/infra/pki/ca)
+      (leaf "infra.provisioning.pveInstallerAnswers" ../modules/infra/provisioning/pve-installer-answers)
+    ];
+  # NOTE: infra.services is declared at the infra root (infra/default.nix), not
+  # a leaf — a component rooted there would capture the whole tree, so it is
+  # intentionally not registered.
   tf = [ ]; # M3
   images = [ ]; # M4
 }

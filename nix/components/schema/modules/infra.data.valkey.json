@@ -1,0 +1,17 @@
+{
+  "infra.data.valkey.allowedSubnets": {
+    "type": "list of string"
+  },
+  "infra.data.valkey.bindAddress": {
+    "type": "string"
+  },
+  "infra.data.valkey.enable": {
+    "type": "boolean"
+  },
+  "infra.data.valkey.maxMemory": {
+    "type": "string"
+  },
+  "infra.data.valkey.port": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  }
+}

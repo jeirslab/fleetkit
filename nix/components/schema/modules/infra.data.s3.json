@@ -1,0 +1,20 @@
+{
+  "infra.data.s3.buckets": {
+    "type": "list of string"
+  },
+  "infra.data.s3.enable": {
+    "type": "boolean"
+  },
+  "infra.data.s3.environmentFile": {
+    "type": "absolute path"
+  },
+  "infra.data.s3.layout": {
+    "type": "null or (submodule)"
+  },
+  "infra.data.s3.layout.capacity": {
+    "type": "string"
+  },
+  "infra.data.s3.layout.zone": {
+    "type": "string"
+  }
+}
