@@ -54,16 +54,17 @@ _dry = click.option("--dry-run", is_flag=True, help="Show what would run; touch 
 @click.option("--host", required=True, help="PVE node (API + SSH).")
 @click.option("--user", default="root", show_default=True, help="SSH user for the create commands.")
 @click.option("--storage", default=None, help="vztmpl-capable storage (default: first the API advertises).")
-@click.option("--name", default=None, help="On-storage file name (default: the reference object's stable name).")
+@click.option("--name", default=None, help="Template name / variation (default: the reference's). Published as <name>-latest.tar.xz.")
+@click.option("--version", "version", default=None, type=int, help="Pin a version: also publish <name>-v<N>.tar.xz alongside <name>-latest.")
 @_flake
 @_dry
 def register_proxmox_lxc(image: str, host: str, user: str, storage: str | None, name: str | None,
-                         flake: str, dry_run: bool) -> None:
-    """Upload the CT template into <storage>:vztmpl/ (idempotent by checksum)."""
+                         version: int | None, flake: str, dry_run: bool) -> None:
+    """Publish the CT template into <storage>:vztmpl/ as <name>-latest (+ optional -v<N>)."""
     try:
         ref = _ref(flake, "proxmox-lxc")
         proxmox.register_lxc(host=host, user=user, image=image, storage=storage, name=name,
-                             ref=ref, dry_run=dry_run)
+                             version=version, ref=ref, dry_run=dry_run)
     except DeployerError as exc:
         _die(exc)
 
@@ -74,17 +75,18 @@ def register_proxmox_lxc(image: str, host: str, user: str, storage: str | None, 
 @click.option("--user", default="root", show_default=True)
 @click.option("--vmid", default=None, type=int, help="Template VMID (default: the reference object's).")
 @click.option("--storage", default="local-lvm", show_default=True, help="Storage for the restored disk.")
-@click.option("--name", default=None, help="Template VM name (default: the reference object's).")
+@click.option("--name", default=None, help="Template name / variation (default: the reference's). Labelled <name>-latest.")
+@click.option("--version", "version", default=None, type=int, help="Pin a version: the template is labelled <name>-v<N>.")
 @click.option("--replace", is_flag=True, help="Destroy an existing VMID first (destructive).")
 @_flake
 @_dry
 def register_proxmox_vm(image: str, host: str, user: str, vmid: int | None, storage: str, name: str | None,
-                        replace: bool, flake: str, dry_run: bool) -> None:
+                        version: int | None, replace: bool, flake: str, dry_run: bool) -> None:
     """qmrestore the vzdump archive into the template VMID and convert to a template."""
     try:
         ref = _ref(flake, "proxmox-vm")
         proxmox.register_vm(host=host, user=user, image=image, vmid=vmid, storage=storage, name=name,
-                            replace=replace, ref=ref, dry_run=dry_run)
+                            version=version, replace=replace, ref=ref, dry_run=dry_run)
     except DeployerError as exc:
         _die(exc)
 
@@ -95,13 +97,14 @@ def register_proxmox_vm(image: str, host: str, user: str, vmid: int | None, stor
 @click.option("--user", default="root", show_default=True)
 @click.option("--vmid", default=None, type=int, help="Template VMID (default: the reference object's).")
 @click.option("--storage", default="local-lvm", show_default=True, help="Storage for the imported disk + cloud-init drive.")
-@click.option("--name", default=None, help="Template VM name (default: the reference object's).")
+@click.option("--name", default=None, help="Template name / variation (default: the reference's). Labelled <name>-latest.")
+@click.option("--version", "version", default=None, type=int, help="Pin a version: the template is labelled <name>-v<N>.")
 @click.option("--bridge", default="vmbr0", show_default=True, help="Bridge for net0.")
 @click.option("--replace", is_flag=True, help="Destroy an existing VMID first (destructive).")
 @_flake
 @_dry
 def register_proxmox_vm_cloud(image: str, host: str, user: str, vmid: int | None, storage: str, name: str | None,
-                              bridge: str, replace: bool, flake: str, dry_run: bool) -> None:
+                              version: int | None, bridge: str, replace: bool, flake: str, dry_run: bool) -> None:
     """Import the raw disk, add a cloud-init drive, convert to a template.
 
     Best-effort — validate against a live node (the deploy-side test is next).
@@ -109,7 +112,7 @@ def register_proxmox_vm_cloud(image: str, host: str, user: str, vmid: int | None
     try:
         ref = _ref(flake, "proxmox-vm-cloud")
         proxmox.register_vm_cloud(host=host, user=user, image=image, vmid=vmid, storage=storage, name=name,
-                                  bridge=bridge, replace=replace, ref=ref, dry_run=dry_run)
+                                  version=version, bridge=bridge, replace=replace, ref=ref, dry_run=dry_run)
     except DeployerError as exc:
         _die(exc)
 

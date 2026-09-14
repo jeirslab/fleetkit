@@ -33,53 +33,49 @@
   },
   "templatesData": {
     "docker": {
-      "baseName": "nixos-bootstrap",
       "fromTarget": "docker",
       "kind": "container",
-      "platform": "docker",
-      "tag": "nixos-bootstrap:v1",
-      "version": 1
+      "latest": "nixos-bootstrap:latest",
+      "name": "nixos-bootstrap",
+      "platform": "docker"
     },
     "proxmox-lxc": {
-      "baseName": "nixos-bootstrap-lxc",
-      "file": "nixos-bootstrap-lxc-v1.tar.xz",
+      "ext": ".tar.xz",
       "fromTarget": "proxmox-lxc",
       "kind": "lxc",
+      "latest": "nixos-bootstrap-lxc-latest.tar.xz",
+      "name": "nixos-bootstrap-lxc",
       "ostype": "nixos",
       "platform": "proxmox",
-      "unprivileged": true,
-      "version": 1
+      "unprivileged": true
     },
     "proxmox-vm": {
-      "baseName": "nixos-bootstrap-vm",
       "cloudInit": true,
       "firmware": "seabios",
       "fromTarget": "proxmox-vm",
       "kind": "vm",
-      "name": "nixos-bootstrap-vm-v1",
+      "latest": "nixos-bootstrap-vm-latest",
+      "name": "nixos-bootstrap-vm",
       "platform": "proxmox",
-      "version": 1,
       "vmid": 9000
     },
     "proxmox-vm-cloud": {
-      "baseName": "nixos-bootstrap-cloud",
       "cloudInit": true,
       "firmware": "seabios",
       "fromTarget": "proxmox-vm-cloud",
       "kind": "vm",
-      "name": "nixos-bootstrap-cloud-v1",
+      "latest": "nixos-bootstrap-cloud-latest",
+      "name": "nixos-bootstrap-cloud",
       "platform": "proxmox",
-      "version": 1,
       "vmid": 9001
     },
     "xen-orchestra": {
-      "baseName": "nixos-bootstrap-xcpng",
       "firmware": "uefi",
       "fromTarget": "xen-orchestra",
       "kind": "vm",
-      "name": "nixos-bootstrap-xcpng-v1",
-      "platform": "xen-orchestra",
-      "version": 1
+      "latest": "nixos-bootstrap-xcpng-latest",
+      "name": "nixos-bootstrap-xcpng",
+      "platform": "xen-orchestra"
     }
   }
 }

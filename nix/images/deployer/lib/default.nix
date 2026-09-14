@@ -72,18 +72,24 @@ let
   # Because both sides read the same reference, the build or registration
   # process can change and fleetkit does not — the reference IS the contract.
   #
-  # `version` is the stability knob: the on-platform handle carries it, so a
-  # breaking template change bumps the version, a NEW handle appears, and
-  # consumers move to it deliberately. Existing clones are never touched.
+  # NAMING (the contract other projects reference):
+  #   * `name` identifies the template. Override it at build/register time to
+  #     generate VARIATIONS from the same machinery (e.g. a GPU LXC) — the name
+  #     is not fixed, only defaulted here.
+  #   * the DEFAULT reference is the `latest` handle: consumers reference
+  #     `<name>-latest` and always get the newest build.
+  #   * VERSIONING is opt-in (`--version` / a module option): a pinned version
+  #     publishes `<name>-v<N>` AND (re)publishes `<name>-latest`, so `latest`
+  #     always exists and a specific build stays pinnable. Versions are a
+  #     registration concern, not baked into this default reference.
   templates = {
     proxmox-lxc = rec {
       platform = "proxmox";
       kind = "lxc";
       fromTarget = "proxmox-lxc";
-      baseName = "nixos-bootstrap-lxc";
-      version = 1;
-      # <storage>:vztmpl/<file> — pct requires the .tar.xz suffix.
-      file = "${baseName}-v${toString version}.tar.xz";
+      name = "nixos-bootstrap-lxc";
+      ext = ".tar.xz"; # pct requires the suffix
+      latest = "${name}-latest${ext}"; # <storage>:vztmpl/<latest>
       ostype = "nixos";
       unprivileged = true;
     };
@@ -91,10 +97,9 @@ let
       platform = "proxmox";
       kind = "vm";
       fromTarget = "proxmox-vm";
-      baseName = "nixos-bootstrap-vm";
-      version = 1;
-      name = "${baseName}-v${toString version}";
-      vmid = 9000; # template VMID clones are made from
+      name = "nixos-bootstrap-vm";
+      latest = "${name}-latest"; # VM template name_label
+      vmid = 9000; # default template VMID clones are made from
       firmware = "seabios";
       cloudInit = true;
     };
@@ -102,9 +107,8 @@ let
       platform = "proxmox";
       kind = "vm";
       fromTarget = "proxmox-vm-cloud";
-      baseName = "nixos-bootstrap-cloud";
-      version = 1;
-      name = "${baseName}-v${toString version}";
+      name = "nixos-bootstrap-cloud";
+      latest = "${name}-latest";
       vmid = 9001;
       firmware = "seabios";
       cloudInit = true;
@@ -113,18 +117,16 @@ let
       platform = "xen-orchestra";
       kind = "vm";
       fromTarget = "xen-orchestra";
-      baseName = "nixos-bootstrap-xcpng";
-      version = 1;
-      name = "${baseName}-v${toString version}";
+      name = "nixos-bootstrap-xcpng";
+      latest = "${name}-latest"; # XO template name_label
       firmware = "uefi";
     };
     docker = rec {
       platform = "docker";
       kind = "container";
       fromTarget = "docker";
-      baseName = "nixos-bootstrap";
-      version = 1;
-      tag = "${baseName}:v${toString version}";
+      name = "nixos-bootstrap";
+      latest = "${name}:latest"; # image tag
     };
   };
 

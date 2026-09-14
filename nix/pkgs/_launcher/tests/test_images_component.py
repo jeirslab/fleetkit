@@ -52,10 +52,27 @@ def test_find_artifact_no_match_is_an_error():
 
 # ── proxmox / xo back-end script builders (unit) ─────────────────────
 
-def test_lxc_install_is_idempotent_by_checksum():
-    s = proxmox._lxc_install(remote_tmp="/var/tmp/x", storage="local", name="nixos.tar.xz", digest="ab" * 32)
-    assert "up to date" in s
-    assert "local:vztmpl/nixos.tar.xz" in s
+def test_lxc_handles_latest_and_versioned():
+    # default: latest only; pinned: latest + versioned (latest always exists)
+    assert proxmox.lxc_handles("nixos-bootstrap-lxc", ".tar.xz", None) == ["nixos-bootstrap-lxc-latest.tar.xz"]
+    assert proxmox.lxc_handles("nixos-bootstrap-lxc", ".tar.xz", 3) == [
+        "nixos-bootstrap-lxc-latest.tar.xz",
+        "nixos-bootstrap-lxc-v3.tar.xz",
+    ]
+
+
+def test_lxc_install_publishes_each_handle_idempotently():
+    s = proxmox._lxc_install(
+        remote_tmp="/var/tmp/x", storage="local",
+        names=["nixos-bootstrap-lxc-latest.tar.xz", "nixos-bootstrap-lxc-v3.tar.xz"], digest="ab" * 32)
+    assert "local:vztmpl/nixos-bootstrap-lxc-latest.tar.xz" in s
+    assert "local:vztmpl/nixos-bootstrap-lxc-v3.tar.xz" in s
+    assert "up to date" in s  # checksum-idempotent per handle
+
+
+def test_vm_label_latest_and_versioned():
+    assert proxmox._vm_label("nixos-bootstrap-vm", None) == "nixos-bootstrap-vm-latest"
+    assert proxmox._vm_label("nixos-bootstrap-vm", 2) == "nixos-bootstrap-vm-v2"
 
 
 def test_vm_restore_guards_existing_vmid_without_replace():

@@ -104,31 +104,54 @@ def _put(ssh, local: str, remote: str) -> None:
 
 # ── LXC: upload the tarball into <storage>:vztmpl/<file> ────────────────────
 
-def _lxc_install(*, remote_tmp: str, storage: str, name: str, digest: str) -> str:
-    volid = f"{storage}:vztmpl/{name}"
-    return f"""
-DEST="$(pvesm path {shlex.quote(volid)})"
+def lxc_handles(base: str, ext: str, version: int | None) -> list[str]:
+    """The vztmpl file names to publish for a template: <base>-latest[, -v<N>].
+
+    `latest` is always published (the default reference); a pinned version adds
+    <base>-v<N> alongside it, so `latest` always exists and versions pin.
+    """
+    handles = [f"{base}-latest{ext}"]
+    if version is not None:
+        handles.append(f"{base}-v{version}{ext}")
+    return handles
+
+
+def _lxc_install(*, remote_tmp: str, storage: str, names: list[str], digest: str) -> str:
+    installs = "\n".join(
+        f'''DEST="$(pvesm path {shlex.quote(f"{storage}:vztmpl/{n}")})"
 if [ -f "$DEST" ] && [ "$(sha256sum "$DEST" | cut -d' ' -f1)" = "{digest}" ]; then
-  echo "up to date: {volid}"; rm -f {shlex.quote(remote_tmp)}; exit 0
-fi
-[ "$(sha256sum {shlex.quote(remote_tmp)} | cut -d' ' -f1)" = "{digest}" ] \
+  echo "up to date: {storage}:vztmpl/{n}"
+else
+  mkdir -p "$(dirname "$DEST")"
+  install -m0644 "$SRC" "$DEST.tmp.$$" && mv -f "$DEST.tmp.$$" "$DEST"
+  echo "installed: {storage}:vztmpl/{n}"
+fi'''
+        for n in names
+    )
+    return f"""
+SRC={shlex.quote(remote_tmp)}
+[ "$(sha256sum "$SRC" | cut -d' ' -f1)" = "{digest}" ] \
   || {{ echo "upload checksum mismatch" >&2; exit 1; }}
-mkdir -p "$(dirname "$DEST")"
-install -m0644 {shlex.quote(remote_tmp)} "$DEST.tmp.$$" && mv -f "$DEST.tmp.$$" "$DEST"
-rm -f {shlex.quote(remote_tmp)}
+{installs}
+rm -f "$SRC"
 """
 
 
 def register_lxc(*, host: str, user: str, image: str, storage: str | None, name: str | None,
-                 ref: dict, dry_run: bool) -> None:
-    name = name or ref["file"]  # stable handle from the reference object (ADR-0003)
-    if not name.endswith(".tar.xz"):
-        raise DeployerError("LXC template name must end in .tar.xz (pct requires it)")
+                 version: int | None, ref: dict, dry_run: bool) -> None:
+    base = name or ref["name"]  # the template NAME (variation), not the file
+    ext = ref.get("ext", ".tar.xz")
+    handles = lxc_handles(base, ext, version)
+    if not all(h.endswith(".tar.xz") for h in handles):
+        raise DeployerError("LXC templates must end in .tar.xz (pct requires it)")
     digest = sha256(image)
     node = _node_name(host)
+    store_label = storage or "<first vztmpl storage>"
 
     if dry_run:
-        print(f"# upload {image} → {host} ({node}) as {storage or '<first vztmpl storage>'}:vztmpl/{name}")
+        print(f"# upload {image} → {host} ({node}), publish under {store_label}:vztmpl/:")
+        for h in handles:
+            print(f"#   {h}")
         print(f"#   sha256 {digest}; ostype={ref['ostype']} unprivileged={int(ref['unprivileged'])}")
         return
 
@@ -139,21 +162,24 @@ def register_lxc(*, host: str, user: str, image: str, storage: str | None, name:
     if storage and storage not in stores:
         raise DeployerError(f"{node}: storage {storage!r} has no vztmpl content (have: {', '.join(stores)})")
     storage = storage or stores[0]
-    volid = f"{storage}:vztmpl/{name}"
 
     ssh = _ssh(host, user)
     try:
-        remote_tmp = f"/var/tmp/{name}.upload"
+        remote_tmp = f"/var/tmp/{base}.upload"
         _put(ssh, image, remote_tmp)
-        _exec(ssh, _lxc_install(remote_tmp=remote_tmp, storage=storage, name=name, digest=digest))
+        _exec(ssh, _lxc_install(remote_tmp=remote_tmp, storage=storage, names=handles, digest=digest))
     finally:
         ssh.close()
 
     present = [c["volid"] for c in api.nodes(node).storage(storage).content.get(content="vztmpl")]
-    if volid not in present:
-        raise DeployerError(f"registration ran but {volid} is not listed on {storage}")
-    print(f"registered: {volid}")
-    print(f"clone with: pct create <vmid> {volid} --ostype {ref['ostype']} --unprivileged {int(ref['unprivileged'])} …")
+    for h in handles:
+        volid = f"{storage}:vztmpl/{h}"
+        if volid not in present:
+            raise DeployerError(f"registration ran but {volid} is not listed on {storage}")
+    latest_volid = f"{storage}:vztmpl/{handles[0]}"
+    print(f"registered: {', '.join(f'{storage}:vztmpl/{h}' for h in handles)}")
+    print(f"clone latest with: pct create <vmid> {latest_volid} "
+          f"--ostype {ref['ostype']} --unprivileged {int(ref['unprivileged'])} …")
 
 
 # ── VM (VMA): qmrestore the vzdump into a VMID, convert to a template ───────
@@ -170,10 +196,20 @@ rm -f {shlex.quote(remote_tmp)}
 """
 
 
+def _vm_label(base: str, version: int | None) -> str:
+    """A VM/XO template name_label: <base>-latest, or <base>-v<N> when pinned.
+
+    A pinned version does not yet ALSO maintain a separate <base>-latest
+    template — a VM template is a single object, so dual-publish for VMs is a
+    follow-up. LXC, being file-based, publishes both (see lxc_handles).
+    """
+    return f"{base}-v{version}" if version is not None else f"{base}-latest"
+
+
 def register_vm(*, host: str, user: str, image: str, vmid: int | None, storage: str, name: str | None,
-                replace: bool, ref: dict, dry_run: bool) -> None:
+                version: int | None, replace: bool, ref: dict, dry_run: bool) -> None:
     vmid = vmid if vmid is not None else ref["vmid"]
-    name = name or ref["name"]
+    name = _vm_label(name or ref["name"], version)
     if not image.endswith((".vma", ".vma.zst", ".vma.gz", ".vma.lzo")):
         raise DeployerError("expected a vzdump archive (.vma[.zst]) — build target proxmox-vm")
     node = _node_name(host)
@@ -227,9 +263,9 @@ rm -f {shlex.quote(remote_tmp)}
 
 
 def register_vm_cloud(*, host: str, user: str, image: str, vmid: int | None, storage: str, name: str | None,
-                      bridge: str, replace: bool, ref: dict, dry_run: bool) -> None:
+                      version: int | None, bridge: str, replace: bool, ref: dict, dry_run: bool) -> None:
     vmid = vmid if vmid is not None else ref["vmid"]
-    name = name or ref["name"]
+    name = _vm_label(name or ref["name"], version)
     if not image.endswith(".img"):
         raise DeployerError("expected a raw disk (.img) — build target proxmox-vm-cloud")
     node = _node_name(host)
