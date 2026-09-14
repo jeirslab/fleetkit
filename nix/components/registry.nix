@@ -17,6 +17,16 @@ in
       src = ../modules/infra/network/dns;
       requires = [ "options" ];
     })
+    # Multi-file leaf: options are declared across default.nix (.postgresql),
+    # pgbackrest.nix (.backup) and pgweb-access.nix (.pgwebAccess). No
+    # options/ split needed — the schema buckets every option path declared
+    # anywhere under `src`, so `requires = []` is enough to lock its interface.
+    (mkComponent {
+      family = "module";
+      name = "infra.data.postgresql";
+      src = ../modules/infra/data/postgresql;
+      requires = [ ];
+    })
   ];
   tf = [ ]; # M3
   images = [ ]; # M4

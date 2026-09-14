@@ -1,0 +1,89 @@
+{
+  "infra.data.postgresql.allowedSubnets": {
+    "type": "list of string"
+  },
+  "infra.data.postgresql.authMethod": {
+    "type": "one of \"scram-sha-256\", \"md5\", \"trust\""
+  },
+  "infra.data.postgresql.backup.enable": {
+    "type": "boolean"
+  },
+  "infra.data.postgresql.backup.retention.profile": {
+    "type": "one of \"lean\", \"standard\", \"conservative\""
+  },
+  "infra.data.postgresql.backup.s3.accessKeyIdSecret": {
+    "type": "string"
+  },
+  "infra.data.postgresql.backup.s3.bucket": {
+    "type": "string"
+  },
+  "infra.data.postgresql.backup.s3.endpoint": {
+    "type": "string"
+  },
+  "infra.data.postgresql.backup.s3.region": {
+    "type": "string"
+  },
+  "infra.data.postgresql.backup.s3.secretAccessKeySecret": {
+    "type": "string"
+  },
+  "infra.data.postgresql.backup.schedule.diff": {
+    "type": "string"
+  },
+  "infra.data.postgresql.backup.schedule.full": {
+    "type": "string"
+  },
+  "infra.data.postgresql.backup.stanza": {
+    "type": "string"
+  },
+  "infra.data.postgresql.dataDir": {
+    "type": "string"
+  },
+  "infra.data.postgresql.databases": {
+    "type": "attribute set of (submodule)"
+  },
+  "infra.data.postgresql.databases.<name>.passwordSecret": {
+    "type": "string"
+  },
+  "infra.data.postgresql.databases.<name>.user": {
+    "type": "string"
+  },
+  "infra.data.postgresql.effectiveCacheSize": {
+    "type": "string"
+  },
+  "infra.data.postgresql.enable": {
+    "type": "boolean"
+  },
+  "infra.data.postgresql.maintenanceWorkMem": {
+    "type": "string"
+  },
+  "infra.data.postgresql.maxConnections": {
+    "type": "signed integer"
+  },
+  "infra.data.postgresql.package": {
+    "type": "package"
+  },
+  "infra.data.postgresql.pgwebAccess.databases": {
+    "type": "list of string"
+  },
+  "infra.data.postgresql.pgwebAccess.enable": {
+    "type": "boolean"
+  },
+  "infra.data.postgresql.pgwebAccess.pgwebHostIp": {
+    "type": "string"
+  },
+  "infra.data.postgresql.pgwebAccess.port": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.data.postgresql.sharedBuffers": {
+    "type": "string"
+  },
+  "infra.data.postgresql.tcpPort": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.data.postgresql.walBuffers": {
+    "type": "string"
+  },
+  "infra.data.postgresql.workMem": {
+    "type": "string"
+  }
+}
