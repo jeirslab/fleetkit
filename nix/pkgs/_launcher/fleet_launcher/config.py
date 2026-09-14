@@ -286,6 +286,35 @@ def ops_email() -> str:
     return get("fleet.ops_email") or f"ops@{base_domain()}"
 
 
+# ── CLI composition ──────────────────────────────────────────────────
+
+def register_cli_manifest(root_group: click.Group, module: object, *, source: str = "manifest") -> None:
+    """Apply a module's COMMANDS / ATTACH onto root_group.
+
+      COMMANDS = [grp, ...]            added to the ROOT group  -> `fleet <grp>`
+      ATTACH   = {"parent": [cmd,...]} added to an EXISTING parent group
+
+    This is the registration half of the CLI-composition mechanism, factored
+    out of `load_extensions` so the consumer extension loader AND the in-tree
+    component families (fleet_launcher/families/) share ONE code path. An
+    ATTACH naming a group that does not exist warns and continues — neither a
+    component CLI nor consumer tooling may ever brick the deployment CLI.
+    """
+    for cmd in getattr(module, "COMMANDS", []):
+        root_group.add_command(cmd)
+    for parent_name, cmds in getattr(module, "ATTACH", {}).items():
+        parent = root_group.get_command(None, parent_name)  # type: ignore[arg-type]
+        if not isinstance(parent, click.Group):
+            click.echo(
+                f"warning: {source} wants to attach to '{parent_name}', "
+                f"which is not a command group on this CLI",
+                err=True,
+            )
+            continue
+        for cmd in cmds:
+            parent.add_command(cmd)
+
+
 # ── Consumer CLI extensions ──────────────────────────────────────────
 
 def load_extensions(root_group: click.Group) -> None:
@@ -323,27 +352,7 @@ def load_extensions(root_group: click.Group) -> None:
         except Exception as exc:  # noqa: BLE001 — a broken extension must not brick the CLI
             click.echo(f"warning: skipping CLI extension {py.name}: {exc}", err=True)
             continue
-        for cmd in getattr(module, "COMMANDS", []):
-            root_group.add_command(cmd)
-
-        # ATTACH lets an extension hang commands off an EXISTING framework
-        # group rather than the root — `{"devtools": [cmd, ...]}` puts them
-        # under `fleet devtools <cmd>`. Without this a consumer can only add
-        # top-level groups, which forces unrelated company tooling up into
-        # the root namespace purely because the mechanism could not reach a
-        # subgroup. Found porting Skrybit's CLI (INFRA-227): 8 of its 12
-        # extension commands belonged under devtools.
-        #
-        # An unknown parent is a warning, not a crash: the same rule as a
-        # broken extension file — consumer tooling must not brick the CLI.
-        for parent_name, cmds in getattr(module, "ATTACH", {}).items():
-            parent = root_group.get_command(None, parent_name)  # type: ignore[arg-type]
-            if not isinstance(parent, click.Group):
-                click.echo(
-                    f"warning: {py.name} wants to attach to '{parent_name}', "
-                    f"which is not a command group on this CLI",
-                    err=True,
-                )
-                continue
-            for cmd in cmds:
-                parent.add_command(cmd)
+        # COMMANDS → root; ATTACH → an existing group. Same code path the
+        # in-tree component families use (INFRA-227: 8 of Skrybit's 12
+        # extension commands belonged under an existing group, not the root).
+        register_cli_manifest(root_group, module, source=py.name)
