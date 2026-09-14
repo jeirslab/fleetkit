@@ -45,12 +45,14 @@
   boot.initrd.availableKernelModules = [ "virtio_pci" "virtio_blk" "virtio_scsi" "ahci" "sd_mod" ];
   boot.initrd.kernelModules = [ "ext4" ];
 
-  # DHCP on eth0 — the primary addressing for this (cloud-init-off) target;
-  # for the cloud sibling it is the fallback until the cloud-init drive
-  # lands. tty0 first so /dev/console is ttyS0 (PVE wires `serial0: socket`
-  # by default; a boot failure is never a black box).
-  systemd.network.networks."10-eth0" = {
-    matchConfig.Name = "eth0";
+  # DHCP on the primary NIC — the primary addressing for this (cloud-init-off)
+  # target; for the cloud sibling it is the fallback until the cloud-init
+  # drive lands. Match `en* eth*`, NOT a bare `eth0`: PVE VMs present the
+  # virtio NIC under systemd's predictable name (`ens18`), so an `eth0`-only
+  # match never fires and DHCP would silently ride on the `networking.useDHCP`
+  # default instead of this unit's tunables (verified on a live PVE 9 clone).
+  systemd.network.networks."10-primary" = {
+    matchConfig.Name = "en* eth*";
     networkConfig.DHCP = "ipv4";
     dhcpV4Config = { UseDNS = true; UseHostname = false; };
   };
