@@ -1,4 +1,5 @@
 [
+  "_run-job",
   "ansible",
   "ansible inventory",
   "ansible playbooks",
@@ -110,6 +111,7 @@
   "sessions attach",
   "sessions kill",
   "sessions list",
+  "sessions logs",
   "sessions status",
   "templates",
   "templates register",

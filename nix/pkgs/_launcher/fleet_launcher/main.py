@@ -53,7 +53,7 @@ from fleet_launcher.inventory import inventory as inventory_cli
 from fleet_launcher.bootstraps_group import bootstraps
 from fleet_launcher.devtools_group import devtools
 from fleet_launcher.remote import remote
-from fleet_launcher.sessions import sessions_cli
+from fleet_launcher.sessions import sessions_cli, run_job_cli as _run_job_cli
 from fleet_launcher.pki_group import pki
 from fleet_launcher.ansible_group import ansible as ansible_cli
 from fleet_launcher.mcp_group import mcp as mcp_cli
@@ -98,6 +98,9 @@ fleet.add_command(bootstraps)
 fleet.add_command(devtools)
 fleet.add_command(remote)
 fleet.add_command(sessions_cli, "sessions")
+# Detached job supervisor (internal, hidden): dispatch_session spawns
+# `fleet _run-job -- <cmd>` as a native process; it records status + log.
+fleet.add_command(_run_job_cli)
 fleet.add_command(pki)
 fleet.add_command(ansible_cli, "ansible")
 
@@ -664,6 +667,12 @@ def main() -> None:
     # _setup_env / re-exec / extensions (an agent can run it with no creds).
     if sys.argv[1:2] == ["describe"]:
         _describe_and_exit()
+        return
+    # The detached job supervisor only spawns a subprocess + records status;
+    # it needs no SOPS/catalog/extensions (the INNER command sets up its own
+    # env). Skip _setup_env so the supervisor is light and side-effect-free.
+    if sys.argv[1:2] == ["_run-job"]:
+        fleet()
         return
     _maybe_reexec_for_missing_tools()
     _setup_env()

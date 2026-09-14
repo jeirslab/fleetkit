@@ -1,32 +1,36 @@
-"""fleet sessions — tmux-based session management for long-running fleet ops.
+"""fleet sessions — native-process job runner for long-running fleet ops.
 
 Any command that might run for more than ~30s (Colmena deploys, `tofu
-apply`, fleet-wide NixOS rollouts) wraps itself in a detached tmux session
-so the operator can:
+apply`, fleet-wide NixOS rollouts) is run as a **detached native
+subprocess** — NOT a tmux session (jeirslab/fleetkit#7). tmux was standing
+in for three things at once; each is now a plain file so the mechanism works
+headless (in CI and the CD runner) and, crucially, tells the truth:
 
-  - Fire-and-forget dozens in parallel without blocking the terminal
-  - Re-attach to watch progress at any time
-  - Prevent accidental double-deploys of the same target
+  * process supervisor → a detached `fleet _run-job` child that runs the
+    command, streams its output to a log, and records the exit code on exit;
+  * log sink          → ``<name>.log`` (follow with `fleet sessions logs`);
+  * status registry   → ``<name>.status`` JSON ({status, pid, exit_code, …}).
+
+Because the supervisor records the real exit code, a caller that WAITS gets
+the authoritative result instead of "launched" — `dispatch` still returns
+immediately for fire-and-forget, but `run_and_wait` blocks and aggregates
+the real exit codes (what `fleet deploy … --wait` and the CD runner use).
 
 Session naming convention: ``fleet-<family>-<target>`` (e.g.
-``fleet-deploy-netgate``, ``fleet-tf-apply-platform-bootstrap``). Prefix
-``fleet-`` lets us find all fleet-owned sessions with a single glob.
-
-Opt out via ``--no-session`` on any supporting command or the
-``FLEET_NO_SESSION=1`` env var (for CI / scripts).
+``fleet-deploy-netgate``). Opt out of backgrounding with ``--no-session`` or
+``FLEET_NO_SESSION=1`` (CI / the runner's inner invocation).
 """
 from __future__ import annotations
 
 import json
 import os
-import shlex
-import shutil
+import signal
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 import click
 from rich.console import Console
@@ -37,47 +41,37 @@ from ._util import env_get
 console = Console()
 
 # ── State persistence ────────────────────────────────────────────────
-# A session's exit status survives only as long as the tmux pane stays
-# alive (with our on-exit=keep behaviour the pane sticks until the user
-# presses ENTER). For authoritative RUN/DONE-OK/DONE-FAIL post-teardown
-# we write a small sentinel file when the wrapped command exits.
-
-# User-global (XDG), NOT the project-root `.cache/fleet` that
-# _util.fleet_cache_dir() manages — different scope, same rename.
+# One JSON record + one log file per job. User-global (XDG), NOT the
+# project-root `.cache/fleet` that _util.fleet_cache_dir() manages.
 _CACHE_HOME = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache")))
 _STATE_DIR = _CACHE_HOME / "fleet" / "sessions"
 _LEGACY_STATE_DIR = _CACHE_HOME / "sk" / "sessions"
 
+SESSION_PREFIX = "fleet-"
+LEGACY_SESSION_PREFIX = "sk-"
+
 
 def _ensure_state_dir() -> None:
-    # One-time silent migration of the pre-INFRA-218 location, mirroring
-    # _util.fleet_cache_dir(). Sentinels for sessions still running under a
-    # tmux command rendered by the old binary keep landing in the legacy
-    # dir; _read_state() simply misses those and reports RUN/UNKNOWN from
-    # liveness instead, which is the same degradation as a missing file.
+    # One-time silent migration of the pre-INFRA-218 location.
     if not _STATE_DIR.exists() and _LEGACY_STATE_DIR.is_dir():
         try:
             _STATE_DIR.parent.mkdir(parents=True, exist_ok=True)
             os.rename(_LEGACY_STATE_DIR, _STATE_DIR)
         except OSError:
-            pass  # cross-device / permissions — fall through, start fresh
+            pass
     _STATE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _state_file(session: str) -> Path:
-    return _STATE_DIR / f"{session}.status"
+def _state_file(name: str) -> Path:
+    return _STATE_DIR / f"{name}.status"
 
 
-def _write_state(session: str, status: str, extra: dict | None = None) -> None:
-    _ensure_state_dir()
-    payload = {"status": status, "updated_at": time.time()}
-    if extra:
-        payload.update(extra)
-    _state_file(session).write_text(json.dumps(payload))
+def _log_file(name: str) -> Path:
+    return _STATE_DIR / f"{name}.log"
 
 
-def _read_state(session: str) -> dict | None:
-    f = _state_file(session)
+def _read_record(name: str) -> dict | None:
+    f = _state_file(name)
     if not f.exists():
         return None
     try:
@@ -86,41 +80,106 @@ def _read_state(session: str) -> dict | None:
         return None
 
 
-# ── tmux helpers ─────────────────────────────────────────────────────
-
-def _tmux_available() -> bool:
-    return shutil.which("tmux") is not None
-
-
-def _session_exists(name: str) -> bool:
-    result = subprocess.run(["tmux", "has-session", "-t", name],
-                            capture_output=True, text=True)
-    return result.returncode == 0
+def _write_record(name: str, **fields) -> None:
+    """Merge ``fields`` into the job's record (create if absent)."""
+    _ensure_state_dir()
+    rec = _read_record(name) or {"name": name}
+    rec.update(fields)
+    rec["updated_at"] = time.time()
+    _state_file(name).write_text(json.dumps(rec))
 
 
-def _session_alive(name: str) -> bool:
-    """Pane running a real process (not the dead-pane post-exit hold)."""
-    result = subprocess.run(
-        ["tmux", "list-panes", "-t", name, "-F", "#{pane_dead}"],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
+# ── Liveness (replaces tmux has-session / pane-dead) ─────────────────
+
+def _pid_alive(pid: int | None) -> bool:
+    if not pid:
         return False
-    return "0" in result.stdout
+    try:
+        os.kill(int(pid), 0)
+    except (OSError, ValueError, TypeError):
+        return False
+    return True
 
 
-def _pane_capture(name: str, lines: int = 100) -> str:
-    result = subprocess.run(
-        ["tmux", "capture-pane", "-t", name, "-p", "-S", f"-{lines}"],
-        capture_output=True, text=True,
-    )
-    return result.stdout if result.returncode == 0 else ""
+def _job_state(name: str) -> tuple[str, int | None]:
+    """Authoritative (state, exit_code) for a job.
+
+    A RUN record whose supervisor pid is gone is a crash the supervisor
+    never got to record (SIGKILL, OOM, power loss) — report STALE rather
+    than a stuck RUN, so status never lies about a job that is not running.
+    """
+    rec = _read_record(name)
+    if not rec:
+        return ("UNKNOWN", None)
+    status = rec.get("status", "UNKNOWN")
+    if status == "RUN" and not _pid_alive(rec.get("pid")):
+        return ("STALE", None)
+    return (status, rec.get("exit_code"))
 
 
-# ── Core wrapping primitive ──────────────────────────────────────────
+def _last_log_line(name: str, limit: int = 120) -> str:
+    f = _log_file(name)
+    if not f.exists():
+        return ""
+    try:
+        tail = f.read_bytes()[-8192:].decode("utf-8", "replace")
+    except OSError:
+        return ""
+    for raw in reversed(tail.splitlines()):
+        s = raw.strip()
+        if s:
+            return s[:limit]
+    return ""
+
 
 def running_inside(session_name: str) -> bool:
     return env_get("FLEET_SESSION_NAME") == session_name
+
+
+# ── The job primitive ────────────────────────────────────────────────
+
+def _now() -> float:
+    return time.time()
+
+
+def run_job(name: str, cmd: list[str], *, cwd: Path | None = None,
+            description: str | None = None, tee: bool = False) -> int:
+    """Run ``cmd`` to completion IN THIS PROCESS, recording the job.
+
+    Streams combined stdout/stderr to the job's log (optionally teeing to
+    this process's stdout), records RUN→DONE-OK/DONE-FAIL with the real exit
+    code, and returns it. This is the single execution path shared by the
+    detached supervisor (`_run-job`) and the synchronous `run_and_wait`.
+    """
+    _ensure_state_dir()
+    log_path = _log_file(name)
+    _write_record(name, status="RUN", pid=os.getpid(), exit_code=None,
+                  description=description or " ".join(cmd), log=str(log_path),
+                  cmd=cmd, started_at=_now(), finished_at=None)
+    rc = 1
+    try:
+        with open(log_path, "wb") as lf:
+            proc = subprocess.Popen(
+                cmd, cwd=str(cwd) if cwd else None,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            )
+            assert proc.stdout is not None
+            for chunk in iter(lambda: proc.stdout.readline(), b""):
+                lf.write(chunk)
+                lf.flush()
+                if tee:
+                    sys.stdout.buffer.write(chunk)
+                    sys.stdout.buffer.flush()
+            rc = proc.wait()
+    except FileNotFoundError as exc:
+        with open(log_path, "ab") as lf:
+            lf.write(f"fleet: {exc}\n".encode())
+        rc = 127
+    finally:
+        _write_record(name, status=("DONE-OK" if rc == 0 else "DONE-FAIL"),
+                       exit_code=rc, finished_at=_now())
+    return rc
 
 
 def dispatch_session(
@@ -131,129 +190,130 @@ def dispatch_session(
     description: str | None = None,
     env: dict | None = None,
 ) -> int:
-    """Launch ``cmd`` inside a new detached tmux session.
+    """Launch ``cmd`` as a DETACHED native job (fire-and-forget).
 
-    - If called from INSIDE the target session (``FLEET_SESSION_NAME`` set),
-      returns -1 so the caller can fall through to its inline path.
-    - If the named session already exists and is alive, refuses with
-      instructions to attach or kill.
-    - Otherwise creates a detached session, runs the command, writes a
-      sentinel state file on exit, and holds the pane until ENTER.
-
-    Returns 0 on successful dispatch, non-zero on refusal / error.
+    - Returns -1 if backgrounding is opted out (FLEET_NO_SESSION) or we are
+      already the inner job (FLEET_SESSION_NAME) — the caller runs inline.
+    - Returns 2 if a job of this name is already running (double-run guard).
+    - Otherwise spawns a detached `fleet _run-job` supervisor, waits briefly
+      to catch an immediate death, and returns 0 on a clean launch.
     """
+    from ._util import fleet_executable
+
     if env_get("FLEET_NO_SESSION") == "1":
         return -1
     if running_inside(session_name):
         return -1
-    if not _tmux_available():
-        console.print("[yellow]tmux not found — running inline.[/yellow]")
-        return -1
 
-    if _session_exists(session_name):
-        if _session_alive(session_name):
-            console.print(
-                f"[red]ERROR:[/red] session [bold]{session_name}[/bold] is already running.\n"
-                f"  attach:  tmux attach -t {session_name}\n"
-                f"  kill:    fleet sessions kill {session_name}"
-            )
-            return 2
-        # Dead pane — clean up before relaunching.
-        subprocess.run(["tmux", "kill-session", "-t", session_name],
-                       capture_output=True)
+    state, _ = _job_state(session_name)
+    if state == "RUN":
+        console.print(
+            f"[red]ERROR:[/red] job [bold]{session_name}[/bold] is already running.\n"
+            f"  logs:  fleet sessions logs {session_name} -f\n"
+            f"  kill:  fleet sessions kill {session_name}"
+        )
+        return 2
 
-    # Build the shell command that runs inside the tmux pane.
-    # We set FLEET_SESSION_NAME so the inner `fleet` invocation knows not to
-    # re-wrap itself, capture the exit code, write a sentinel, and hold
-    # the pane open for scrollback.
-    env_parts = [f"FLEET_SESSION_NAME={shlex.quote(session_name)}"]
-    if env:
-        for k, v in env.items():
-            env_parts.append(f"{k}={shlex.quote(str(v))}")
-    cmd_str = " ".join(shlex.quote(c) for c in cmd)
-
-    sentinel_cmd = (
-        f"_fleet_write_status() {{ "
-        f"  mkdir -p {shlex.quote(str(_STATE_DIR))}; "
-        f"  printf '%s\\n' \"{{\\\"status\\\":\\\"$1\\\",\\\"updated_at\\\":$(date +%s),\\\"exit_code\\\":$2}}\" "
-        f"  > {shlex.quote(str(_state_file(session_name)))}; "
-        f"}}"
-    )
-    wrapped = (
-        f"{sentinel_cmd}; "
-        f"_fleet_write_status RUN 0; "
-        f"env {' '.join(env_parts)} {cmd_str}; "
-        f"_rc=$?; "
-        f"if [ $_rc -eq 0 ]; then _fleet_write_status DONE-OK $_rc; "
-        f"else _fleet_write_status DONE-FAIL $_rc; fi; "
-        f"echo; echo '=== {session_name} exited (rc=' $_rc ') — press ENTER to close ==='; "
-        f"read"
-    )
-
-    new_session_cmd = ["tmux", "new-session", "-d", "-s", session_name]
+    _ensure_state_dir()
+    supervisor = [
+        fleet_executable(), "_run-job",
+        "--name", session_name,
+        "--desc", description or " ".join(cmd),
+    ]
     if cwd:
-        new_session_cmd += ["-c", str(cwd)]
-    new_session_cmd += [wrapped]
+        supervisor += ["--cwd", str(cwd)]
+    supervisor += ["--", *cmd]
 
-    subprocess.run(new_session_cmd, check=True)
-    _write_state(session_name, "RUN", {"description": description or " ".join(cmd), "exit_code": None})
+    child_env = dict(os.environ)
+    child_env["FLEET_SESSION_NAME"] = session_name
+    if env:
+        child_env.update({k: str(v) for k, v in env.items()})
 
-    # Early-death watch (INFRA-171): a session whose command dies within the
-    # first few seconds is almost always an environment failure (rc=127
-    # "command not found", bad cwd, …) — previously this reported "launched"
-    # and exited 0 while the deploy never ran. Poll briefly and surface it.
+    # start_new_session detaches from this process group so the job outlives
+    # the terminal; output goes to the log, not our fds.
+    proc = subprocess.Popen(
+        supervisor, cwd=str(cwd) if cwd else None, env=child_env,
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL, start_new_session=True,
+    )
+    _write_record(session_name, status="RUN", pid=proc.pid, exit_code=None,
+                  description=description or " ".join(cmd),
+                  log=str(_log_file(session_name)), started_at=_now())
+
+    # Early-death watch (INFRA-171): a job that dies in the first few seconds
+    # is almost always an env failure (rc=127, bad cwd). Surface it instead of
+    # reporting a launch that never ran.
     deadline = time.time() + 4.0
     while time.time() < deadline:
         time.sleep(0.25)
-        state = _read_state(session_name) or {}
-        status = state.get("status")
-        if status == "DONE-OK":
-            break  # legitimately finished fast
-        if status == "DONE-FAIL":
-            exit_code = state.get("exit_code")
+        state, exit_code = _job_state(session_name)
+        if state == "DONE-OK":
+            break
+        if state in ("DONE-FAIL", "STALE"):
             rc = int(exit_code) if str(exit_code).isdigit() else 1
             console.print(
-                f"[red]ERROR:[/red] session [bold]{session_name}[/bold] died "
+                f"[red]ERROR:[/red] job [bold]{session_name}[/bold] died "
                 f"immediately (rc={rc}). Last output:"
             )
-            for line in _pane_capture(session_name, 25).splitlines()[-15:]:
+            for line in _log_file(session_name).read_text(errors="replace").splitlines()[-15:]:
                 if line.strip():
                     console.print(f"  [dim]{line}[/dim]")
-            subprocess.run(["tmux", "kill-session", "-t", session_name],
-                           capture_output=True)
             return rc or 1
-        if not _session_exists(session_name):
-            console.print(
-                f"[red]ERROR:[/red] session [bold]{session_name}[/bold] "
-                f"vanished right after launch."
-            )
-            return 1
 
     console.print(
         f"[green]launched[/green] {session_name}  "
-        f"[dim](attach: tmux attach -t {session_name} · "
+        f"[dim](logs: fleet sessions logs {session_name} -f · "
         f"status: fleet sessions status · kill: fleet sessions kill {session_name})[/dim]"
     )
     return 0
 
 
+def run_and_wait(specs: list[dict], *, max_workers: int | None = None) -> int:
+    """Run jobs to completion and return the aggregate exit code.
+
+    ``specs`` is a list of ``{name, cmd, cwd?, description?}``. Jobs run
+    concurrently (bounded by ``max_workers``; None = one per spec) and their
+    real exit codes are collected — the honest path `fleet deploy … --wait`
+    and the CD runner use. A single job tees to the terminal; multiple jobs
+    stream only to their logs (interleaving many is unreadable) and a summary
+    table is printed at the end.
+    """
+    if not specs:
+        return 0
+    tee = len(specs) == 1
+
+    def _one(spec: dict) -> tuple[str, int]:
+        rc = run_job(spec["name"], spec["cmd"], cwd=spec.get("cwd"),
+                     description=spec.get("description"), tee=tee)
+        return (spec["name"], rc)
+
+    workers = max_workers or len(specs)
+    results: dict[str, int] = {}
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        for name, rc in pool.map(_one, specs):
+            results[name] = rc
+
+    if not tee:
+        t = Table(title="job results")
+        t.add_column("job", style="cyan")
+        t.add_column("result", style="bold")
+        for name in sorted(results):
+            rc = results[name]
+            style = "green" if rc == 0 else "red"
+            t.add_row(name, f"[{style}]{'ok' if rc == 0 else f'FAIL (rc={rc})'}[/{style}]")
+        console.print(t)
+
+    return max(results.values()) if results else 0
+
+
 # ── Public CLI (fleet sessions …) ───────────────────────────────────────
 
 @dataclass
-class _SessionInfo:
+class _JobInfo:
     name: str
-    alive: bool
-    last_line: str
-    state: str  # RUN | DONE-OK | DONE-FAIL | UNKNOWN
+    state: str  # RUN | DONE-OK | DONE-FAIL | STALE | UNKNOWN
     exit_code: int | None
-
-
-# New sessions are only ever created with SESSION_PREFIX. LEGACY_PREFIX is
-# matched on *discovery* so `fleet sessions list/kill` can still see and reap
-# sk-* sessions that a pre-INFRA-218 build left running. Drop it with the
-# _util env shim (2026-12-01) — by then no such session can still exist.
-SESSION_PREFIX = "fleet-"
-LEGACY_SESSION_PREFIX = "sk-"
+    last_line: str
 
 
 def _matches_prefix(name: str, prefix: str) -> bool:
@@ -262,88 +322,112 @@ def _matches_prefix(name: str, prefix: str) -> bool:
     return prefix == SESSION_PREFIX and name.startswith(LEGACY_SESSION_PREFIX)
 
 
-def _collect_sessions(prefix: str = SESSION_PREFIX) -> list[_SessionInfo]:
-    result = subprocess.run(["tmux", "ls"], capture_output=True, text=True)
-    if result.returncode != 0:
+def _collect(prefix: str = SESSION_PREFIX) -> list[_JobInfo]:
+    if not _STATE_DIR.is_dir():
         return []
-    infos: list[_SessionInfo] = []
-    for line in result.stdout.splitlines():
-        name = line.split(":", 1)[0]
+    infos: list[_JobInfo] = []
+    for f in sorted(_STATE_DIR.glob("*.status")):
+        name = f.stem
         if not _matches_prefix(name, prefix):
             continue
-        alive = _session_alive(name)
-        dump = _pane_capture(name, 30)
-        # Last non-blank / non-sentinel line.
-        last = ""
-        for raw in reversed(dump.splitlines()):
-            s = raw.strip()
-            if not s or s.startswith("==="):
-                continue
-            last = s[:120]
-            break
-        sentinel = _read_state(name)
-        if sentinel:
-            state = sentinel.get("status", "UNKNOWN")
-            exit_code = sentinel.get("exit_code")
-        else:
-            state = "RUN" if alive else "UNKNOWN"
-            exit_code = None
-        infos.append(_SessionInfo(name, alive, last, state, exit_code))
+        state, exit_code = _job_state(name)
+        infos.append(_JobInfo(name, state, exit_code, _last_log_line(name)))
     return infos
 
 
 @click.group("sessions")
 def sessions_cli() -> None:
-    """Manage fleet-owned tmux sessions."""
+    """Manage fleet background jobs (native processes; formerly tmux)."""
 
 
 @sessions_cli.command("list")
-@click.option("--prefix", default=SESSION_PREFIX, help="Session name prefix filter.")
+@click.option("--prefix", default=SESSION_PREFIX, help="Job name prefix filter.")
 def sessions_list(prefix: str) -> None:
-    """One-row-per-session overview (state, last line)."""
-    infos = _collect_sessions(prefix)
+    """One-row-per-job overview (state, exit code, last log line)."""
+    infos = _collect(prefix)
     if not infos:
-        console.print(f"No '{prefix}*' sessions.")
+        console.print(f"No '{prefix}*' jobs.")
         return
     t = Table()
     t.add_column("State", style="bold")
     t.add_column("Name", style="cyan")
+    t.add_column("rc")
     t.add_column("Last output", style="dim")
     for i in sorted(infos, key=lambda x: x.name):
-        style = {"RUN": "yellow", "DONE-OK": "green", "DONE-FAIL": "red"}.get(i.state, "white")
-        t.add_row(f"[{style}]{i.state}[/{style}]", i.name, i.last_line)
+        style = {"RUN": "yellow", "DONE-OK": "green",
+                 "DONE-FAIL": "red", "STALE": "red"}.get(i.state, "white")
+        rc = "" if i.exit_code is None else str(i.exit_code)
+        t.add_row(f"[{style}]{i.state}[/{style}]", i.name, rc, i.last_line)
     console.print(t)
-
-
-@sessions_cli.command("attach")
-@click.argument("name")
-def sessions_attach(name: str) -> None:
-    """tmux attach -t NAME."""
-    if not _session_exists(name):
-        console.print(f"[red]ERROR:[/red] no session named {name}")
-        sys.exit(1)
-    os.execvp("tmux", ["tmux", "attach", "-t", name])
-
-
-@sessions_cli.command("kill")
-@click.argument("name")
-def sessions_kill(name: str) -> None:
-    """Kill a specific session, or 'all' for every fleet-* session."""
-    if name == "all":
-        for info in _collect_sessions(SESSION_PREFIX):
-            subprocess.run(["tmux", "kill-session", "-t", info.name])
-            console.print(f"killed {info.name}")
-        return
-    if not _session_exists(name):
-        console.print(f"[yellow]no session {name}[/yellow]")
-        return
-    subprocess.run(["tmux", "kill-session", "-t", name])
-    console.print(f"killed {name}")
 
 
 @sessions_cli.command("status")
 @click.option("--prefix", default=SESSION_PREFIX)
 def sessions_status(prefix: str) -> None:
-    """Alias of list — match scripts/tmux-deploy.sh UX."""
+    """Alias of list."""
     ctx = click.get_current_context()
     ctx.invoke(sessions_list, prefix=prefix)
+
+
+@sessions_cli.command("logs")
+@click.argument("name")
+@click.option("-f", "--follow", is_flag=True, help="Follow the log (tail -f).")
+def sessions_logs(name: str, follow: bool) -> None:
+    """Print (or follow) a job's log — the native replacement for `attach`."""
+    log = _log_file(name)
+    if not log.exists():
+        console.print(f"[red]ERROR:[/red] no log for {name}")
+        sys.exit(1)
+    if follow:
+        os.execvp("tail", ["tail", "-n", "+1", "-f", str(log)])
+    sys.stdout.write(log.read_text(errors="replace"))
+
+
+@sessions_cli.command("attach")
+@click.argument("name")
+def sessions_attach(name: str) -> None:
+    """Follow a running job's log (kept for muscle memory; see `logs`)."""
+    ctx = click.get_current_context()
+    ctx.invoke(sessions_logs, name=name, follow=True)
+
+
+@sessions_cli.command("kill")
+@click.argument("name")
+def sessions_kill(name: str) -> None:
+    """Kill a specific job, or 'all' for every fleet-* job."""
+    targets = [i.name for i in _collect(SESSION_PREFIX)] if name == "all" else [name]
+    for tgt in targets:
+        rec = _read_record(tgt)
+        pid = rec.get("pid") if rec else None
+        if _pid_alive(pid):
+            try:
+                os.killpg(os.getpgid(int(pid)), signal.SIGTERM)
+            except (OSError, ValueError):
+                try:
+                    os.kill(int(pid), signal.SIGTERM)
+                except (OSError, ValueError):
+                    pass
+            _write_record(tgt, status="DONE-FAIL", exit_code=143, finished_at=_now())
+            console.print(f"killed {tgt}")
+        else:
+            console.print(f"[yellow]{tgt} not running[/yellow]")
+
+
+# ── Detached supervisor (internal) ───────────────────────────────────
+
+@click.command("_run-job", hidden=True)
+@click.option("--name", required=True)
+@click.option("--desc", default=None)
+@click.option("--cwd", default=None, type=click.Path())
+@click.argument("cmd", nargs=-1, type=click.UNPROCESSED)
+def run_job_cli(name: str, desc: str | None, cwd: str | None, cmd: tuple[str, ...]) -> None:
+    """INTERNAL: run one job to completion, recording its status/log.
+
+    Spawned detached by `dispatch_session`; not for direct use. Everything
+    after ``--`` is the command to run.
+    """
+    argv = list(cmd)
+    if argv and argv[0] == "--":
+        argv = argv[1:]
+    rc = run_job(name, argv, cwd=Path(cwd) if cwd else None, description=desc, tee=False)
+    sys.exit(rc)
