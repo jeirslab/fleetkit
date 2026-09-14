@@ -40,4 +40,12 @@ for name in $(jq -r 'keys[]' "$tmp/all.json"); do
   count=$((count + 1))
 done
 
-echo "regenerated $count module schema(s). Review the diff, then: git add nix/components/schema/"
+echo "evaluating images family interface…"
+mkdir -p nix/components/schema/images
+nix eval --impure --json --expr "
+  let imgs = (builtins.getFlake (toString $root)).lib.images;
+  in { targetsData = imgs.targetsData; templatesData = imgs.templatesData; }
+" | jq -S . > nix/components/schema/images/interface.json
+echo "  wrote nix/components/schema/images/interface.json"
+
+echo "regenerated $count module schema(s) + the images interface. Review the diff, then: git add nix/components/schema/"

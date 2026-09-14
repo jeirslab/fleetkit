@@ -428,7 +428,7 @@
       # Component interface-schema gates (component-<family>-<name>) — a
       # keyspace disjoint from the checks above (ADR: component model).
       // (import ./nix/components/checks.nix {
-        inherit nixpkgs sops-nix disko;
+        inherit nixpkgs sops-nix disko nixos-generators;
       });
   };
 }

@@ -6,7 +6,7 @@
 # output, so internals stay free. Flattened and namespaced into
 # checks.<system> as `component-<family>-<name>`, a keyspace disjoint from
 # nix/checks.nix. tf and image family gates join at M3/M4.
-{ nixpkgs, sops-nix, disko }:
+{ nixpkgs, sops-nix, disko, nixos-generators }:
 
 let
   pkgs = import nixpkgs { system = "x86_64-linux"; };
@@ -58,8 +58,39 @@ let
       else
         ''echo "missing tf emitter source(s): ${lib.concatMapStringsSep ", " (c: c.name) missing}" >&2; exit 1''
     );
+
+  # images family: lock the exported interface as a whole — the target table
+  # (targetsData) + the ADR-0003 template refs (templatesData). No per-target
+  # dirs exist (targets share the bootstrap + a platform module), so the family
+  # is one gate. Cross-consistency with the tf template constants is deferred to
+  # the flip (the naming differs by design until then).
+  imageInterface =
+    let
+      images = import ../images/deployer/lib { inherit nixpkgs nixos-generators; };
+      committed = ./schema/images/interface.json;
+    in
+    if !(builtins.pathExists committed) then
+      pkgs.runCommand "component-image-interface" { } ''
+        echo "no committed images interface: run nix/components/update-schema.sh"; exit 1
+      ''
+    else
+      pkgs.runCommand "component-image-interface"
+        {
+          nativeBuildInputs = [ pkgs.jq pkgs.diffutils ];
+          current = builtins.toJSON { inherit (images) targetsData templatesData; };
+          inherit committed;
+          passAsFile = [ "current" ];
+        }
+        ''
+          if ! diff -u <(jq -S . "$committed") <(jq -S . "$currentPath"); then
+            echo "images family interface drifted — if intended, run nix/components/update-schema.sh"
+            exit 1
+          fi
+          touch $out
+        '';
 in
 (lib.listToAttrs (
   map (c: lib.nameValuePair "component-module-${slugOf c.name}" (moduleCheck c)) registry.modules
 ))
 // lib.optionalAttrs (registry.tf != [ ]) { component-tf-registered = tfRegistered; }
+// { component-image-interface = imageInterface; }
