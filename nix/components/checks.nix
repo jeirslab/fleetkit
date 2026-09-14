@@ -45,7 +45,21 @@ let
           fi
           touch $out
         '';
+  # tf family: existence-gate the registered emitters. The RENDERED resource
+  # surface is locked by compute-surface-golden (nix/checks.nix); this catches
+  # a deleted/renamed emitter source. A per-emitter structural surface gate is
+  # a follow-up (needs broader fixtures + resource-type→emitter attribution).
+  tfRegistered =
+    let missing = lib.filter (c: !(builtins.pathExists c.src)) registry.tf;
+    in
+    pkgs.runCommand "component-tf-registered" { } (
+      if missing == [ ] then
+        "touch $out"
+      else
+        ''echo "missing tf emitter source(s): ${lib.concatMapStringsSep ", " (c: c.name) missing}" >&2; exit 1''
+    );
 in
-lib.listToAttrs (
+(lib.listToAttrs (
   map (c: lib.nameValuePair "component-module-${slugOf c.name}" (moduleCheck c)) registry.modules
-)
+))
+// lib.optionalAttrs (registry.tf != [ ]) { component-tf-registered = tfRegistered; }

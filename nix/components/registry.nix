@@ -56,6 +56,25 @@ in
   # NOTE: infra.services is declared at the infra root (infra/default.nix), not
   # a leaf — a component rooted there would capture the whole tree, so it is
   # intentionally not registered.
-  tf = [ ]; # M3
+  # tf emitters: registered so the family is represented and a
+  # component-tf-registered gate catches a deleted/renamed emitter. The
+  # RENDERED resource surface is locked by the existing compute-surface-golden
+  # check (byte-exact for the proxmox path the fixture exercises); a per-emitter
+  # STRUCTURAL surface gate (attr-key shape, refactor-tolerant, covering the
+  # xen/cloudflare/grafana emitters) is a follow-up needing broader fixtures.
+  tf =
+    let
+      tfLeaf = name: src: mkComponent { family = "tf"; inherit name src; };
+    in
+    [
+      (tfLeaf "tf.compute.proxmox" ../tf/compute/proxmox.nix)
+      (tfLeaf "tf.compute.xen-orchestra" ../tf/compute/xen-orchestra.nix)
+      (tfLeaf "tf.compute.ansible" ../tf/compute/ansible.nix)
+      (tfLeaf "tf.resources.proxmox" ../tf/resources/proxmox.nix)
+      (tfLeaf "tf.resources.xen-orchestra" ../tf/resources/xen-orchestra.nix)
+      (tfLeaf "tf.resources.cloudflare" ../tf/resources/cloudflare.nix)
+      (tfLeaf "tf.resources.grafana" ../tf/resources/grafana.nix)
+    ];
+
   images = [ ]; # M4
 }
