@@ -388,6 +388,25 @@ in {
     touch $out
   '';
 
+  # The AI-agent discovery surface assembles end-to-end: `fleet describe`
+  # emits one JSON manifest carrying the command tree, the option surface,
+  # and the component interfaces. Gates the contract the `introspection`
+  # package (and any importing agent) relies on — not a byte-golden (the
+  # option/verb goldens already lock the content), just that the surface is
+  # whole and self-describing.
+  introspection-surface = pkgs.runCommand "fleetkit-introspection-surface" {
+    nativeBuildInputs = [ fleetPkg pkgs.jq ];
+    FLEET_OPTIONS_JSON = (import ../docs { inherit pkgs nixpkgs sops-nix disko; }).passthru.optionsJSON;
+    FLEET_COMPONENTS_DIR = ./components/schema;
+  } ''
+    fleet describe > m.json
+    jq -e '.commands | length > 0'                 m.json >/dev/null || { echo "describe: no commands";              exit 1; }
+    jq -e '.commands[] | select(.path=="describe")' m.json >/dev/null || { echo "describe: not self-listed";          exit 1; }
+    jq -e 'has("options")'                          m.json >/dev/null || { echo "describe: missing option surface";    exit 1; }
+    jq -e '.components | has("modules") and has("images")' m.json >/dev/null || { echo "describe: missing components"; exit 1; }
+    touch $out
+  '';
+
   # Framework playbooks parse and their roles resolve. Syntax-only: no
   # host is contacted (`-i localhost,` satisfies inventory loading).
   ansible-syntax = pkgs.runCommand "fleetkit-ansible-syntax-check" {

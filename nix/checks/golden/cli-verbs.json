@@ -1,4 +1,5 @@
 [
+  "_run-job",
   "ansible",
   "ansible inventory",
   "ansible playbooks",
@@ -56,6 +57,7 @@
   "deploy tf state-push",
   "deploy tf state-rm",
   "deploy tf state-untaint",
+  "describe",
   "devtools",
   "devtools reset-connection",
   "devtools secrets",
@@ -109,6 +111,7 @@
   "sessions attach",
   "sessions kill",
   "sessions list",
+  "sessions logs",
   "sessions status",
   "templates",
   "templates register",

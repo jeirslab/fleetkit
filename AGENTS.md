@@ -46,12 +46,18 @@ input and describe their fleet as data.
 
 ## Discovering the API
 
+- **Start here (agents):** `nix build .#introspection` → one JSON manifest
+  with the whole "how do I drive fleetkit" surface — the CLI command tree
+  (each verb's help + params), the option surface, and the component
+  interfaces. Or run it live and env-free: `nix run .#fleet -- describe`
+  (identical data; reads no creds/SOPS). The `introspection-surface` gate
+  keeps it whole; the CLI walk cannot drift from the actual commands.
 - `nix build .#docs` → options reference site (chapters per option group:
   `fleet/*`, `infra/<stratum>`), generated from the module declarations —
   it cannot drift from the code.
 - `nix build .#options-json` → the same option data as structured JSON
-  (name, type, default, description, declaring file) — the preferred surface
-  for programmatic/agent consumption.
+  (name, type, default, description, declaring file) — also folded into
+  `.#introspection`.
 - `fleet --help` (and per-group `--help`) → the operational surface.
 - `templates/minimal/` → a complete working consumer, kept minimal on
   purpose; the commented sections enumerate the full settings surface.

@@ -25,6 +25,17 @@
   # and nothing reports the drift — the build just keeps succeeding against
   # a stale file.
 , imagesTree ? ../../images
+  # The images-family template references (lib.images.templatesData) as a JSON
+  # file, baked in as $FLEET_IMAGE_TEMPLATES so `fleet templates register`
+  # reads the contract eval-free (fleetkit convention: Nix data reaches the CLI
+  # via built artifacts, never `nix eval` at runtime).
+, imageTemplatesJson ? null
+  # The committed component interface schemas (nix/components/schema), baked as
+  # $FLEET_COMPONENTS_DIR so `fleet describe` can surface component interfaces
+  # to an AI agent eval-free. Lightweight (committed JSON), unlike the option
+  # surface (FLEET_OPTIONS_JSON) which the `introspection` package supplies so
+  # the base wrapper need not pull the docs closure.
+, componentsDir ? ../../components/schema
 }:
 
 python3.pkgs.buildPythonApplication {
@@ -64,7 +75,10 @@ python3.pkgs.buildPythonApplication {
     "--set-default FLEET_ANSIBLE_DIR ${ansibleTree}"
     "--set-default FLEET_MODULES_DIR ${modulesTree}"
     "--set-default FLEET_IMAGES_DIR ${imagesTree}"
-  ];
+  ] ++ lib.optional (imageTemplatesJson != null)
+    "--set-default FLEET_IMAGE_TEMPLATES ${imageTemplatesJson}"
+  ++ lib.optional (componentsDir != null)
+    "--set-default FLEET_COMPONENTS_DIR ${componentsDir}";
 
   # Unit + integration tests (CLI composition, --dump-verbs introspection,
   # fleet smoke) run in the sandbox via pytest.

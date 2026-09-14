@@ -204,7 +204,7 @@
           example = "local";
           description = ''
             PVE storage (content type vztmpl) that holds the NixOS LXC
-            template nixos-lxc-template-x86_64.tar.xz every NixOS container
+            template nixos-bootstrap-lxc-latest.tar.xz every NixOS container
             is created from. LEGACY DEFAULT "nix-store" (a cluster-wide NFS
             SR registered by the ansible proxmox/pve nfs-storage task); a
             single-node fleet uploads the template to "local" instead via a

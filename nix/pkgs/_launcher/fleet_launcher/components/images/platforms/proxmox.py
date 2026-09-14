@@ -48,24 +48,54 @@ def _node_name(host: str) -> str:
     return os.environ.get("PVE_NODE") or host.split(".")[0]
 
 
+def _pve_api_params() -> dict:
+    """proxmoxer connection params from the environment.
+
+    Prefers fleetkit's canonical env (`PROXMOX_VE_ENDPOINT` +
+    `PROXMOX_VE_API_TOKEN`, the bpg-provider convention that fleetkit's CLI
+    already decrypts from SOPS), so a consumer's existing creds drive the
+    images CLI with no extra config. Falls back to the deployer's own
+    `PVE_TOKEN_ID` / `PVE_TOKEN_SECRET`.
+    """
+    endpoint = os.environ.get("PROXMOX_VE_ENDPOINT")
+    api_token = os.environ.get("PROXMOX_VE_API_TOKEN")
+    if endpoint and api_token:
+        # bpg format: "user@realm!tokenname=secret"
+        left, sep, secret = api_token.partition("=")
+        if not sep or "!" not in left:
+            raise DeployerError("PROXMOX_VE_API_TOKEN must be 'user@realm!tokenname=secret'")
+        user, token_name = left.split("!", 1)
+        insecure = os.environ.get("PROXMOX_VE_INSECURE", "false").lower() in ("1", "true", "yes")
+        return {
+            "host": endpoint.split("://", 1)[-1].rstrip("/"),  # strip scheme; host[:port]
+            "user": user, "token_name": token_name, "token_value": secret,
+            "verify_ssl": not insecure,
+        }
+    token_id = os.environ.get("PVE_TOKEN_ID")
+    secret = os.environ.get("PVE_TOKEN_SECRET")
+    if token_id and secret:
+        if "!" not in token_id:
+            raise DeployerError("PVE_TOKEN_ID must be 'user@realm!tokenname'")
+        user, token_name = token_id.split("!", 1)
+        verify = os.environ.get("PVE_VERIFY_SSL", "1").lower() not in ("0", "false", "no", "")
+        return {"user": user, "token_name": token_name, "token_value": secret, "verify_ssl": verify}
+    raise DeployerError(
+        "no PVE API credentials: set PROXMOX_VE_ENDPOINT + PROXMOX_VE_API_TOKEN "
+        "(fleetkit's convention) or PVE_TOKEN_ID + PVE_TOKEN_SECRET")
+
+
 def _api(host: str):
-    """A proxmoxer ProxmoxAPI from PVE_TOKEN_ID / PVE_TOKEN_SECRET."""
+    """A proxmoxer ProxmoxAPI from the environment (see _pve_api_params)."""
     try:
         from proxmoxer import ProxmoxAPI
     except ImportError as exc:  # pragma: no cover
         raise DeployerError("proxmoxer is required for Proxmox registration (pip/uv: proxmoxer)") from exc
-    token_id = os.environ.get("PVE_TOKEN_ID")
-    secret = os.environ.get("PVE_TOKEN_SECRET")
-    if not (token_id and secret):
-        raise DeployerError("set PVE_TOKEN_ID ('user@realm!tokenname') and PVE_TOKEN_SECRET for the PVE API")
-    if "!" not in token_id:
-        raise DeployerError("PVE_TOKEN_ID must be 'user@realm!tokenname'")
-    user, token_name = token_id.split("!", 1)
-    verify = os.environ.get("PVE_VERIFY_SSL", "1").lower() not in ("0", "false", "no", "")
+    params = _pve_api_params()
+    params.setdefault("host", host)  # PVE_* fallback has no endpoint → use --host
     try:
-        return ProxmoxAPI(host, user=user, token_name=token_name, token_value=secret, verify_ssl=verify)
+        return ProxmoxAPI(**params)
     except Exception as exc:  # proxmoxer wraps auth/transport errors broadly
-        raise DeployerError(f"cannot reach the PVE API at {host}: {exc}") from exc
+        raise DeployerError(f"cannot reach the PVE API at {params['host']}: {exc}") from exc
 
 
 def _ssh(host: str, user: str):

@@ -1,9 +1,9 @@
-{ config, lib, pkgs, stackId ? null, ... }:
+{ config, lib, pkgs, stackId ? null, fleetLib ? null, ... }:
 
 # LXC container + KVM VM emitter for a single leaf stack.
 
 let
-  helpers = import ../../lib/tf/proxmox.nix { inherit config lib pkgs; };
+  helpers = import ../../lib/tf/proxmox.nix { inherit config lib pkgs fleetLib; };
 
   computeInStack = lib.filterAttrs
     (_: c: (c.enabled or true)

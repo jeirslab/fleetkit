@@ -1,4 +1,4 @@
-{ config, lib, pkgs, stackId ? null, ... }:
+{ config, lib, pkgs, stackId ? null, fleetLib ? null, ... }:
 
 # Emits proxmox non-OS resources (bridges, pools, ACLs, realms, DNS,
 # downloads, files) that belong to the current stack (stackId).
@@ -7,10 +7,10 @@
 # "${env}.${stack}" matches the active stackId get emitted.
 #
 # pkgs flows through to mkFile so it can resolve nix-built sources like
-# the prepared Debian cloud image (ADR-018).
+# the prepared NixOS LXC bootstrap template (fleetLib.images, ADR-0003).
 
 let
-  helpers = import ../../lib/tf/proxmox.nix { inherit config lib pkgs; };
+  helpers = import ../../lib/tf/proxmox.nix { inherit config lib pkgs fleetLib; };
 
   resourcesInStack = lib.filterAttrs
     (_: r: "${r.env}.${r.stack}" == stackId)

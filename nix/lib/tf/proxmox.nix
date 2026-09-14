@@ -1,4 +1,4 @@
-{ config, lib, pkgs ? null }:
+{ config, lib, pkgs ? null, fleetLib ? null }:
 
 # Emitters that translate a single fleet entry into a bpg/proxmox
 # resource block. Consumed by nix/tf/compute/proxmox.nix (for
@@ -298,22 +298,43 @@ let
   # — replaces the old scp-to-every-node bootstrap. (The 2026-06-06
   # attempt failed because nix-builder was then a PVE LXC that couldn't
   # run kernel nfsd; it's since moved to a tier-0 XCP-ng VM.)
-  nixosLxcTemplate = "${pveSettings.lxcTemplateDatastore}:vztmpl/nixos-lxc-template-x86_64.tar.xz";
+  # The ADR-0003 "latest" handle of the images-family bootstrap LXC
+  # template (fleetLib.images.templates.proxmox-lxc.latest). Kept a literal
+  # here on purpose: rendering a container's TF must not force building the
+  # ~200 MB image, and this name IS the published contract. It must stay in
+  # lock-step with the images-family reference and the factory below.
+  nixosLxcTemplate = "${pveSettings.lxcTemplateDatastore}:vztmpl/nixos-bootstrap-lxc-latest.tar.xz";
   # The Debian *VM* path (debian13DiskId / debianCloudImage qcow2) was removed
   # (INFRA-137): the fleet has no KVM Debian guests — every non-NixOS guest is a
   # Debian LXC, which uses a vztmpl rootfs tarball (not a VM qcow2). That
   # template should be served cluster-wide from the `nix-store` NFS SR, not a
   # per-node `local:` upload.
 
-  # NixOS LXC template (ADR-021 follow-up). Built from
-  # nix/images/by-platform/proxmox.nix via a thin wrapper that gives the
-  # tarball a stable name. Replaces the previous manual upload workflow.
+  # NixOS LXC bootstrap template, built from the images component family
+  # (fleetLib.images.mkBootstrapImage, target "proxmox-lxc"). The nixos-
+  # generators tarball has a version-suffixed name that changes every build
+  # and would break tofu state diffing, so a thin runCommand copies it to
+  # the stable "latest" handle. The bpg/proxmox provider then SCPs that up
+  # to PVE's vztmpl store on apply.
+  #
+  # NB: unlike the previous per-consumer builder, this image is pinned to
+  # fleetkit's own nixpkgs (via nixos-generators' `follows`), not the
+  # consuming host's — the deliberate "bootstrap is the pinned-library role"
+  # split. The template only has to boot and accept the deploy key over SSH;
+  # colmena then pushes the real (consumer-pinned) closure.
   preparedNixosLxcTemplatePath =
-    if pkgs != null
-    then "${pkgs.callPackage ../../images/lxc-template {
-      sshPubKey = config.fleet.network.sysadmin_ssh_key;
-      inherit (config.fleet.settings.cache) substituters trustedPublicKeys;
-    }}/nixos-lxc-template.tar.xz"
+    if pkgs != null && fleetLib != null
+    then
+      let
+        image = fleetLib.images.mkBootstrapImage {
+          target = "proxmox-lxc";
+          deployKey = config.fleet.network.sysadmin_ssh_key;
+          inherit (config.fleet.settings.cache) substituters trustedPublicKeys;
+        };
+      in "${pkgs.runCommand "nixos-bootstrap-lxc" { } ''
+        mkdir -p $out
+        cp ${image}/tarball/*.tar.xz $out/nixos-bootstrap-lxc-latest.tar.xz
+      ''}/nixos-bootstrap-lxc-latest.tar.xz"
     else null;
 
 in rec {
@@ -845,7 +866,7 @@ in rec {
       sourceBlock =
         if (meta.source or null) == "nixos-lxc-image" then
           assert lib.assertMsg (preparedNixosLxcTemplatePath != null)
-            "mkFile: meta.source=\"nixos-lxc-image\" requires pkgs to be in scope.";
+            "mkFile: meta.source=\"nixos-lxc-image\" requires pkgs and fleetLib in scope (the images-family builder).";
           { source_file = [{
               path = preparedNixosLxcTemplatePath;
               file_name = meta.file_name;

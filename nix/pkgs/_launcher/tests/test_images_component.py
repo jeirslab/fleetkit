@@ -75,6 +75,27 @@ def test_vm_label_latest_and_versioned():
     assert proxmox._vm_label("nixos-bootstrap-vm", 2) == "nixos-bootstrap-vm-v2"
 
 
+def test_pve_api_params_prefers_fleetkit_env(monkeypatch):
+    # fleetkit's canonical env wins, even if the deployer's PVE_* is also set
+    monkeypatch.setenv("PROXMOX_VE_ENDPOINT", "https://10.1.1.2:8006")
+    monkeypatch.setenv("PROXMOX_VE_API_TOKEN", "root@pam!fleet=uuid-secret")
+    monkeypatch.setenv("PROXMOX_VE_INSECURE", "true")
+    monkeypatch.setenv("PVE_TOKEN_ID", "should@pve!be-ignored")
+    assert proxmox._pve_api_params() == {
+        "host": "10.1.1.2:8006", "user": "root@pam", "token_name": "fleet",
+        "token_value": "uuid-secret", "verify_ssl": False,
+    }
+
+
+def test_pve_api_params_falls_back_to_pve_env(monkeypatch):
+    for var in ("PROXMOX_VE_ENDPOINT", "PROXMOX_VE_API_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("PVE_TOKEN_ID", "deployer@pve!ci")
+    monkeypatch.setenv("PVE_TOKEN_SECRET", "sekret")
+    p = proxmox._pve_api_params()
+    assert (p["user"], p["token_name"], p["token_value"]) == ("deployer@pve", "ci", "sekret")
+
+
 def test_vm_restore_guards_existing_vmid_without_replace():
     s = proxmox._vm_restore(remote_tmp="/var/tmp/x.vma.zst", vmid=9000, storage="local-lvm", name="n", replace=False)
     assert "use --replace" in s
@@ -93,6 +114,15 @@ def test_images_and_templates_resolve_under_fleet():
     r2 = CliRunner().invoke(fleet, ["templates", "register", "--help"])
     assert r2.exit_code == 0, r2.output
     assert "proxmox-lxc" in r2.output
+
+
+def test_ref_reads_baked_templates_eval_free(monkeypatch, tmp_path):
+    # $FLEET_IMAGE_TEMPLATES is read directly — no `nix eval`, no flake needed.
+    from fleet_launcher.components.images.templates import _ref
+    j = tmp_path / "image-templates.json"
+    j.write_text('{"proxmox-lxc": {"name": "nixos-bootstrap-lxc", "ostype": "nixos"}}')
+    monkeypatch.setenv("FLEET_IMAGE_TEMPLATES", str(j))
+    assert _ref(".", "proxmox-lxc")["name"] == "nixos-bootstrap-lxc"
 
 
 def test_templates_register_docker_dry_run():

@@ -14,13 +14,13 @@
     },
     "proxmox-vm": {
       "artifact": "*.vma.zst",
-      "description": "Proxmox VE QEMU VM image (vzdump .vma.zst, qmrestore → qm template). Upstream proxmoxVMA/proxmoxImage — the same artifact.",
+      "description": "Proxmox VE QEMU VM image, cloud-init OFF (vzdump .vma.zst, qmrestore → qm template). DHCP + baked deploy key — the bare bootstrap for a self-configuring guest (e.g. an ML box). Upstream proxmoxVMA/proxmoxImage.",
       "format": "proxmox",
       "register": "proxmox-vm"
     },
     "proxmox-vm-cloud": {
       "artifact": "*.img",
-      "description": "Proxmox VE cloud-init VM disk (raw .img; register as a template, clone via a cloud-init drive). Upstream proxmoxCloudImage.",
+      "description": "Proxmox VE cloud-init VM disk (raw .img; register as a template, clone via a cloud-init drive). PVE injects per-clone IP/hostname/keys. Upstream proxmoxCloudImage.",
       "format": "proxmox-cloud",
       "register": "proxmox-vm"
     },
@@ -50,7 +50,7 @@
       "unprivileged": true
     },
     "proxmox-vm": {
-      "cloudInit": true,
+      "cloudInit": false,
       "firmware": "seabios",
       "fromTarget": "proxmox-vm",
       "kind": "vm",

@@ -111,7 +111,7 @@
       # hosts: consumer manifest modules (Grafana Cloud checks, PVE notes)
       # need the same builders at fleet-eval time, where no NixOS module
       # argument exists yet.
-      fleetLib = import ./nix/lib/module-args.nix { lib = nixpkgs.lib; inherit pkgs; };
+      fleetLib = import ./nix/lib/module-args.nix { lib = nixpkgs.lib; inherit pkgs nixpkgs nixos-generators; };
 
       fleetEval = (nixpkgs.lib.evalModules {
         modules = [ ./nix/fleet { _module.args.fleetLib = fleetLib; } ] ++ modules;
@@ -353,7 +353,15 @@
         # The operator CLI (was `sk`; renamed in the extraction).
         # xoa-cli passed explicitly (it's a flake package, not in pkgs) so the
         # `tf adopt` resolvers can import xoa_cli.api.XoRpc (INFRA-274).
-        fleet = pkgs.callPackage ./nix/pkgs/_launcher { inherit xoa-cli; };
+        fleet = pkgs.callPackage ./nix/pkgs/_launcher {
+          inherit xoa-cli;
+          # Bake the images-family template refs so `fleet templates register`
+          # reads them eval-free (no runtime `nix eval`, no consumer-flake dep).
+          imageTemplatesJson = pkgs.writeText "fleet-image-templates.json"
+            (builtins.toJSON (import ./nix/images/deployer/lib {
+              inherit nixpkgs nixos-generators;
+            }).templatesData);
+        };
         default = fleet;
 
         # pve-cli (wraps Corsinvest cv4pve) — kubectl-style remote CLI for Proxmox VE.
@@ -369,6 +377,23 @@
         # preferred API surface (name, type, default, description,
         # declaring file per option).
         options-json = docs.passthru.optionsJSON;
+
+        # AI-agent discovery surface: fleetkit's whole "how do I use this"
+        # manifest in one JSON file — the CLI command tree (help + params),
+        # the option surface, and the component interfaces. An agent that
+        # imports fleetkit reads this with a single `nix build
+        # fleetkit#introspection` (no creds, no SOPS, no running server).
+        # Built by running the CLI's own eval-free `fleet describe`, so the
+        # commands portion cannot drift from the actual CLI, and options are
+        # supplied here (rather than baked into the base `fleet`) to keep the
+        # operator wrapper from pulling the docs closure.
+        introspection = pkgs.runCommand "fleetkit-introspection.json"
+          { nativeBuildInputs = [ fleet ]; }
+          ''
+            export FLEET_OPTIONS_JSON=${options-json}
+            export FLEET_COMPONENTS_DIR=${./nix/components/schema}
+            fleet describe > "$out"
+          '';
 
         # xoa-cli — standalone Xen Orchestra operator CLI. Reads over XO
         # REST, mutations over the JSON-RPC websocket. Drives the

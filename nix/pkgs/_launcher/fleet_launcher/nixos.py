@@ -181,7 +181,12 @@ def apply_all(args: tuple[str, ...], no_refresh: bool):
 @click.argument("names", nargs=-1, required=True)
 @click.option("--ip", default=None, help="Override target IP for deployment (e.g. reach the host over another network when its primary IP is unreachable).")
 @click.option("--no-refresh", is_flag=True, help="Skip hosts.json refresh from PVE API.")
-@click.option("--no-session", is_flag=True, help="Run inline instead of in a detached tmux session (for CI / scripts).")
+@click.option("--no-session", is_flag=True, help="Run inline instead of a detached background job (for CI / scripts).")
+@click.option("--wait", is_flag=True,
+              help="Run the per-host jobs and BLOCK until they finish, exiting "
+                   "non-zero if any host failed. The honest, scriptable path — "
+                   "what CI / the CD runner use (vs the default fire-and-forget "
+                   "dispatch, which returns as soon as the jobs are launched).")
 @click.option("--reboot", is_flag=True,
               help="Stage as `boot` goal and reboot the target after activation. "
                    "Required when critical components change (dbus-implementation, "
@@ -191,56 +196,74 @@ def apply_all(args: tuple[str, ...], no_refresh: bool):
                    "do (which units restart/reload) without switching. Read-only "
                    "on the target's running system. Mutually exclusive with --reboot.")
 def apply_host(names: tuple[str, ...], ip: str | None, no_refresh: bool, no_session: bool,
-               reboot: bool, dry_activate: bool):
+               wait: bool, reboot: bool, dry_activate: bool):
     """Deploy NixOS config to one or more hosts.
 
     NAMES are Colmena node names (e.g. ``netgate build auth``).
-    Each host runs in its own detached tmux session by default so
+    Each host runs as its own detached background job by default so
     multiple deploys can run concurrently. Inspect with:
 
       fleet sessions list
-      fleet sessions attach fleet-deploy-<name>
+      fleet sessions logs fleet-deploy-<name> -f
 
-    Use --no-session to run inline. Use --ip to override the default
-    hosts.json IP.
+    Use --wait to block until the jobs finish and exit with the real
+    aggregate result (CI / the CD runner). Use --no-session to run inline.
+    Use --ip to override the default hosts.json IP.
     """
-    # Auto-session dispatch: launch one tmux session per host, then
-    # return. Each session re-enters this command with FLEET_SESSION_NAME
-    # set so the inner copy runs inline.
+    # Auto dispatch: launch one detached native job per host, then return
+    # (or, with --wait, run them and block on the real result). Each job
+    # re-enters this command with --no-session so the inner copy runs inline.
     from ._util import env_get, fleet_executable
-    from .sessions import dispatch_session, running_inside
-    if not no_session and not env_get("FLEET_NO_SESSION"):
+    from .sessions import dispatch_session, run_and_wait, running_inside
+
+    def _inner_cmd(name: str) -> list[str]:
+        # Absolute path to this fleet binary: a detached job's env /
+        # devshell PATH don't reliably carry `fleet`. If colmena is missing
+        # in the job env, the inner fleet re-execs via `nix develop` itself
+        # (see main._maybe_reexec_for_missing_tools).
+        c = [fleet_executable(), "deploy", "nixos", "apply", "host", name, "--no-session"]
+        if ip:
+            c += ["--ip", ip]
+        if no_refresh:
+            c.append("--no-refresh")
+        if reboot:
+            c.append("--reboot")
+        if dry_activate:
+            c.append("--dry-activate")
+        return c
+
+    backgrounding = not no_session and not env_get("FLEET_NO_SESSION")
+    inside_a_job = any(running_inside(f"fleet-deploy-{n}") for n in names)
+
+    # --wait: run the per-host jobs synchronously and exit with the real
+    # aggregate result. The honest path CI / the CD runner rely on.
+    if wait and backgrounding and not inside_a_job:
+        specs = [{
+            "name": f"fleet-deploy-{name}",
+            "cmd": _inner_cmd(name),
+            "cwd": find_project_root(),
+            "description": f"Colmena deploy to {name}",
+        } for name in names]
+        sys.exit(run_and_wait(specs))
+
+    if backgrounding:
         dispatched_any = False
         failed: list[tuple[str, int]] = []
         for name in names:
             session_name = f"fleet-deploy-{name}"
             if running_inside(session_name):
-                # Inner session — fall through to inline deploy below.
+                # Inner job — fall through to inline deploy below.
                 continue
-            # Absolute path to this fleet binary: tmux server env /
-            # devshell PATH don't reliably carry `fleet`. If colmena is
-            # missing in the session env, the inner fleet re-execs via
-            # `nix develop` itself (see main._maybe_reexec_for_missing_tools).
-            inner_cmd = [fleet_executable(), "deploy", "nixos", "apply", "host",
-                         name, "--no-session"]
-            if ip:
-                inner_cmd += ["--ip", ip]
-            if no_refresh:
-                inner_cmd.append("--no-refresh")
-            if reboot:
-                inner_cmd.append("--reboot")
-            if dry_activate:
-                inner_cmd.append("--dry-activate")
             result = dispatch_session(
                 session_name,
-                inner_cmd,
+                _inner_cmd(name),
                 cwd=find_project_root(),
                 description=f"Colmena deploy to {name}",
             )
             if result == 0:
                 dispatched_any = True
             elif result == -1:
-                # Already inside the session — let this one fall through.
+                # Already inside the job — let this one fall through.
                 break
             else:
                 failed.append((name, result))
