@@ -25,16 +25,16 @@ let
       register = "proxmox-lxc";
     };
     proxmox-vm = {
-      description = "Proxmox VE QEMU VM image (vzdump .vma.zst, qmrestore → qm template). Upstream proxmoxVMA/proxmoxImage — the same artifact.";
+      description = "Proxmox VE QEMU VM image, cloud-init OFF (vzdump .vma.zst, qmrestore → qm template). DHCP + baked deploy key — the bare bootstrap for a self-configuring guest (e.g. an ML box). Upstream proxmoxVMA/proxmoxImage.";
       format = "proxmox";
       platform = ../modules/platform/proxmox-vm.nix;
       artifact = "*.vma.zst";
       register = "proxmox-vm";
     };
     proxmox-vm-cloud = {
-      description = "Proxmox VE cloud-init VM disk (raw .img; register as a template, clone via a cloud-init drive). Upstream proxmoxCloudImage.";
+      description = "Proxmox VE cloud-init VM disk (raw .img; register as a template, clone via a cloud-init drive). PVE injects per-clone IP/hostname/keys. Upstream proxmoxCloudImage.";
       format = "proxmox-cloud";
-      platform = ../modules/platform/proxmox-vm.nix;
+      platform = ../modules/platform/proxmox-vm-cloud.nix;
       artifact = "*.img";
       # NOTE: deploy-side registration for a raw disk differs from the VMA
       # (qm importdisk + qm template, not qmrestore); the register verb is a
@@ -99,9 +99,13 @@ let
       fromTarget = "proxmox-vm";
       name = "nixos-bootstrap-vm";
       latest = "${name}-latest"; # VM template name_label
-      vmid = 9000; # default template VMID clones are made from
+      vmid = 9000; # fleetkit mkVm's default clone source (cloud-init OFF)
       firmware = "seabios";
-      cloudInit = true;
+      # cloud-init OFF: the bare bootstrap (DHCP + deploy key). A fleet VM
+      # cloning this MUST set cloud_init.enable = false so mkVm drops the
+      # initialization block; the cloud-init template below (9001) is the
+      # one to clone when per-instance injection is wanted.
+      cloudInit = false;
     };
     proxmox-vm-cloud = rec {
       platform = "proxmox";
