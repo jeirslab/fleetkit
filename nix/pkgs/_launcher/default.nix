@@ -44,6 +44,11 @@ python3.pkgs.buildPythonApplication {
     pyyaml
     proxmoxer
     requests
+    # images component (folded from fleetkit-deployer): Proxmox template
+    # registration (paramiko) + the Xen Orchestra JSON-RPC path
+    # (websocket-client). Lazy-imported by the back-ends.
+    paramiko
+    websocket-client
   ]) ++ [
     xoa-cli  # importable: xoa_cli.api.XoRpc for adopt JSON-RPC lookups
   ];

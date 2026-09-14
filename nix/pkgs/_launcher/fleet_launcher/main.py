@@ -121,6 +121,16 @@ fleet.add_command(_pbs)
 from .s3 import s3 as _s3
 fleet.add_command(_s3)
 
+# ── Component families (CLIs resolve upward) ──────────────────
+# Each component family exposes a COMMANDS/ATTACH manifest; register_cli_manifest
+# folds it onto the root, the same code path consumer cli-ext modules use.
+# Registered at MODULE level (not in main()) so --dump-verbs sees the full
+# surface. The images family gives `fleet images` (build) and `fleet templates`
+# (register per platform), folded in from the former fleetkit-deployer.
+from .config import register_cli_manifest as _register_cli_manifest
+from .components import images as _images_family
+_register_cli_manifest(fleet, _images_family, source="images family")
+
 
 
 def _find_sops() -> str | None:
