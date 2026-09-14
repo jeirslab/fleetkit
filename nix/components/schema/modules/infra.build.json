@@ -53,6 +53,33 @@
   "infra.build.builder.trustedUsers": {
     "type": "list of string"
   },
+  "infra.build.deployRunner.branch": {
+    "type": "string"
+  },
+  "infra.build.deployRunner.deployCommand": {
+    "type": "list of string"
+  },
+  "infra.build.deployRunner.enable": {
+    "type": "boolean"
+  },
+  "infra.build.deployRunner.extraPackages": {
+    "type": "list of package"
+  },
+  "infra.build.deployRunner.fleetPackage": {
+    "type": "package"
+  },
+  "infra.build.deployRunner.interval": {
+    "type": "string"
+  },
+  "infra.build.deployRunner.repoUrl": {
+    "type": "string"
+  },
+  "infra.build.deployRunner.user": {
+    "type": "string"
+  },
+  "infra.build.deployRunner.workingDir": {
+    "type": "string"
+  },
   "infra.build.hydra.enable": {
     "type": "boolean"
   },
