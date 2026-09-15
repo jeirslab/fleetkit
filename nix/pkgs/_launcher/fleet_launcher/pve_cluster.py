@@ -25,6 +25,12 @@ Idempotent. Re-running `converge` is safe:
 
 Run after the tier-1 PVE installs land — typically once at fleet
 bootstrap, then ad-hoc when a new PVE host gets installed later.
+
+`issue-tf-token` is the exception to the founder model above: it mints an
+API token on whichever node --node / --address names (founder by default),
+because a node that terranix does not manage yet has no fleet.compute entry
+to be the founder *of*. It talks to `pveum` only, so it works on a
+standalone node with no corosync at all.
 """
 from __future__ import annotations
 
@@ -83,6 +89,65 @@ def _split_founder(pve_hosts: dict[str, dict]) -> tuple[tuple[str, dict], list[t
     joiners = [(n, m) for n, m in pve_hosts.items() if n != founder[0]]
     joiners.sort(key=lambda nm: nm[0])
     return founder, joiners
+
+
+def _resolve_token_target(node: str | None, address: str | None) -> tuple[str, str]:
+    """Pick the machine to mint an API token on. Returns (label, address).
+
+    Three ways in, in precedence order:
+
+    ``--address``
+        An arbitrary reachable PVE node; the catalog is never consulted
+        (hosts.json need not even exist). This is the bootstrap case: a
+        node terranix does not manage yet has no fleet.compute entry, and
+        the token is precisely what lets it acquire one.
+    ``--node``
+        A "pve-host"-tagged fleet.compute entry, by name. Uses its
+        internal_ip. Pass --address instead when the API is reachable at
+        some other address than the manifest's (a second site behind a
+        VPN, say).
+    neither
+        The "founder"-tagged entry — the historical behaviour, kept so
+        existing invocations do not change meaning.
+
+    Token minting is deliberately NOT restricted to the founder: it grants
+    Administrator on / and is therefore the one command here where hitting
+    the wrong machine is expensive. Whichever way the target is chosen, the
+    caller prints it before the confirmation prompt.
+    """
+    if node and address:
+        console.print(
+            "[red]ERROR:[/red] pass --node or --address, not both — "
+            "they name the same thing two different ways."
+        )
+        sys.exit(1)
+
+    if address:
+        return address, address
+
+    pve_hosts = _pve_cluster_members(_load_hosts())
+    if not pve_hosts:
+        console.print(
+            "[red]ERROR:[/red] no 'pve-host'-tagged entries in fleet.compute. "
+            "Use --address <ip> to mint against a node that is not in the "
+            "manifest yet."
+        )
+        sys.exit(1)
+
+    if node:
+        meta = pve_hosts.get(node)
+        if meta is None:
+            known = ", ".join(sorted(pve_hosts))
+            console.print(
+                f"[red]ERROR:[/red] --node {node!r} is not a 'pve-host'-tagged "
+                f"entry in fleet.compute. Known: {known}. Use --address <ip> "
+                "for a node outside the manifest."
+            )
+            sys.exit(1)
+        return node, meta["internal_ip"]
+
+    (founder_name, founder_meta), _ = _split_founder(pve_hosts)
+    return founder_name, founder_meta["internal_ip"]
 
 
 def _check_ssh_agent() -> None:
@@ -359,6 +424,15 @@ def converge(cluster_name: str, dry_run: bool, yes: bool) -> None:
 
 
 @cluster.command("issue-tf-token")
+@click.option("--node", "node", default=None,
+              help="Mint on this 'pve-host'-tagged fleet.compute entry instead "
+                   "of the cluster founder. Its internal_ip is used for both "
+                   "SSH and the saved endpoint.")
+@click.option("--address", "address", default=None,
+              help="Mint on the node at this IP/hostname without consulting the "
+                   "fleet catalog — for a node terranix does not manage yet, or "
+                   "one reachable at a different address than its internal_ip. "
+                   "Mutually exclusive with --node.")
 @click.option("--user", "username", default="terranix@pve", show_default=True,
               help="PVE user to create / use. Use @pve (PVE-managed) not @pam: "
                    "PAM realm requires a Linux user in /etc/passwd, which pveum "
@@ -368,40 +442,43 @@ def converge(cluster_name: str, dry_run: bool, yes: bool) -> None:
 @click.option("--sops-prefix", default=f"integrations/proxmox/{DEFAULT_CLUSTER_NAME}", show_default=True,
               help="SOPS path prefix for endpoint + api_token.")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
-def issue_tf_token(username: str, token_id: str, sops_prefix: str, yes: bool) -> None:
-    """Mint a Proxmox API token for terranix on the cluster founder.
+def issue_tf_token(node: str | None, address: str | None, username: str,
+                   token_id: str, sops_prefix: str, yes: bool) -> None:
+    """Mint a Proxmox API token for terranix on a PVE node.
 
-    Idempotent steps on the founder:
-      1. Create `<username>` (pam realm) if absent (random password — never
-         used, the token is what terraform talks to the API with).
+    Targets the cluster founder by default; --node picks another entry from
+    fleet.compute, --address any reachable node at all. That last one is the
+    bootstrap case and the reason this command is not founder-only: a node
+    terranix does not manage yet has no catalog entry, and this token is what
+    lets it get one. A standalone node with no cluster works the same way —
+    `pveum` does not need corosync.
+
+    Idempotent steps on the target:
+      1. Create `<username>` if absent (random password — never used, the
+         token is what terraform talks to the API with).
       2. Grant Administrator on / to the user (so terranix can do anything
          the existing pveum + API model allows).
       3. Remove any existing `<token_id>` token (so we can capture a fresh
          secret value), then create it with --privsep=0.
       4. Capture the API JSON which carries the `value` (UUID) + the
-         `full-tokenid` (e.g. terranix@pam!terranix).
+         `full-tokenid` (e.g. terranix@pve!terranix).
       5. Save to SOPS:
-           <sops-prefix>/endpoint   = https://<founder-ip>:8006
+           <sops-prefix>/endpoint   = https://<target>:8006
            <sops-prefix>/api_token  = <full-tokenid>=<value>
          The api_token string matches what bpg/proxmox expects in its
          `api_token` provider attribute.
 
-    The terranix provider config (nix/fleet/providers/inputs.nix) should
-    then reference `secrets.api_token = "<sops-prefix>/api_token"` and
-    `endpoint = "https://<founder-ip>:8006"`.
+    Pass --sops-prefix per provider instance; the default is shared and two
+    instances writing the same prefix would clobber each other's credentials.
+
+    The terranix provider config should then reference
+    `secrets.api_token = "<sops-prefix>/api_token"` and the printed endpoint.
     """
     _check_ssh_agent()
-    hosts = _load_hosts()
-    pve_hosts = _pve_cluster_members(hosts)
-    if not pve_hosts:
-        console.print("[red]ERROR:[/red] no tier-1 PVE hosts in fleet.compute")
-        sys.exit(1)
+    target_name, target_address = _resolve_token_target(node, address)
+    endpoint = f"https://{target_address}:8006"
 
-    (founder_name, founder_meta), _ = _split_founder(pve_hosts)
-    founder_ip = founder_meta["internal_ip"]
-    endpoint = f"https://{founder_ip}:8006"
-
-    console.print(f"[bold]Founder:[/bold] {founder_name} ({endpoint})")
+    console.print(f"[bold]Target:[/bold]  {target_name} ({endpoint})")
     console.print(f"[bold]User:[/bold]    {username}")
     console.print(f"[bold]Token:[/bold]   {token_id}")
     console.print(f"[bold]SOPS:[/bold]    {sops_prefix}/{{endpoint,api_token}}")
@@ -411,7 +488,7 @@ def issue_tf_token(username: str, token_id: str, sops_prefix: str, yes: bool) ->
         console.print("aborted")
         sys.exit(1)
 
-    # ── Run on the founder ────────────────────────────────
+    # ── Run on the target ─────────────────────────────────
     # Bash heredoc so the multi-step script runs as a single SSH op.
     remote = f"""
 set -euo pipefail
@@ -432,10 +509,10 @@ fi
 pveum user token add {username} {token_id} --privsep=0 --output-format json
 """
 
-    console.print(f"  running on {founder_name}...", style="dim")
-    res = _ssh(founder_ip, remote, timeout=30)
+    console.print(f"  running on {target_name}...", style="dim")
+    res = _ssh(target_address, remote, timeout=30)
     if res.returncode != 0:
-        console.print(f"[red]FAILED on {founder_name}[/] (exit {res.returncode})")
+        console.print(f"[red]FAILED on {target_name}[/] (exit {res.returncode})")
         if res.stderr:
             console.print(f"  stderr: {res.stderr.strip()}")
         sys.exit(res.returncode)
