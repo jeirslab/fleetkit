@@ -413,16 +413,21 @@ in {
     # Despite the field name (kept for hosts.json compatibility),
     # this is the substrate-aware platform tag consumed by the
     # `infra.platform.type` option declared in
-    # nix/modules/infra/base/platform/default.nix. Three values today:
+    # nix/modules/infra/base/platform/default.nix. Four values today:
     #   "pve.lxc"   — PVE-hosted LXC container (kind = "container")
     #   "pve.qemu"  — PVE-hosted KVM/QEMU VM (kind = "vm" on proxmox.*)
     #   "xcpng.vm"  — XCP-ng-hosted Xen HVM VM (kind = "vm" on
     #                 xen-orchestra.*)
+    #   "baremetal" — physical / externally-provisioned host (kind =
+    #                 "baremetal"); brings its own bootloader + net stack
     # The substrate split matters because PVE-VM and XCP-ng-VM need
     # very different boot loaders, kernel modules, and console
-    # configs — see nix/modules/infra/base/platform/{pve,xcpng}/*.nix.
+    # configs — see nix/modules/infra/base/platform/{pve,xcpng}/*.nix,
+    # and baremetal cancels the hypervisor-guest assumptions entirely
+    # (nix/modules/infra/base/platform/baremetal.nix).
     pve_type =
-      if meta.kind == "container" then "pve.lxc"
+      if meta.kind == "baremetal" then "baremetal"
+      else if meta.kind == "container" then "pve.lxc"
       else if lib.hasPrefix "xen-orchestra." meta.provider_instance then "xcpng.vm"
       else "pve.qemu";
     # Needed by `fleet inventory generate` to know which entries should

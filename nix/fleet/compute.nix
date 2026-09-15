@@ -304,8 +304,8 @@ let
         description = ''Pointer to fleet.providers: "<provider>.<instance>" (e.g. "proxmox.dev").'';
       };
       kind = lib.mkOption {
-        type = lib.types.enum [ "container" "vm" ];
-        description = "LXC container or KVM VM.";
+        type = lib.types.enum [ "container" "vm" "baremetal" ];
+        description = "LXC container, KVM VM, or baremetal host (a physical or externally-provisioned machine; pair with provisioning = \"external\", which emits no Terraform).";
       };
 
       # Identity
