@@ -50,6 +50,36 @@ def _find_secrets_file() -> str:
     return path
 
 
+def _file_for_key(key_path: str, override: str | None) -> str:
+    """Resolve which SOPS file owns `key_path`.
+
+    An explicit --file wins. Otherwise the leading segment of the key path is
+    a TREE, and `fleet.settings.sopsFiles` declares which file owns it —
+    `config.file_for` is the same router the rest of the launcher uses, so the
+    CLI and the terranix layer cannot hold different opinions about layout.
+
+    Routing here rather than at each call site is deliberate. Every caller that
+    forgot `--file` silently wrote to secrets.yaml, which in a split store is
+    the one file the terranix layer never reads: it reads
+    `fleet.settings.tfSopsFile`. `pve cluster issue-tf-token` did exactly that,
+    stranding a freshly minted provider token where no `tofu plan` would find
+    it, and leaving a live Administrator credential in the wrong file. Worse,
+    a split store keeps stale partial copies of these trees in secrets.yaml,
+    so the failure can surface as a stale value rather than a missing key.
+
+    Falls back to the default file when there is no catalog to consult — a
+    fleet that has not been generated yet is the single-file case by
+    definition.
+    """
+    if override:
+        return override
+    from .config import FleetConfigError, file_for
+    try:
+        return str(file_for(key_path.split("/", 1)[0]))
+    except FleetConfigError:
+        return _find_secrets_file()
+
+
 def _find_repo_root() -> str:
     try:
         return subprocess.check_output(
@@ -251,8 +281,10 @@ def _lookup(secrets_file: str, key_path: str):
 def secrets():
     """Manage SOPS-encrypted secrets.
 
-    Operates on ``nix/secrets/secrets.yaml``. Requires ``sops`` and
-    the SOPS age key (set via SOPS_AGE_KEY or ~/.ssh/sops-age.key).
+    Operates on the fleet's SOPS store — ``nix/secrets/secrets.yaml`` by
+    default, or whichever file ``fleet.settings.sopsFiles`` routes a key's
+    top-level tree to. Requires ``sops`` and the SOPS age key (set via
+    SOPS_AGE_KEY or ~/.ssh/sops-age.key).
     """
 
 
@@ -517,9 +549,12 @@ def keys_get(key_path: str, secrets_file: str | None, no_newline: bool):
     substitution — it replaces raw `sops -d --extract '["a"]["b"]' file.yaml`:
 
         export JIRA_API_TOKEN=$(fleet devtools secrets keys get \\
-            integrations/jira/api_token --file nix/secrets/integrations.yaml)
+            integrations/jira/api_token)
+
+    The file is chosen from the key's top-level tree via
+    fleet.settings.sopsFiles; pass --file only to override that.
     """
-    sf = secrets_file or _find_secrets_file()
+    sf = _file_for_key(key_path, secrets_file)
     node = _lookup(sf, key_path)
 
     if isinstance(node, dict):
@@ -538,7 +573,7 @@ def keys_get(key_path: str, secrets_file: str | None, no_newline: bool):
 @click.argument("key_path")
 @click.argument("value")
 @click.option("--file", "secrets_file", default=None,
-              help="Target file (default: the fleet's sopsSecretsFile). "
+              help="Override the file the key's tree routes to. "
                    "Created, encrypted per .sops.yaml, if it does not exist.")
 def keys_add(key_path: str, value: str, secrets_file: str | None):
     """Add or set a secret key.
@@ -546,10 +581,12 @@ def keys_add(key_path: str, value: str, secrets_file: str | None):
     KEY_PATH is slash-separated (e.g., services/grafana/admin_password).
     VALUE is the plaintext secret value.
 
-    Writing into a file that does not exist yet creates it — that is how a
-    tree routed elsewhere by fleet.settings.sopsFiles gets its first key.
+    The target file comes from the key's top-level tree via
+    fleet.settings.sopsFiles, so `integrations/...` lands in the file the
+    terranix layer actually reads. Writing into a file that does not exist
+    yet creates it — that is how a routed tree gets its first key.
     """
-    sf = secrets_file or _find_secrets_file()
+    sf = _file_for_key(key_path, secrets_file)
     _sops_set(sf, key_path, value)
     console.print(f"[green]Set:[/green] {key_path}")
 
@@ -563,9 +600,9 @@ def keys_rm(key_path: str, secrets_file: str | None, yes: bool):
 
     KEY_PATH is slash-separated (e.g., services/grafana/admin_password).
     """
-    sf = secrets_file or _find_secrets_file()
+    sf = _file_for_key(key_path, secrets_file)
     if not yes:
-        click.confirm(f"Remove key '{key_path}'?", abort=True)
+        click.confirm(f"Remove key '{key_path}' from {sf}?", abort=True)
     _sops_rm(sf, key_path)
     console.print(f"[green]Removed:[/green] {key_path}")
 
@@ -580,7 +617,7 @@ def keys_replace(key_path: str, new_value: str, secrets_file: str | None):
     KEY_PATH is slash-separated (e.g., services/grafana/admin_password).
     NEW_VALUE is the new plaintext value.
     """
-    sf = secrets_file or _find_secrets_file()
+    sf = _file_for_key(key_path, secrets_file)
 
     _lookup(sf, key_path)  # replace, not create — fail if it isn't already there
     _sops_set(sf, key_path, new_value)
