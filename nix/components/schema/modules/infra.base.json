@@ -24,6 +24,6 @@
     "type": "boolean"
   },
   "infra.platform.type": {
-    "type": "one of \"pve.lxc\", \"pve.qemu\", \"xcpng.vm\""
+    "type": "one of \"pve.lxc\", \"pve.qemu\", \"xcpng.vm\", \"baremetal\""
   }
 }

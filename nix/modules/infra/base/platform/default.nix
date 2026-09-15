@@ -20,16 +20,20 @@
   imports = [
     ./pve
     ./xcpng
+    ./baremetal.nix
   ];
 
   options.infra.platform.type = lib.mkOption {
-    type = lib.types.enum [ "pve.lxc" "pve.qemu" "xcpng.vm" ];
+    type = lib.types.enum [ "pve.lxc" "pve.qemu" "xcpng.vm" "baremetal" ];
     default = "pve.lxc";
     description = ''
       Virtualisation substrate this host runs on:
         - pve.lxc   : Proxmox-hosted unprivileged LXC container
         - pve.qemu  : Proxmox-hosted KVM/QEMU VM
         - xcpng.vm  : XCP-ng-hosted Xen HVM VM (tier-0 + select tier-1)
+        - baremetal : physical or externally-provisioned host that carries its
+                      own hardware-configuration.nix, bootloader, and network
+                      stack (no hypervisor-guest assumptions)
 
       Auto-wired by nix/lib/default.nix from the fleet entry; override
       per-host only when the auto-detection is wrong.
@@ -45,7 +49,7 @@
   # PVE LXCs are excluded: containers share the host kernel and don't
   # manage block devices at this layer; their rootfs grows
   # automatically when PVE resizes the underlying volume.
-  config = lib.mkIf (config.infra.platform.type != "pve.lxc") {
+  config = lib.mkIf (lib.elem config.infra.platform.type [ "pve.qemu" "xcpng.vm" ]) {
     # Root partition: cloud-utils `growpart` runs in stage-1 boot,
     # then `resize2fs` grows the root filesystem. Handles the case
     # where the bootstrap template was built at 32 GB but the
