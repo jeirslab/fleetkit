@@ -409,6 +409,10 @@ in {
     vmid = meta.vm_id;
     ip = meta.ip;
     internal_ip = meta.internal_ip;
+    # Ordered fallback deploy addresses (colmena targetHost candidates
+    # beyond `ip`) — the CLI probes these for first-reachable. INFRA:
+    # externally-reachable paths like a Tailscale IP live here.
+    deploy_ips = meta.deploy_ips or [ ];
     tags = meta.tags or [];
     # Despite the field name (kept for hosts.json compatibility),
     # this is the substrate-aware platform tag consumed by the

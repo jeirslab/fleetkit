@@ -349,6 +349,12 @@ let
         example = "192.0.2.104";
         description = "Internal fleet-LAN IPv4 address (bare, no prefix). Statically configured into the guest at create time and used as the host's inventory/SSH address (hosts.json, DNS A records). Empty for hosts without an internal interface (e.g. DHCP'd XCP-ng VMs).";
       };
+      deploy_ips = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "198.51.100.20" "100.64.0.7" ];
+        description = "Ordered fallback deploy addresses tried AFTER the primary `ip`. `fleet deploy nixos apply host` probes SSH on each candidate (primary `ip`, then these, then `internal_ip`) and points Colmena at the first that answers — so a host reachable by more than one path (e.g. a LAN address plus a Tailscale address) still deploys when its primary path is down. Empty = only `ip`/`internal_ip` are used, with no probing (the fleet-wide default).";
+      };
 
       pool = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
