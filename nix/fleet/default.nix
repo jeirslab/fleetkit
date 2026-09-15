@@ -391,6 +391,32 @@ in {
       '';
     };
 
+    # Derived per-host SSH client data (from hostsJson): the fleet's ssh config
+    # as structured data, for consumers to render into ~/.ssh/config.
+    sshHosts = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.submodule {
+        options = {
+          hostName = lib.mkOption {
+            type = lib.types.str;
+            description = "Address ssh connects to — the host's internal fleet IP, else its LAN ip.";
+          };
+          user = lib.mkOption {
+            type = lib.types.str;
+            default = "root";
+            description = "Login user (fleet hosts are Colmena-deployed as root).";
+          };
+        };
+      });
+      default = {};
+      internal = true;
+      description = ''
+        { name → { hostName, user } } derived from hostsJson — the fleet's SSH
+        client config as data. Consumers render it into an OpenSSH config (e.g.
+        home-manager programs.ssh.matchBlocks) so `ssh <fleet-host>` resolves
+        fleet-wide with no hand-maintained ~/.ssh/config, or serialise to JSON.
+      '';
+    };
+
     _meta.validated = lib.mkOption {
       type = lib.types.bool;
       default = validated;
@@ -460,4 +486,12 @@ in {
     ssh_groups = meta.ssh_groups or [ "platform-admins" ];
     sudo_groups = meta.sudo_groups or [];
   }) enabledCompute;
+
+  # SSH client view of the fleet, derived from hostsJson: every host with a
+  # reachable address, mapped to { hostName, user }. Rendered by consumers into
+  # ~/.ssh/config (home-manager programs.ssh) or serialised to JSON.
+  config.fleet.sshHosts = mapAttrs (_name: h: {
+    hostName = if h.internal_ip != "" then h.internal_ip else h.ip;
+    user = "root";
+  }) (filterAttrs (_: h: (h.internal_ip or "") != "" || (h.ip or "") != "") config.fleet.hostsJson);
 }
