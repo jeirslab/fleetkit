@@ -41,12 +41,40 @@
 #      though the options live at `services.dovecot2`.
 #   5. Two Dovecot config dialects are emitted, and which one a host gets
 #      is not this module's choice — see `dovecotPre24` below.
-{ config, lib, pkgs, ... }:
+{ config, options, lib, pkgs, ... }:
 let
   inherit (lib) mkEnableOption mkOption mkIf types;
   cfg = config.infra.mail.internal;
 
   vmailUser = "vmail";
+
+  # Whether the consumer's nixpkgs has the RFC42 `settings` rewrite of the
+  # dovecot2 module. Everything below is written against it; nixpkgs before
+  # that rewrite configured Dovecot through `extraConfig` and a handful of
+  # bespoke options instead, and has no `settings` at all.
+  #
+  # This has to be a RUNTIME attribute test, not a version comparison, and
+  # the definitions it guards have to be omitted with `optionalAttrs` rather
+  # than `mkIf`. `mkIf false { services.dovecot2.settings = …; }` still
+  # registers the path, so the module system still reports "option does not
+  # exist" — on EVERY host of a consumer that never enables this module. That
+  # is exactly what happened: one fleet pinned a Feb-2026 nixpkgs (dovecot
+  # 2.3.21.1, pre-rewrite) and every `nix eval` of every host died here, on a
+  # module none of them use. A library module must not be able to do that.
+  #
+  # The module still fails loudly when it is actually ENABLED on such a
+  # nixpkgs — see the assertion in the config block. Silent no-op would be
+  # worse: a mail host that accepts nothing looks identical to a working one
+  # until someone sends mail.
+  hasDovecotSettings = options.services.dovecot2 ? settings;
+
+  # The group Dovecot's own processes run as, spelled differently either
+  # side of the rewrite. Only reachable when hasDovecotSettings holds, but
+  # kept total so eval reaches the assertion instead of crashing before it.
+  dovecotInternalGroup =
+    if hasDovecotSettings
+    then config.services.dovecot2.settings.default_internal_group
+    else config.services.dovecot2.group;
 
   # Which Dovecot this host will actually run. nixpkgs picks the package
   # from `system.stateVersion` — dovecot_2_3 below 26.05, 2.4 at or above
@@ -210,7 +238,7 @@ let
     # Dovecot's auth process runs as root (the nixpkgs module pins it
     # that way), so root:root 0400 would do. The group read is for
     # `doveadm` run by an operator in the dovecot group.
-    chown root:${config.services.dovecot2.settings.default_internal_group} "$tmp"
+    chown root:${dovecotInternalGroup} "$tmp"
     chmod 0440 "$tmp"
     mv -f "$tmp" ${passwdFile}
   '';
@@ -361,8 +389,13 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
+  config = mkIf cfg.enable (lib.mkMerge [
+   {
     assertions = [
+      {
+        assertion = hasDovecotSettings;
+        message = "infra.mail.internal: this module configures Dovecot through `services.dovecot2.settings`, which your nixpkgs does not have — it predates the RFC42 rewrite of that module (dovecot 2.3 era). Move nixpkgs forward, or leave infra.mail.internal disabled.";
+      }
       {
         assertion = cfg.mailboxes != { };
         message = "infra.mail.internal: no mailboxes declared — every recipient would be rejected, which makes the host a listener that stores nothing.";
@@ -448,20 +481,6 @@ in
       };
     };
 
-    services.dovecot2 = {
-      enable = true;
-
-      # No PAM: these accounts are not system users, and leaving the PAM
-      # passdb in place would let a local shell account log in as mail.
-      # This is already the option's default; it is restated because the
-      # mail-internal check asserts on it, and a default that quietly
-      # flips is exactly the regression that check exists to catch.
-      enablePAM = false;
-
-      settings = dovecotCommonSettings
-        // (if dovecotPre24 then dovecot23Settings else dovecot24Settings);
-    };
-
     # Dovecot opens its LMTP (and SASL) socket inside Postfix's queue
     # directory. postfix-setup is what creates that tree, so on a host
     # booting for the first time Dovecot loses the race without this.
@@ -501,5 +520,26 @@ in
       # SMTP and IMAP are not HTTP; there is nothing for Caddy to proxy.
       caddy.enable = false;
     };
-  };
+   }
+
+   # `optionalAttrs`, not `mkIf` — see hasDovecotSettings above. When the
+   # consumer's nixpkgs predates the dovecot2 rewrite this attrset is empty,
+   # so `services.dovecot2.settings` is never a definition path and never an
+   # unknown-option error. The assertion above is what surfaces it.
+   (lib.optionalAttrs hasDovecotSettings {
+     services.dovecot2 = {
+       enable = true;
+
+       # No PAM: these accounts are not system users, and leaving the PAM
+       # passdb in place would let a local shell account log in as mail.
+       # This is already the option's default; it is restated because the
+       # mail-internal check asserts on it, and a default that quietly
+       # flips is exactly the regression that check exists to catch.
+       enablePAM = false;
+
+       settings = dovecotCommonSettings
+         // (if dovecotPre24 then dovecot23Settings else dovecot24Settings);
+     };
+   })
+  ]);
 }
