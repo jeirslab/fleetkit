@@ -885,7 +885,17 @@ in rec {
       datastore_id = meta.datastore_id;
       content_type = meta.content_type;
       overwrite = meta.overwrite or true;
-    } // sourceBlock // (mkLifecycle meta);
+    } // sourceBlock
+      # `depends_on` (optional), same escape hatch and same reason as mkAcl:
+      # datastore_id is a literal string, so uploading into a datastore this
+      # stack also CREATES produces no dependency edge, and terraform is free
+      # to run both at once. The upload then fails on a storage that does not
+      # exist yet and the apply has to be repeated. A single-node fleet hits
+      # this on its very first apply, where the template datastore and the
+      # template land together.
+      // (lib.optionalAttrs (meta ? depends_on && meta.depends_on != [])
+           { depends_on = meta.depends_on; })
+      // (mkLifecycle meta);
 
   # External metric server (cluster-wide). PVE pushes node/guest/storage
   # stats to it. We use the OpenTelemetry plugin (OTLP/HTTP) → the Alloy
