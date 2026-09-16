@@ -80,7 +80,16 @@ def _eval_data(flake_url: str, attr: str) -> dict[str, dict]:
             check=True, capture_output=True, text=True,
         ).stdout
     except subprocess.CalledProcessError as exc:
-        raise DeployerError(f"nix eval {flake_url}#{attr} failed:\n{exc.stderr.strip()}") from exc
+        hint = ""
+        if "does not provide attribute" in exc.stderr:
+            # Almost always `--flake` defaulting to "." in a CONSUMER repo:
+            # the tables (and mkBootstrapImage) live in fleetkit, not in the
+            # fleet that consumes it. Consumers must point at their input.
+            hint = ("\n\nhint: `--flake` defaults to '.'; the image tables live in FLEETKIT, "
+                    "not in a consuming fleet. Pass the fleetkit checkout, e.g.\n"
+                    "        fleet images list --flake ./submodules/jeirslab/fleetkit\n"
+                    "        fleet images list --flake github:jeirslab/fleetkit")
+        raise DeployerError(f"nix eval {flake_url}#{attr} failed:\n{exc.stderr.strip()}{hint}") from exc
     return json.loads(out)
 
 
