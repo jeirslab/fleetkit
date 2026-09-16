@@ -1429,8 +1429,6 @@ def _cloudflare_record_id(name: str, body: dict) -> str | None:
     missing (unknown, not absent) and ValueError if name+type+content matches
     more than one live record (ambiguous — never guessed). Returns the import
     id on a unique match, or None when nothing matches (not provisioned yet)."""
-    import re
-
     from . import cloudflare_api
     zid_ref = str(body.get("zone_id") or "")
     m = re.search(r"cloudflare_zone\.([A-Za-z0-9_]+)\.id", zid_ref)
@@ -1501,8 +1499,6 @@ def _grafana_folder_uid(name: str, body: dict) -> str | None:
 
 
 def _grafana_rule_group_id(name: str, body: dict) -> str | None:
-    import re
-
     from . import grafana_api
     grp = body.get("name")
     if not grp:

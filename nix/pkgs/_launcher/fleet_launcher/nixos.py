@@ -296,8 +296,12 @@ def apply_host(names: tuple[str, ...], ip: str | None, no_refresh: bool, no_sess
         _refresh_inventory()
     _check_no_concurrent_deploy(names)
     if ip and len(names) == 1:
-        # Patch hosts.json temporarily with override IP
-        import json
+        # Patch hosts.json temporarily with override IP.
+        # Do NOT re-import json here — the module already does (line 9), and a
+        # function-local import binds the name for the WHOLE function body, so
+        # the `elif` branch below (which never runs the import) died on an
+        # UnboundLocalError. That branch is the default path of every
+        # `fleet deploy nixos apply host` invoked without --ip.
         root = find_project_root()
         hosts_file = fleet_cache_dir(root) / "hosts.json"
         with open(hosts_file) as f:

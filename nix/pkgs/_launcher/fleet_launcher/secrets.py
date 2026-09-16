@@ -675,7 +675,6 @@ def secrets_env_export(selector: str | None, export_all: bool, no_values: bool, 
     first host consumer, any declared vars, and one variable per secret.
     """
     import json as _json
-    import os
     import stat
     from pathlib import Path
 
