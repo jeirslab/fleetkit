@@ -55,7 +55,11 @@ in
   # clusters: { clusterName -> (h -> config-attrset) }      — optional; was nix/clusters.nix, removed when no clusters were active
   # runtime:  { name -> flat-or-rich-entry }                 — from
   #                                                            fleetEval.hostsJson
-  # helpers:  { dnsRecords, publicDnsRecords }              — from fleetEval (DNS-derived).
+  # helpers:  { dnsRecords, publicDnsRecords,               — from fleetEval (DNS-derived).
+  #             dnsRecordsByProvider }                        The last is dnsRecords split by
+  #                                                            provider instance, for a resolver
+  #                                                            that must not answer with
+  #                                                            addresses its clients cannot route.
   #                                                            sshGroupsOf is added below
   #                                                            (runtime-driven, hence here).
   #

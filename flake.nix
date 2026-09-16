@@ -150,8 +150,9 @@
             hosts    = fleetEval.hostsRegistry;
             runtime  = fleetEval.hostsJson;
             helpers  = {
-              dnsRecords       = fleetEval.dnsRecords;
-              publicDnsRecords = fleetEval.publicDnsRecords;
+              dnsRecords           = fleetEval.dnsRecords;
+              publicDnsRecords     = fleetEval.publicDnsRecords;
+              dnsRecordsByProvider = fleetEval.dnsRecordsByProvider;
             };
           };
         in

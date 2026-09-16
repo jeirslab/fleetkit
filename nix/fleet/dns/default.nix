@@ -30,6 +30,16 @@ let
 
   autoRecords = lib.mapAttrs (_: _internalIp) fleetHosts;
 
+  # The same auto records, split by the provider instance that provisions
+  # each host. See the option below for why this is not just a convenience.
+  providerInstances = lib.unique
+    (lib.filter (s: s != "")
+      (lib.mapAttrsToList (_: h: h.provider_instance or "") fleetHosts));
+
+  recordsByProvider = lib.genAttrs providerInstances (inst:
+    lib.mapAttrs (_: _internalIp)
+      (lib.filterAttrs (_: h: (h.provider_instance or "") == inst) fleetHosts));
+
   # service-name → fleet.compute key (resolves to that host's internal IP)
   resolvedAliases =
     lib.mapAttrs (_: hostName: _internalIp (cfg.hostsJson.${hostName} or {}))
@@ -81,6 +91,32 @@ in
     description = "Internal DNS A records (auto + service aliases + static).";
   };
 
+  options.fleet.dnsRecordsByProvider = lib.mkOption {
+    type = lib.types.attrsOf (lib.types.attrsOf lib.types.str);
+    default = {};
+    internal = true;
+    description = ''
+      Auto per-host A records grouped by provider instance — the same
+      derivation as dnsRecords, partitioned rather than flattened, and
+      without service aliases or static records (those are fleet-wide by
+      construction and have no provider to attribute them to).
+
+      dnsRecords spans the whole manifest, which is correct for a
+      single-site fleet and wrong the moment a second site exists: a
+      resolver that answers with an address its clients cannot route to
+      turns a fast NXDOMAIN into a connection that hangs and then fails.
+      Serving only the partition a resolver can actually reach is the
+      interim answer until the two sites route to each other, at which
+      point the consumer widens back to dnsRecords by deleting one
+      reference.
+
+      Provider instance is the available axis, not a perfect stand-in for
+      "site": one site can span several instances (a hypervisor plus its
+      appliance layer), in which case the consumer merges the partitions
+      it wants. It does hold exactly when a site is one hypervisor.
+    '';
+  };
+
   options.fleet.publicDnsRecords = lib.mkOption {
     type = lib.types.attrsOf lib.types.str;
     default = {};
@@ -89,5 +125,6 @@ in
   };
 
   config.fleet.dnsRecords = autoRecords // resolvedAliases // cfg.dnsStaticRecords;
+  config.fleet.dnsRecordsByProvider = recordsByProvider;
   config.fleet.publicDnsRecords = resolvedAliases // cfg.dnsPublicOverrides;
 }
