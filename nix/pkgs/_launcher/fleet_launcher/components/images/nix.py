@@ -63,33 +63,40 @@ def resolve_flake(ref: str) -> str:
     return url
 
 
-def targets(flake_url: str) -> dict[str, dict]:
-    """The flake's `targets` output (plain data, see lib/default.nix)."""
+# Both tables live under the flake's `lib.images` attrset, NOT at the top
+# level. When the deployer was folded into fleetkit its `targets`/`templates`
+# outputs moved under `lib.images`; `#templates` at the top level is now
+# fleetkit's flake-TEMPLATES output (`templates.minimal`), so evaluating it
+# silently returns the wrong object instead of failing.
+_TARGETS_ATTR = "lib.images.targetsData"
+_TEMPLATES_ATTR = "lib.images.templatesData"
+
+
+def _eval_data(flake_url: str, attr: str) -> dict[str, dict]:
+    """`nix eval --json <flake>#<attr>`, as plain data."""
     try:
         out = subprocess.run(
-            ["nix", "eval", "--json", f"{flake_url}#targets"],
+            ["nix", "eval", "--json", f"{flake_url}#{attr}"],
             check=True, capture_output=True, text=True,
         ).stdout
     except subprocess.CalledProcessError as exc:
-        raise DeployerError(f"nix eval {flake_url}#targets failed:\n{exc.stderr.strip()}") from exc
+        raise DeployerError(f"nix eval {flake_url}#{attr} failed:\n{exc.stderr.strip()}") from exc
     return json.loads(out)
 
 
+def targets(flake_url: str) -> dict[str, dict]:
+    """The `lib.images.targetsData` attrset (plain data, see lib/default.nix)."""
+    return _eval_data(flake_url, _TARGETS_ATTR)
+
+
 def templates(flake_url: str) -> dict[str, dict]:
-    """The flake's `templates` output — the stable reference objects (ADR-0003).
+    """`lib.images.templatesData` — the stable reference objects (ADR-0003).
 
     Both this CLI (to know the name/VMID/ostype to create) and fleetkit (to know
     what to clone) read this one object, so the registration process can change
     without fleetkit changing.
     """
-    try:
-        out = subprocess.run(
-            ["nix", "eval", "--json", f"{flake_url}#templates"],
-            check=True, capture_output=True, text=True,
-        ).stdout
-    except subprocess.CalledProcessError as exc:
-        raise DeployerError(f"nix eval {flake_url}#templates failed:\n{exc.stderr.strip()}") from exc
-    return json.loads(out)
+    return _eval_data(flake_url, _TEMPLATES_ATTR)
 
 
 def build_expression(flake_url: str, target: str, system: str, *,

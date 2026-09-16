@@ -116,6 +116,27 @@ def test_images_and_templates_resolve_under_fleet():
     assert "proxmox-lxc" in r2.output
 
 
+def test_targets_and_templates_eval_under_lib_images(monkeypatch):
+    # Regression: both tables live at `lib.images.*Data`, never the top level.
+    # `.#templates` at the top level is the flake's CONSUMER SKELETON output
+    # (templates.minimal), so evaluating it returns the wrong object and
+    # succeeds — a silent wrong answer, not an error. Pin the attr paths.
+    seen: list[str] = []
+
+    class _Proc:
+        stdout = "{}"
+
+    def fake_run(cmd, **kwargs):
+        seen.append(cmd[-1])
+        return _Proc()
+
+    monkeypatch.setattr(nix.subprocess, "run", fake_run)
+    nix.targets("git+file:///x")
+    nix.templates("git+file:///x")
+    assert seen == ["git+file:///x#lib.images.targetsData",
+                    "git+file:///x#lib.images.templatesData"]
+
+
 def test_ref_reads_baked_templates_eval_free(monkeypatch, tmp_path):
     # $FLEET_IMAGE_TEMPLATES is read directly — no `nix eval`, no flake needed.
     from fleet_launcher.components.images.templates import _ref

@@ -57,8 +57,9 @@ let
     };
   };
 
-  # The same table without the module paths: JSON-serialisable, exported
-  # as the flake's `targets` output for `nix eval --json`.
+  # The same table without the module paths: JSON-serialisable, reachable as
+  # `lib.images.targetsData` for `nix eval --json`. NOT a top-level flake
+  # output — see templatesData below for why that matters.
   targetsData = lib.mapAttrs (_: t: removeAttrs t [ "platform" ]) targets;
 
   # ── Template references ─────────────────────────────────────────
@@ -134,8 +135,11 @@ let
     };
   };
 
-  # Already plain data (strings/ints/bools) — exported as the flake's
-  # `templates` output for `nix eval --json .#templates`.
+  # Already plain data (strings/ints/bools). Reachable as
+  # `lib.images.templatesData` — do NOT re-export it as a top-level
+  # `templates` output: that name is taken by the flake's consumer skeleton
+  # (`templates.minimal`), so a `.#templates` eval would silently return the
+  # wrong object rather than error.
   templatesData = templates;
 
   # Modules that make up one bootstrap system for a target.
