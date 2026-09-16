@@ -168,9 +168,10 @@
       loop:
         - net.ipv4.ip_forward
         - net.ipv6.conf.all.forwarding
-      when:
-        - tailnet_tun.stat.exists
-        - (tailnet_advertise_routes | default([])) | length > 0
+      # Not gated on TUN: forwarding is a kernel setting that stands on its
+      # own, and gating it on tailscaled's prerequisites only creates a way
+      # for a router to come up half-configured.
+      when: (tailnet_advertise_routes | default([])) | length > 0
 
     # `--reset` clears flags not named here, so --advertise-routes must be
     # passed on EVERY run: omitting it withdraws the routes of a subnet
@@ -191,3 +192,22 @@
       when: has_valid_preauth
       changed_when: true
       notify: restart tailscaled
+
+    # An ALREADY-ENROLLED host never reaches `tailscale up` above (the preauth
+    # fetch is skipped unless tailnet_force_rekey), so changing the advertised
+    # set would otherwise need a forced re-auth — and on a subnet router that
+    # is reached THROUGH the tailnet, re-authing with --reset means tearing
+    # down the only path to the host mid-play. `tailscale set` applies the
+    # same setting in place, idempotently, without touching auth or the other
+    # flags. Converges an existing router; does nothing on a fresh enrol,
+    # which `up` already handled.
+    - name: converge advertised routes on an already-enrolled host
+      ansible.builtin.command:
+        cmd: >-
+          tailscale set
+          --advertise-routes={{ (tailnet_advertise_routes | default([])) | join(',') }}
+      when:
+        - tailnet_tun.stat.exists
+        - tailscale_enrolled | bool
+        - not has_valid_preauth
+      changed_when: true
