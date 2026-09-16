@@ -293,6 +293,15 @@
               insecure = p.insecure;
             }) (fleetEval.providers.proxmox or { });
             mcp.grafana_token_sops_path = fleetEval.settings.mcp.grafanaTokenSopsPath;
+            # Tailnet control plane — the URL is the same one hosts use as
+            # --login-server (a public FQDN, not a secret); only the API key
+            # is, and that arrives as a SOPS path, never a value. Same shape
+            # as providers.proxmox above: the CLI needs a fact the fleet
+            # already declares, so it reads it rather than re-deriving it.
+            tailnet = {
+              control_url = fleetEval.settings.tailnet.controlUrl;
+              api_key_sops_path = fleetEval.settings.tailnet.apiKeySopsPath;
+            };
             # In-fleet binary caches and the operator key, for
             # `fleet pve build-template`. None of the three is a secret — a
             # cache URL is a LAN address, a trusted-public-key is public by

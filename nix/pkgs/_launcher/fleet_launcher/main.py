@@ -57,6 +57,7 @@ from fleet_launcher.sessions import sessions_cli, run_job_cli as _run_job_cli
 from fleet_launcher.pki_group import pki
 from fleet_launcher.ansible_group import ansible as ansible_cli
 from fleet_launcher.mcp_group import mcp as mcp_cli
+from fleet_launcher.tailnet_group import tailnet as tailnet_cli
 
 
 # ── Root group ────────────────────────────────────────────────
@@ -103,6 +104,7 @@ fleet.add_command(sessions_cli, "sessions")
 fleet.add_command(_run_job_cli)
 fleet.add_command(pki)
 fleet.add_command(ansible_cli, "ansible")
+fleet.add_command(tailnet_cli, "tailnet")
 
 from .xoa_group import xoa as _xoa
 fleet.add_command(_xoa)
@@ -459,6 +461,28 @@ def _setup_env() -> None:
             capture_output=True, text=True, timeout=10)
         if result.returncode == 0 and result.stdout.strip():
             _setenv_if_blank("CLOUDFLARE_API_TOKEN", result.stdout.strip())
+    except Exception:
+        pass
+
+    # Headscale API key — `fleet tailnet` node queries and route approval.
+    # Unlike every token above it has no terraform counterpart: the tailnet
+    # control plane is not provisioned through a provider, so the CLI is the
+    # sole consumer and the location is a setting rather than a convention.
+    # Slash-form path (`integrations/headscale/api_key`), matching
+    # mcp.grafanaTokenSopsPath; converted to --extract brackets here so the
+    # setting stays readable and the file routes off the named tree.
+    try:
+        from .config import get as _cfg_get
+        hs_path = _cfg_get("tailnet.api_key_sops_path")
+        if hs_path:
+            parts = [p for p in str(hs_path).split("/") if p]
+            extract = "".join(f'["{p}"]' for p in parts)
+            result = subprocess.run(
+                [sops, "-d", "--extract", extract,
+                 _sops_file_for(extract, secrets_file)],
+                capture_output=True, text=True, timeout=10)
+            if result.returncode == 0 and result.stdout.strip():
+                _setenv_if_blank("HEADSCALE_API_KEY", result.stdout.strip())
     except Exception:
         pass
 

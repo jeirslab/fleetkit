@@ -80,6 +80,12 @@
         example = "https://vpn.example.dev/internal/preauth/fleet-bot";
         description = "HTTPS endpoint returning a tailnet preauth key as raw text (e.g. a source-IP-gated headscale vhost). Used by infra.network.tailnet.fleetNode to auto-fetch enrollment keys. null ⇒ hosts fall back to a SOPS-held auth key.";
       };
+      apiKeySopsPath = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "integrations/headscale/api_key";
+        description = "Sops key path of a headscale API key (`headscale apikeys create`, prefix hskey-api-) used by the `fleet tailnet` verbs to read node state and approve advertised subnet routes over the control server's JSON API. null ⇒ those verbs report the missing setting instead of running. Not consumed by any host — this is an operator-side credential only.";
+      };
     };
 
     auth = {
