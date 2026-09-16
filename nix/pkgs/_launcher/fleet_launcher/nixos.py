@@ -20,6 +20,22 @@ from ._util import find_project_root, fleet_cache_dir, run_shell
 console = Console()
 
 
+def _first_reachable(candidates, port: int = 22, timeout: float = 3.0):
+    """Return the first candidate address that accepts a TCP connection on
+    ``port`` (SSH by default), or ``None`` if none answer. Used to choose a
+    Colmena deploy target from a host's ordered ``deploy_ips`` candidates."""
+    import socket
+    for addr in candidates:
+        if not addr:
+            continue
+        try:
+            with socket.create_connection((addr, port), timeout=timeout):
+                return addr
+        except OSError:
+            continue
+    return None
+
+
 def _refresh_inventory() -> None:
     """Regenerate hosts.json from PVE API before Colmena runs."""
     from .inventory import generate_hosts_json
@@ -294,6 +310,53 @@ def apply_host(names: tuple[str, ...], ip: str | None, no_refresh: bool, no_sess
                 json.dump(hosts, f, indent=2)
                 f.write("\n")
             console.print(f"[yellow]IP override:[/yellow] {name} → {ip} (was {original_ip})")
+    elif not ip:
+        # First-reachable deploy target: a host that declares `deploy_ips`
+        # (ordered fallback addresses beyond its primary `ip` — e.g. a Tailscale
+        # address) gets each candidate probed on SSH, and Colmena is pointed at
+        # the first that answers. Patched into hosts.json exactly like the
+        # explicit --ip override, since colmena reads targetHost from there.
+        # A host with no deploy_ips is untouched (the whole existing fleet);
+        # an explicit --ip wins and skips probing.
+        root = find_project_root()
+        hosts_file = fleet_cache_dir(root) / "hosts.json"
+        try:
+            with open(hosts_file) as f:
+                hosts = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            hosts = {}
+        patched = False
+        for name in names:
+            meta = hosts.get(name) or {}
+            deploy_ips = meta.get("deploy_ips") or []
+            if not deploy_ips:
+                continue
+            primary = meta.get("ip") or ""
+            candidates: list[str] = []
+            for c in [primary, *deploy_ips, meta.get("internal_ip") or ""]:
+                if c and c not in candidates:
+                    candidates.append(c)
+            chosen = _first_reachable(candidates)
+            if chosen is None:
+                console.print(
+                    f"[yellow]No reachable deploy address for {name}[/yellow] "
+                    f"(tried {', '.join(candidates)}) — leaving {primary or 'unset'}"
+                )
+                continue
+            if chosen != primary:
+                meta["ip"] = chosen
+                hosts[name] = meta
+                patched = True
+                console.print(
+                    f"[green]Deploy target:[/green] {name} → {chosen} "
+                    f"[dim](first reachable of {', '.join(candidates)})[/dim]"
+                )
+            else:
+                console.print(f"[dim]Deploy target: {name} → {chosen} (primary reachable)[/dim]")
+        if patched:
+            with open(hosts_file, "w") as f:
+                json.dump(hosts, f, indent=2)
+                f.write("\n")
     selector = ",".join(names)
     # `dry-activate` is a colmena GOAL, not a flag: it builds and copies the
     # closure, then runs the activation script in dry mode so the target
