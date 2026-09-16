@@ -150,11 +150,35 @@ let
         };
       };
 
-      internalCa.acmeDirectory = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        example = "https://ca.dc2.example.lan:9000/acme/acme/directory";
-        description = "Per-site override of `fleet.settings.internalCa.acmeDirectory` — this site's own step-ca. A second site generally needs its own internal CA, because the estate-wide directory is named by an internal zone the second site's resolver does not serve. null ⇒ inherit the estate-wide value.";
+      internalCa = {
+        acmeDirectory = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          example = "https://ca.dc2.example.lan:9000/acme/acme/directory";
+          description = "Per-site override of `fleet.settings.internalCa.acmeDirectory` — this site's own step-ca. A second site generally needs its own internal CA, because the estate-wide directory is named by an internal zone the second site's resolver does not serve. null ⇒ inherit the estate-wide value.";
+        };
+        certFile = mkOption {
+          type = types.nullOr types.path;
+          default = null;
+          example = lib.literalExpression "./certs/dc2-root-ca.crt";
+          description = ''
+            Per-site override of `fleet.settings.internalCa.certFile` — the
+            root certificate this site's hosts trust. null ⇒ inherit the
+            estate-wide value.
+
+            This travels with `acmeDirectory` and is the half that is easy to
+            forget. Each step-ca mints its own root at first start, so two
+            sites running their own CA have two unrelated roots. Overriding
+            only the directory gives a host that orders successfully from its
+            local CA and then cannot verify the result, because the root in
+            its trust store belongs to the other site's CA.
+
+            It is also needed WITHOUT an `acmeDirectory` override in the
+            split-horizon case, where both sites share one directory URL and
+            each site's resolver answers it locally: the name is estate-wide,
+            the root behind it is not.
+          '';
+        };
       };
     };
   };
@@ -251,11 +275,19 @@ in
           description = "Site-resolved `fleet.settings.cache.trustedPublicKeys` for this host.";
         };
       };
-      internalCa.acmeDirectory = mkOption {
-        type = types.nullOr types.str;
-        internal = true;
-        readOnly = true;
-        description = "Site-resolved `fleet.settings.internalCa.acmeDirectory` for this host.";
+      internalCa = {
+        acmeDirectory = mkOption {
+          type = types.nullOr types.str;
+          internal = true;
+          readOnly = true;
+          description = "Site-resolved `fleet.settings.internalCa.acmeDirectory` for this host.";
+        };
+        certFile = mkOption {
+          type = types.nullOr types.path;
+          internal = true;
+          readOnly = true;
+          description = "Site-resolved `fleet.settings.internalCa.certFile` for this host.";
+        };
       };
     };
   };
@@ -273,8 +305,12 @@ in
         substituters = pick (x: x.cache.substituters) cfg.settings.cache.substituters;
         trustedPublicKeys = pick (x: x.cache.trustedPublicKeys) cfg.settings.cache.trustedPublicKeys;
       };
-      internalCa.acmeDirectory =
-        pick (x: x.internalCa.acmeDirectory) cfg.settings.internalCa.acmeDirectory;
+      internalCa = {
+        acmeDirectory =
+          pick (x: x.internalCa.acmeDirectory) cfg.settings.internalCa.acmeDirectory;
+        certFile =
+          pick (x: x.internalCa.certFile) cfg.settings.internalCa.certFile;
+      };
     };
   };
 }

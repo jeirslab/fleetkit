@@ -40,6 +40,7 @@ let
   # activation failed.
   selfNet = config.fleet.self.settings.network;
   selfCache = config.fleet.self.settings.cache;
+  selfCa = config.fleet.self.settings.internalCa;
 in
 {
   # ── Fleet networking options ───────────────────────────────────
@@ -181,9 +182,15 @@ in
     });
 
     # ── Internal CA trust ─────────────────────────────────────────
+    # Site-resolved (INFRA-307): each step-ca mints its own root, so a host
+    # must trust the root of the CA it actually orders from. Reading the
+    # estate-wide value here would hand a second site's hosts the first
+    # site's root — which fails in the direction that is hardest to read,
+    # since the ACME order succeeds and only the verification afterwards
+    # does not. A site with no CA of its own resolves back to the
+    # estate-wide value, and to null if there is none.
     security.pki.certificateFiles =
-      lib.optional (config.fleet.settings.internalCa.certFile != null)
-        config.fleet.settings.internalCa.certFile;
+      lib.optional (selfCa.certFile != null) selfCa.certFile;
 
     # ── Builder binary cache ──────────────────────────────────────
     # Automatically configured when builder IP + public key are
