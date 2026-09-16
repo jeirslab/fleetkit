@@ -31,7 +31,7 @@
 
     # ── infra.pki — certificates ──
     ./pki/ca # step-ca internal CA (infra.pki.ca)
-    ./pki/host-cert # per-host internal cert (automatic; no options)
+    ./pki/host-cert # per-host internal cert (infra.pki.hostCert — on by default)
     ./pki/acme-dns # DNS-01 delegation server (infra.pki.acmeDns — de-sprawl the DNS API token)
 
     # ── infra.observability ──
