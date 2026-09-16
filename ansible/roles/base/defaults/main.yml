@@ -40,6 +40,29 @@ fleet_tailnet_key_prefix: "hskey-auth-"
 # preauth key. Set per-run via --extra-vars; do not edit here.
 tailnet_force_rekey: false
 
+# CIDRs this host advertises to the tailnet as a SUBNET ROUTER, making the
+# listed networks reachable from every other tailnet node. Shape:
+#   tailnet_advertise_routes: ["192.0.2.0/24", "198.51.100.0/24"]
+#
+# Empty (the default) = an ordinary leaf node, no routes advertised.
+#
+# Two things this deliberately does for you, because half-configuring a
+# subnet router is a silent failure that looks like a working one:
+#   * IP FORWARDING is enabled automatically when this list is non-empty.
+#     A node can advertise routes, have them approved in the control
+#     plane, show them in `PrimaryRoutes` — and still forward nothing,
+#     because the kernel drops every transit packet. From the outside that
+#     is indistinguishable from a firewall or routing problem.
+#   * The routes are passed on EVERY `tailscale up`. That command runs
+#     with `--reset`, so a run that omitted the flag would silently
+#     withdraw the routes of an already-working subnet router.
+#
+# Routes still need approving on the control-plane side (headscale:
+# `headscale nodes approve-routes`); advertising alone does not enable
+# them. IPv6 forwarding is enabled alongside IPv4 regardless of the
+# address family listed, matching Tailscale's own subnet-router guidance.
+tailnet_advertise_routes: []
+
 # Timezone for every host.
 fleet_timezone: UTC
 

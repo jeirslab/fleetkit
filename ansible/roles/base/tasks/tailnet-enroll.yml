@@ -152,6 +152,30 @@
     # take a PVE node off corosync). Likewise `tailnet_accept_dns: false`
     # for hosts that must keep the fleet DNS pin (MagicDNS would clobber
     # /etc/resolv.conf).
+    # A subnet router forwards packets for networks it does not own, which
+    # the kernel refuses to do by default. Without this the node advertises
+    # routes, has them approved, lists them in `PrimaryRoutes` — and drops
+    # every transit packet, which looks exactly like a firewall problem from
+    # the outside. Tied to the advertise list rather than exposed as its own
+    # knob so the two cannot drift apart.
+    - name: enable IP forwarding for subnet routing
+      ansible.posix.sysctl:
+        name: "{{ item }}"
+        value: "1"
+        sysctl_file: /etc/sysctl.d/99-tailscale-subnet-router.conf
+        sysctl_set: true
+        reload: true
+      loop:
+        - net.ipv4.ip_forward
+        - net.ipv6.conf.all.forwarding
+      when:
+        - tailnet_tun.stat.exists
+        - (tailnet_advertise_routes | default([])) | length > 0
+
+    # `--reset` clears flags not named here, so --advertise-routes must be
+    # passed on EVERY run: omitting it withdraws the routes of a subnet
+    # router that was working a moment ago. Passing an empty list is the
+    # explicit "leaf node" case and is what un-advertises on purpose.
     - name: enrol on tailnet
       ansible.builtin.command:
         cmd: >-
@@ -161,6 +185,7 @@
           --hostname={{ tailnet_hostname | default(inventory_hostname) }}
           --accept-routes={{ 'true' if (tailnet_accept_routes | default(true)) else 'false' }}
           --accept-dns={{ 'true' if (tailnet_accept_dns | default(true)) else 'false' }}
+          --advertise-routes={{ (tailnet_advertise_routes | default([])) | join(',') }}
           --reset
       no_log: true
       when: has_valid_preauth
