@@ -34,9 +34,9 @@ in
 
     forwarders = mkOption {
       type = types.listOf types.str;
-      default = config.fleet.settings.network.upstreamResolvers;
-      defaultText = lib.literalExpression "config.fleet.settings.network.upstreamResolvers";
-      description = "Upstream DNS servers for non-local queries.";
+      default = config.fleet.self.settings.network.upstreamResolvers;
+      defaultText = lib.literalExpression "config.fleet.self.settings.network.upstreamResolvers";
+      description = "Upstream DNS servers for non-local queries. Defaults to the site-resolved fleet.settings.network.upstreamResolvers — a second site's resolver normally forwards to its own LAN gateway rather than the first site's (INFRA-307).";
     };
 
     records = mkOption {

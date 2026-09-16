@@ -84,6 +84,7 @@ in
           internalIp = _internalIp rt;
           ip = _ip rt;
           pveType = rt.pve_type or null;
+          providerInstance = rt.provider_instance or "";
         in {
           hostname = _hostname rt name;
           modules = [
@@ -121,6 +122,16 @@ in
           # VMs unable to boot the new closure.
           ++ nixpkgs.lib.optional (pveType != null) ({ ... }: {
             infra.platform.type = pveType;
+          })
+          # Tell the host which provider instance provisions it, so
+          # nix/fleet/sites.nix can resolve its site and hand back
+          # site-corrected settings (INFRA-307). The fleet module system
+          # has no other way to know: fleet.hostsJson holds the whole
+          # manifest, but a host cannot look itself up in it without
+          # already knowing its own key — which is exactly what this
+          # injection supplies. Same mechanism as internalIp above.
+          ++ nixpkgs.lib.optional (providerInstance != "") ({ ... }: {
+            fleet.self.providerInstance = providerInstance;
           });
           tags = _tags rt;
         } // (

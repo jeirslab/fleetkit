@@ -346,6 +346,7 @@ in {
     ./users                  # fleet.access schema (identity registry is consumer data)
     ./dns                    # fleet.dnsRecords derivation
     ./settings.nix           # fleetkit parameter surface (consumer-supplied values)
+    ./sites.nix              # INFRA-307: per-site overrides of the estate-wide settings
 
     # Flat schemas (values come from nix/hosts/**/, no separable inputs file)
     ./compute.nix

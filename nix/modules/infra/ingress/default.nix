@@ -100,10 +100,10 @@ in
 
     acmeCA = mkOption {
       type = types.nullOr types.str;
-      default = config.fleet.settings.internalCa.acmeDirectory;
-      defaultText = lib.literalExpression "config.fleet.settings.internalCa.acmeDirectory";
+      default = config.fleet.self.settings.internalCa.acmeDirectory;
+      defaultText = lib.literalExpression "config.fleet.self.settings.internalCa.acmeDirectory";
       example = "https://ca.example.internal:9000/acme/acme/directory";
-      description = "ACME CA directory URL (default: fleet.settings.internalCa.acmeDirectory). null ⇒ Let's Encrypt production.";
+      description = "ACME CA directory URL (default: the site-resolved fleet.settings.internalCa.acmeDirectory, so an ingress at a second site orders from that site's own internal CA — INFRA-307). null ⇒ Let's Encrypt production.";
     };
 
     acmeCARootCert = mkOption {

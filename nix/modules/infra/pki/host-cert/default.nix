@@ -5,6 +5,7 @@ let
   hostName = config.networking.hostName;
   caddyOwns = config.services.caddy.enable or false;
   internalDomain = config.fleet.settings.domain.internal;
+  acmeDirectory = config.fleet.self.settings.internalCa.acmeDirectory;
 in
 {
   options.infra.pki.hostCert.enable = mkOption {
@@ -38,8 +39,13 @@ in
   # (fleet.settings.internalCa.acmeDirectory = null): a minimum-viable
   # fleet without step-ca must not have every host chase Let's Encrypt
   # for an internal-only name.
+  #
+  # Read site-resolved (INFRA-307): the directory URL is an internal name
+  # served by one site's resolver, so a second site with its own step-ca
+  # must point its hosts at that one. A site with no CA of its own resolves
+  # back to the estate-wide value, and to null if there is none.
   config = lib.mkIf
-    (cfg.enable && !caddyOwns && config.fleet.settings.internalCa.acmeDirectory != null) {
+    (cfg.enable && !caddyOwns && acmeDirectory != null) {
     assertions = [
       {
         assertion = config.fleet.settings.acmeEmail != null;
@@ -54,7 +60,7 @@ in
     security.acme = {
       acceptTerms = true;
       defaults.email = config.fleet.settings.acmeEmail;
-      defaults.server = config.fleet.settings.internalCa.acmeDirectory;
+      defaults.server = acmeDirectory;
       certs."${hostName}.${internalDomain}" = {
         domain = "${hostName}.${internalDomain}";
         listenHTTP = ":80";

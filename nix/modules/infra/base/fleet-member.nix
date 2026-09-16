@@ -28,6 +28,18 @@ let
   p = config.sops.placeholder;
 
   netCfg = config.infra.networking;
+
+  # Site-resolved settings for THIS host (INFRA-307). Identical to the
+  # estate-wide values until the consumer declares `fleet.sites`, and the
+  # reason to read them here rather than `fleet.network.*` directly is that
+  # every value below names an address: a gateway, a resolver, a cache. A
+  # second site inherits none of those correctly, and the failures are
+  # quiet — an unroutable substituter costs a connect timeout per nix
+  # operation, and an off-link gateway holds networkd at SETUP
+  # `configuring` until wait-online times out and colmena calls the whole
+  # activation failed.
+  selfNet = config.fleet.self.settings.network;
+  selfCache = config.fleet.self.settings.cache;
 in
 {
   # ── Fleet networking options ───────────────────────────────────
@@ -108,7 +120,7 @@ in
         routes = lib.optional (config.fleet.network.lan_gateway != null)
           { Gateway = config.fleet.network.lan_gateway; };
         # Fleet-DNS-only (no public resolver on this link) — see INFRA-107.
-        networkConfig.DNS = config.fleet.network.internal_resolvers;
+        networkConfig.DNS = selfNet.internalResolvers;
         # Routing domains pinned to this link so systemd-resolved sends
         # every fleet-served zone at fleet DNS — including public zones the
         # fleet answers with split-DNS INTERNAL IPs (fleet hosts hit the
@@ -124,10 +136,10 @@ in
         # a future move only requires editing the manifest.
         matchConfig.Name = "eth0";
         addresses = [{ Address = "${netCfg.internalIp}/${toString config.fleet.network.internal_prefix_len}"; }];
-        routes = lib.optional (config.fleet.network.gateway != null)
-          { Gateway = config.fleet.network.gateway; };
+        routes = lib.optional (selfNet.gateway != null)
+          { Gateway = selfNet.gateway; };
         # Fleet-DNS-only (no public resolver on this link) — see INFRA-107.
-        networkConfig.DNS = config.fleet.network.internal_resolvers;
+        networkConfig.DNS = selfNet.internalResolvers;
         # Routing domains pinned to this link — same split-DNS rationale as
         # the vmbr0 branch above (INFRA-107).
         networkConfig.Domains = config.fleet.network.search_domains;
@@ -161,7 +173,7 @@ in
       matchConfig.Name = "eth1";
       addresses = [{ Address = "${netCfg.internalIp}/${toString config.fleet.network.internal_prefix_len}"; }];
       # Fleet-DNS-only on the internal link (no public resolver) — INFRA-107.
-      networkConfig.DNS = config.fleet.network.internal_resolvers;
+      networkConfig.DNS = selfNet.internalResolvers;
       networkConfig.Domains = lib.optional (config.fleet.network.dns_domain != null)
         config.fleet.network.dns_domain;
     } // lib.optionalAttrs (netCfg.internalGateway != "") {
@@ -179,13 +191,14 @@ in
     # In-fleet caches come from fleet.settings.cache — explicit
     # parameters, not file-sniffing (the old builderCache helper read a
     # pub-key file from a repo-relative path and silently disabled the
-    # cache when it moved).
+    # cache when it moved) — resolved per site, so a host only ever gets
+    # caches its own site can route to (INFRA-307).
     nix.settings.substituters = lib.mkAfter ([
       "https://nix-community.cachix.org"
-    ] ++ config.fleet.settings.cache.substituters);
+    ] ++ selfCache.substituters);
     nix.settings.trusted-public-keys = lib.mkAfter ([
       "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
-    ] ++ config.fleet.settings.cache.trustedPublicKeys);
+    ] ++ selfCache.trustedPublicKeys);
 
     # ── GitHub machine-user access token (flake input fetches) ────
     # PER-HOST opt-in (infra.githubAccessToken). The old model provisioned
