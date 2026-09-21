@@ -687,7 +687,8 @@
           {
             "ignore_changes": [
               "operating_system",
-              "initialization"
+              "initialization",
+              "pool_id"
             ]
           }
         ],

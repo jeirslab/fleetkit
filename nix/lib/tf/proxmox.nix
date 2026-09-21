@@ -435,9 +435,23 @@ in rec {
       # (keys are injected once; changing them needs a recreate regardless), so
       # ignoring post-create drift is correct and makes state adoption a pure
       # operation. CREATE still emits it.
+      #
+      # `pool_id` is the same failure mode a third time: it is ForceNew on both
+      # LXC and VM in bpg, so assigning an ALREADY-EXISTING guest to a pool
+      # plans as destroy+recreate → blocked fleet-wide by prevent_destroy. A
+      # guest carrying `pool` would otherwise make every apply of its stack
+      # error. Ignore post-create drift on pool_id so pooled guests stay
+      # appliable; membership for a running guest is set out-of-band once
+      # (`pvesh set /pools/<id> -vms <vmid>`). CREATE still emits pool_id (a
+      # fresh guest joins for free — but the pool must already exist, so declare
+      # it in a stack applied no later than the guest's).
       lifecycleMeta =
-        if isClone then meta
-        else meta // { ignore_changes = (meta.ignore_changes or []) ++ [ "operating_system" "initialization" ]; };
+        let base =
+          if isClone then meta
+          else meta // { ignore_changes = (meta.ignore_changes or []) ++ [ "operating_system" "initialization" ]; };
+        in if meta.pool != null
+           then base // { ignore_changes = (base.ignore_changes or []) ++ [ "pool_id" ]; }
+           else base;
     in {
       provider = "proxmox.${builtins.elemAt (lib.strings.splitString "." meta.provider_instance) 1}";
       node_name = resolveNode meta;
@@ -788,7 +802,12 @@ in rec {
     }
     // lib.optionalAttrs (meta.pool != null) { pool_id = meta.pool; }
     // (let d = computeDescription meta; in lib.optionalAttrs (d != null) { description = d; })
-    // (mkLifecycle meta);
+    # pool_id is ForceNew (see the LXC emitter's lifecycleMeta note): ignore
+    # post-create drift so a pooled VM stays appliable and is never recreated
+    # just to change pool membership.
+    // (mkLifecycle (if meta.pool != null
+                     then meta // { ignore_changes = (meta.ignore_changes or []) ++ [ "pool_id" ]; }
+                     else meta));
 
   # ── Non-OS resource emitters ──────────────────────────────────
   mkBridge = name: meta: {
