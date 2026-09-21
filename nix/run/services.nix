@@ -14,8 +14,12 @@
 { pkgs, lib, nixosConfigurations }:
 let
   # Internal domain from the fleet's settings (identical on every host).
+  #
+  # Nullable, and legitimately so: a fleet with no internal DNS reaches its
+  # services by IP over the tailnet and leaves this unset. Every use below
+  # has to survive that -- see `external`.
   domain =
-    if nixosConfigurations == {} then "internal"
+    if nixosConfigurations == { } then "internal"
     else (lib.head (lib.attrValues nixosConfigurations)).config.fleet.settings.domain.internal;
 
   # Collect infra.services from every NixOS host that defines them.
@@ -36,9 +40,16 @@ let
         ip = hostIp;
         urls = {
           internal = "http://${hostIp}:${toString svc.port}${path}";
+          # Null when there is no name to reach the service by. Without an
+          # internal domain a non-Caddy service has no external URL -- the
+          # honest answer is "none", and `internal` above already carries the
+          # IP form. Saying so rather than crashing matters because this is
+          # lazy: a fleet with no domain.internal evaluated fine right up
+          # until the first service that did not sit behind Caddy, which made
+          # a settings gap look like a bug in whatever host introduced it.
           external =
-            if svc.caddy.enable
-            then "https://${caddyHostname}${path}"
+            if domain == null then null
+            else if svc.caddy.enable then "https://${caddyHostname}${path}"
             else "http://${hostName}.${domain}:${toString svc.port}${path}";
         };
         ports =
@@ -179,7 +190,7 @@ let
             "| Service | Host | URL | Description |",
             "|---------|------|-----|-------------|",
             (.services[] |
-              "| **\(.svcName)** | \(.host) (\(.ip)) | \(if .caddy then "[\(.urls.external)](\(.urls.external))" else "\(.urls.internal)" end) | \(.description) |"
+              "| **\(.svcName)** | \(.host) (\(.ip)) | \(if .caddy and .urls.external != null then "[\(.urls.external)](\(.urls.external))" else "\(.urls.internal)" end) | \(.description) |"
             ),
             ""
           '
