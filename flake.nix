@@ -444,6 +444,9 @@
     nixosModules = {
       default = ./nix/modules;
       fleetSchema = ./nix/fleet;
+      # The CI environment profile on its own (infra.build.ciEnv), for image
+      # builds that must not drag in the whole infra family and its sops-nix needs.
+      ciEnv = ./nix/modules/infra/build/ci-env.nix;
     };
 
     templates.minimal = {

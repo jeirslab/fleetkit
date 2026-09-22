@@ -53,6 +53,42 @@
   "infra.build.builder.trustedUsers": {
     "type": "list of string"
   },
+  "infra.build.ciEnv.actImage": {
+    "type": "string"
+  },
+  "infra.build.ciEnv.claude.enable": {
+    "type": "boolean"
+  },
+  "infra.build.ciEnv.claude.environmentFile": {
+    "type": "null or absolute path"
+  },
+  "infra.build.ciEnv.claude.instructions": {
+    "type": "strings concatenated with \"\\n\""
+  },
+  "infra.build.ciEnv.claude.package": {
+    "type": "package"
+  },
+  "infra.build.ciEnv.docker.enable": {
+    "type": "boolean"
+  },
+  "infra.build.ciEnv.enable": {
+    "type": "boolean"
+  },
+  "infra.build.ciEnv.extraPackages": {
+    "type": "list of package"
+  },
+  "infra.build.ciEnv.tailscale.authKeyFile": {
+    "type": "null or absolute path"
+  },
+  "infra.build.ciEnv.tailscale.enable": {
+    "type": "boolean"
+  },
+  "infra.build.ciEnv.tailscale.loginServer": {
+    "type": "null or string"
+  },
+  "infra.build.ciEnv.tailscale.userspace": {
+    "type": "boolean"
+  },
   "infra.build.deployRunner.branch": {
     "type": "string"
   },
