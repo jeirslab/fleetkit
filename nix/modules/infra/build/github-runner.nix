@@ -170,14 +170,21 @@ in
           payload=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((now - 60))" "$((now + 540))" "${cfg.app.id}" | b64)
           sig=$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -sign "${cfg.app.privateKeyFile}" | b64)
           jwt="$header.$payload.$sig"
-          api() { curl -fsS -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$@"; }
+          # Name the step in the failure: a 403 from the registration endpoint is
+          # "the App lacks Self-hosted runners: write"; from /app/installations it
+          # is a bad key or id. Both read the same without this.
+          step=""
+          api() { curl -fsS -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$@" || { echo "github-runner: $step failed (HTTP error above)" >&2; exit 1; }; }
+          step="list App installations (bad App id or private key?)"
           inst=$(api -H "Authorization: Bearer $jwt" https://api.github.com/app/installations \
                  | jq -r --arg org "${org}" '.[] | select(.account.login == $org) | .id' | head -n1)
           if [ -z "$inst" ]; then
             echo "github-runner: App ${cfg.app.id} is not installed on ${org}" >&2; exit 1
           fi
+          step="mint an installation token for ${org}"
           itok=$(api -X POST -H "Authorization: Bearer $jwt" \
                  "https://api.github.com/app/installations/$inst/access_tokens" | jq -r .token)
+          step="mint a runner registration token for ${org} (does the App have Self-hosted runners: write, accepted on the installation?)"
           rtok=$(api -X POST -H "Authorization: Bearer $itok" \
                  "https://api.github.com/orgs/${org}/actions/runners/registration-token" | jq -r .token)
           if [ -z "$rtok" ] || [ "$rtok" = null ]; then
