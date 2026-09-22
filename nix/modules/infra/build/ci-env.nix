@@ -98,6 +98,20 @@ in
       };
     };
 
+    deploy = {
+      sshKeyFile = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+        description = "Private key the runner presents to the fleet's hosts as root — what `fleet deploy nixos apply changed` (colmena) connects with. A runtime path from the secrets store, never the nix store; its public half goes in `fleet.settings.adminSshKeys` so every host accepts it. Null = whatever ssh would use on its own.";
+      };
+      sshHosts = mkOption {
+        type = types.listOf types.str;
+        default = [ "*" ];
+        example = [ "10.1.1.*" "10.9.*" ];
+        description = "ssh_config `Host` patterns the deploy key applies to: the fleet's address ranges, so the key is offered to targets only.";
+      };
+    };
+
     actImage = mkOption {
       type = types.str;
       default = "nixos-bootstrap:latest";
@@ -151,6 +165,17 @@ in
       !include ${cfg.github.accessTokensFile}
     '';
     nix.settings.netrc-file = mkIf (cfg.github.netrcFile != null) (toString cfg.github.netrcFile);
+    # Deploy targets: one identity for the fleet's address ranges, offered to
+    # nothing else. `accept-new` records each host key on first contact — a
+    # changed key later still refuses, as it should.
+    programs.ssh.extraConfig = mkIf (cfg.deploy.sshKeyFile != null) (lib.mkAfter ''
+      Host ${lib.concatStringsSep " " cfg.deploy.sshHosts}
+        User root
+        IdentityFile ${cfg.deploy.sshKeyFile}
+        IdentitiesOnly yes
+        StrictHostKeyChecking accept-new
+    '');
+
     environment.etc."ci/CLAUDE.md".text = cfg.claude.instructions;
     environment.variables.CI_CLAUDE_MD = "/etc/ci/CLAUDE.md";
 

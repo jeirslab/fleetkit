@@ -68,6 +68,12 @@
   "infra.build.ciEnv.claude.package": {
     "type": "package"
   },
+  "infra.build.ciEnv.deploy.sshHosts": {
+    "type": "list of string"
+  },
+  "infra.build.ciEnv.deploy.sshKeyFile": {
+    "type": "null or absolute path"
+  },
   "infra.build.ciEnv.docker.enable": {
     "type": "boolean"
   },
