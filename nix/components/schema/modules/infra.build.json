@@ -122,6 +122,12 @@
   "infra.build.deployRunner.workingDir": {
     "type": "string"
   },
+  "infra.build.githubRunner.app.id": {
+    "type": "null or string"
+  },
+  "infra.build.githubRunner.app.privateKeyFile": {
+    "type": "null or absolute path"
+  },
   "infra.build.githubRunner.enable": {
     "type": "boolean"
   },
@@ -141,7 +147,7 @@
     "type": "null or string"
   },
   "infra.build.githubRunner.tokenFile": {
-    "type": "absolute path"
+    "type": "null or absolute path"
   },
   "infra.build.githubRunner.url": {
     "type": "string"

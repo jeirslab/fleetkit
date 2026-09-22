@@ -53,8 +53,29 @@ in
       '';
     };
 
+    app = {
+      id = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = "5027214";
+        description = ''
+          Register through the organization's GitHub App instead of a PAT. The App
+          needs the organization permission "Self-hosted runners: read & write" and
+          must be installed on `url`'s organization. Takes priority over `tokenFile`:
+          before every start (so before every ephemeral re-registration) a oneshot
+          unit mints an installation token from the App key and exchanges it for a
+          one-hour registration token. No long-lived credential exists on the host.
+        '';
+      };
+      privateKeyFile = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+        description = "The App's private key (PEM), provided by the secrets store at runtime. Never a path in the Nix store.";
+      };
+    };
     tokenFile = mkOption {
-      type = types.path;
+      type = types.nullOr types.path;
+      default = null;
       example = lib.literalExpression ''config.sops.secrets."github/runner-pat".path'';
       description = ''
         Absolute path to a file holding a fine-grained PAT with read+write on
@@ -129,10 +150,78 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
+  config = mkIf cfg.enable (
+    let
+      useApp = cfg.app.id != null;
+      # The org from the runner URL (https://github.com/<org>); a repository URL
+      # keeps its owner, which is also what the App's installation is keyed by.
+      org = builtins.head (lib.splitString "/" (lib.removePrefix "https://github.com/" cfg.url));
+      tokenDir = "/run/github-runner-token";
+      mintedToken = "${tokenDir}/fleet-deploy";
+      mint = pkgs.writeShellApplication {
+        name = "github-runner-app-token";
+        runtimeInputs = with pkgs; [ coreutils openssl curl jq ];
+        text = ''
+          # App JWT (RS256, 9 minutes) -> installation token for the org ->
+          # runner registration token (1 h) -> the file the runner unit reads.
+          b64() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+          now=$(date +%s)
+          header=$(printf '{"alg":"RS256","typ":"JWT"}' | b64)
+          payload=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((now - 60))" "$((now + 540))" "${cfg.app.id}" | b64)
+          sig=$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -sign "${cfg.app.privateKeyFile}" | b64)
+          jwt="$header.$payload.$sig"
+          api() { curl -fsS -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$@"; }
+          inst=$(api -H "Authorization: Bearer $jwt" https://api.github.com/app/installations \
+                 | jq -r --arg org "${org}" '.[] | select(.account.login == $org) | .id' | head -n1)
+          if [ -z "$inst" ]; then
+            echo "github-runner: App ${cfg.app.id} is not installed on ${org}" >&2; exit 1
+          fi
+          itok=$(api -X POST -H "Authorization: Bearer $jwt" \
+                 "https://api.github.com/app/installations/$inst/access_tokens" | jq -r .token)
+          rtok=$(api -X POST -H "Authorization: Bearer $itok" \
+                 "https://api.github.com/orgs/${org}/actions/runners/registration-token" | jq -r .token)
+          if [ -z "$rtok" ] || [ "$rtok" = null ]; then
+            echo "github-runner: could not mint a registration token for ${org} (does the App have 'Self-hosted runners: write'?)" >&2; exit 1
+          fi
+          install -d -m 0700 "${tokenDir}"
+          umask 077; printf '%s' "$rtok" > "${mintedToken}.tmp" && mv "${mintedToken}.tmp" "${mintedToken}"
+        '';
+      };
+    in
+    {
+    assertions = [
+      {
+        assertion = useApp || cfg.tokenFile != null;
+        message = "infra.build.githubRunner: set either app.{id,privateKeyFile} or tokenFile.";
+      }
+      {
+        assertion = !useApp || cfg.app.privateKeyFile != null;
+        message = "infra.build.githubRunner: app.id is set but app.privateKeyFile is not.";
+      }
+    ];
+
+    # Fresh registration token before EVERY start of the runner unit: a
+    # oneshot without RemainAfterExit is inactive once done, so a dependent
+    # unit's next start runs it again -- which is exactly the ephemeral
+    # re-registration cadence.
+    systemd.services.github-runner-fleet-deploy-token = mkIf useApp {
+      description = "Mint a GitHub Actions runner registration token from the org App";
+      wants = [ "network-online.target" ];
+      after = [ "network-online.target" ];
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${mint}/bin/github-runner-app-token";
+      };
+    };
+    systemd.services.github-runner-fleet-deploy = mkIf useApp {
+      requires = [ "github-runner-fleet-deploy-token.service" ];
+      after = [ "github-runner-fleet-deploy-token.service" ];
+    };
+
     services.github-runners.fleet-deploy = {
       enable = true;
-      inherit (cfg) url tokenFile name ephemeral workDir user;
+      inherit (cfg) url name ephemeral workDir user;
+      tokenFile = if useApp then mintedToken else cfg.tokenFile;
       extraLabels = cfg.labels;
       replace = true;
       # git + nix are enough; the workflow's `nix develop` brings colmena /
@@ -142,5 +231,5 @@ in
         SOPS_AGE_KEY_FILE = cfg.sopsAgeKeyFile;
       };
     };
-  };
+  });
 }
