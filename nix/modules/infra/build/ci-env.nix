@@ -85,6 +85,19 @@ in
       };
     };
 
+    github = {
+      accessTokensFile = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+        description = "nix.conf fragment `access-tokens = github.com=<token>`, rendered by the secrets store at runtime; `!include`d so `github:` inputs of private repositories fetch. Null = anonymous.";
+      };
+      netrcFile = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+        description = "netrc (`machine github.com login x-access-token password <token>`) for `git+https` inputs of private repositories; set as nix's `netrc-file`. Null = anonymous.";
+      };
+    };
+
     actImage = mkOption {
       type = types.str;
       default = "nixos-bootstrap:latest";
@@ -121,17 +134,23 @@ in
 
     environment.systemPackages = with pkgs; [
       nix git gh jq curl coreutils gnutar gzip bash
-      act
+      # `act` reads only its per-user actrc (and prompts for an image when
+      # none exists), so the image choice is baked into the command instead:
+      # every user and the runner unit agree on it without a dotfile.
+      (pkgs.writeShellScriptBin "act" ''
+        exec ${pkgs.act}/bin/act -P ubuntu-latest=${cfg.actImage} --pull=false "$@"
+      '')
       opentofu sops age just python3
     ] ++ lib.optional cfg.claude.enable cfg.claude.package
       ++ cfg.extraPackages;
 
-    # `act` reads ~/.actrc; system-wide default so every user and the runner
-    # agree on which image stands in for ubuntu-latest.
-    environment.etc."actrc".text = ''
-      -P ubuntu-latest=${cfg.actImage}
-      --container-daemon-socket unix:///var/run/docker.sock
+    # Private inputs: a token for `github:` fetches (nix.conf access-tokens,
+    # included at daemon start from the runtime secret) and for `git+https`
+    # (netrc). Neither file is in the store.
+    nix.extraOptions = lib.optionalString (cfg.github.accessTokensFile != null) ''
+      !include ${cfg.github.accessTokensFile}
     '';
+    nix.settings.netrc-file = mkIf (cfg.github.netrcFile != null) (toString cfg.github.netrcFile);
     environment.etc."ci/CLAUDE.md".text = cfg.claude.instructions;
     environment.variables.CI_CLAUDE_MD = "/etc/ci/CLAUDE.md";
 

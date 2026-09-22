@@ -77,6 +77,12 @@
   "infra.build.ciEnv.extraPackages": {
     "type": "list of package"
   },
+  "infra.build.ciEnv.github.accessTokensFile": {
+    "type": "null or absolute path"
+  },
+  "infra.build.ciEnv.github.netrcFile": {
+    "type": "null or absolute path"
+  },
   "infra.build.ciEnv.tailscale.authKeyFile": {
     "type": "null or absolute path"
   },

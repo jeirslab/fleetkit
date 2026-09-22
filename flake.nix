@@ -437,6 +437,9 @@
       # (nixpkgs + nixos-generators + modules-as-arguments); never imports the
       # fleet/module eval path.
       images = import ./nix/images/deployer/lib { inherit nixpkgs nixos-generators; };
+      # The CI environment as an OCI job image for `act` / `container:` jobs
+      # (the ciEnv profile's toolchain at /bin; not a bootable rootfs).
+      mkCiImage = import ./nix/lib/ci-image.nix;
     };
 
     # Generic NixOS modules + the fleet schema, importable piecemeal by
