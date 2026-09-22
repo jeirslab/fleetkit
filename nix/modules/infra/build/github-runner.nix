@@ -194,8 +194,30 @@ in
           umask 077; printf '%s' "$rtok" > "${mintedToken}.tmp" && mv "${mintedToken}.tmp" "${mintedToken}"
         '';
       };
+      # The same App, as a token any job on this host may use to read the org's
+      # own repositories (the private engine, above all): prints an installation
+      # token for the runner URL's organization. The org workflows call it on a
+      # self-hosted runner so a consumer needs no ORG_APP_PRIVATE_KEY secret.
+      orgAppToken = pkgs.writeShellApplication {
+        name = "org-app-token";
+        runtimeInputs = with pkgs; [ coreutils openssl curl jq ];
+        text = ''
+          b64() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+          now=$(date +%s)
+          header=$(printf '{"alg":"RS256","typ":"JWT"}' | b64)
+          payload=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((now - 60))" "$((now + 540))" "${cfg.app.id}" | b64)
+          sig=$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -sign "${cfg.app.privateKeyFile}" | b64)
+          jwt="$header.$payload.$sig"
+          api() { curl -fsS -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$@"; }
+          inst=$(api -H "Authorization: Bearer $jwt" https://api.github.com/app/installations \
+                 | jq -r --arg org "${org}" '.[] | select(.account.login == $org) | .id' | head -n1)
+          [ -n "$inst" ] || { echo "org-app-token: App ${cfg.app.id} is not installed on ${org}" >&2; exit 1; }
+          api -X POST -H "Authorization: Bearer $jwt" "https://api.github.com/app/installations/$inst/access_tokens" | jq -r .token
+        '';
+      };
     in
     {
+    environment.systemPackages = lib.optional useApp orgAppToken;
     assertions = [
       {
         assertion = useApp || cfg.tokenFile != null;
