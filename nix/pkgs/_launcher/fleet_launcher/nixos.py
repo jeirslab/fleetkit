@@ -422,6 +422,21 @@ def _expected_system(root, name: str) -> tuple[str | None, str]:
     return json.loads(out.stdout.strip()), ""
 
 
+def _system_label(path: str) -> str:
+    """``nixos-system-<hostName>-<rest>`` from a system store path, or the
+    basename when it is not shaped like one."""
+    base = path.rsplit("/", 1)[-1]
+    return base.split("-", 1)[1] if "-" in base else base
+
+
+def _system_belongs_to(path: str, name: str) -> bool:
+    """Whether a running system path was built for node ``name``: NixOS names
+    the toplevel ``nixos-system-<networking.hostName>-<version>``, and the
+    hive sets hostName to the node name. A mismatch means the address is
+    answered by some other machine."""
+    return _system_label(path).startswith(f"nixos-system-{name}-")
+
+
 def _running_system(ip: str, *, timeout: int = 10) -> tuple[str | None, str]:
     """What ``ip`` is running now: the target of ``/run/current-system``.
     Returns ``(path, error)``; ``path`` is None when the host does not answer."""
@@ -538,6 +553,7 @@ def apply_changed(skips: tuple[str, ...], onlys: tuple[str, ...], unreachable: s
     changed: list[str] = []
     eval_failed: list[str] = []
     down: list[str] = []
+    imposters: list[str] = []
     t = Table(title="deploy plan")
     t.add_column("host", style="cyan")
     t.add_column("state", style="bold")
@@ -551,6 +567,14 @@ def apply_changed(skips: tuple[str, ...], onlys: tuple[str, ...], unreachable: s
         elif have is None:
             down.append(name)
             t.add_row(name, "[yellow]unreachable[/yellow]", herr)
+        elif not _system_belongs_to(have, name):
+            # The address answered, but with another host's system: an IP
+            # collision (two estates declaring the same address, a guest
+            # re-provisioned under a new name). Deploying would overwrite a
+            # machine that is not ours — never, whatever the flags say.
+            imposters.append(name)
+            t.add_row(name, "[red]wrong host[/red]",
+                      f"runs {_system_label(have)} — not {name}; refusing")
         elif want == have:
             t.add_row(name, "[green]current[/green]", want.rsplit("/", 1)[-1])
         else:
@@ -560,6 +584,11 @@ def apply_changed(skips: tuple[str, ...], onlys: tuple[str, ...], unreachable: s
     console.print(t)
 
     rc = 0
+    if imposters:
+        console.print(f"[red]{len(imposters)} address(es) answer as another host:[/red] "
+                      f"{', '.join(imposters)} — an IP collision; resolve it in the "
+                      f"fleet declarations, nothing is deployed there")
+        rc = 1
     if eval_failed:
         console.print(f"[red]{len(eval_failed)} host(s) do not evaluate:[/red] "
                       f"{', '.join(eval_failed)} — fix them or pass --skip")

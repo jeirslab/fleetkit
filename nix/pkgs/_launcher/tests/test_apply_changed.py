@@ -21,24 +21,29 @@ def fleet_env(monkeypatch, tmp_path):
         "beta": {"ip": "10.0.0.2", "vmid": 2},
         "gamma": {"ip": "", "internal_ip": "10.9.0.3", "vmid": 3},
         "delta": {"ip": "10.0.0.4", "vmid": 4},
+        "epsilon": {"ip": "10.0.0.5", "vmid": 5},
     }
     (cache / "hosts.json").write_text(json.dumps(hosts))
     monkeypatch.setattr(nixos, "find_project_root", lambda: tmp_path)
     monkeypatch.setattr(nixos, "fleet_cache_dir", lambda root=None: cache)
     monkeypatch.setattr(nixos, "_refresh_inventory", lambda: None)
-    monkeypatch.setattr(nixos, "_hive_node_names", lambda root: ["alpha", "beta", "delta", "gamma"])
+    monkeypatch.setattr(nixos, "_hive_node_names",
+                        lambda root: ["alpha", "beta", "delta", "epsilon", "gamma"])
 
     expected = {
-        "alpha": ("/nix/store/aaa-nixos-system-alpha", ""),
-        "beta": ("/nix/store/bbb2-nixos-system-beta", ""),
+        "alpha": ("/nix/store/aaa-nixos-system-alpha-lxc-26.11", ""),
+        "beta": ("/nix/store/bbb2-nixos-system-beta-lxc-26.11", ""),
         "gamma": (None, "error: infinite recursion encountered"),
-        "delta": ("/nix/store/ddd-nixos-system-delta", ""),
+        "delta": ("/nix/store/ddd-nixos-system-delta-lxc-26.11", ""),
+        "epsilon": ("/nix/store/eee-nixos-system-epsilon-lxc-26.11", ""),
     }
     running = {
-        "10.0.0.1": ("/nix/store/aaa-nixos-system-alpha", ""),
-        "10.0.0.2": ("/nix/store/bbb1-nixos-system-beta", ""),
-        "10.9.0.3": ("/nix/store/ggg-nixos-system-gamma", ""),
+        "10.0.0.1": ("/nix/store/aaa-nixos-system-alpha-lxc-26.11", ""),
+        "10.0.0.2": ("/nix/store/bbb1-nixos-system-beta-lxc-26.11", ""),
+        "10.9.0.3": ("/nix/store/ggg-nixos-system-gamma-lxc-26.11", ""),
         "10.0.0.4": (None, "ssh: connect to host 10.0.0.4 port 22: No route to host"),
+        # epsilon's address answers, but as somebody else's machine.
+        "10.0.0.5": ("/nix/store/zzz-nixos-system-other-estate-box-lxc-26.11", ""),
     }
     monkeypatch.setattr(nixos, "_expected_system", lambda root, n: expected[n])
     monkeypatch.setattr(nixos, "_running_system", lambda ip, timeout=10: running[ip])
@@ -62,15 +67,23 @@ def _run(*args):
 
 
 def test_eval_failure_and_unreachable_fail_the_run(fleet_env):
-    r = _run("--dry-run")
+    r = _run("--dry-run", "--skip", "epsilon")
     assert r.exit_code == 1
     assert "gamma" in r.output and "do not evaluate" in r.output
     assert "delta" in r.output and "unreachable" in r.output
     assert fleet_env == []
 
 
+def test_an_address_answering_as_another_host_is_refused_whatever_the_flags(fleet_env):
+    r = _run("--skip", "gamma", "--unreachable", "deploy")
+    assert r.exit_code == 1
+    assert "wrong host" in r.output and "other-estate-box" in r.output
+    assert "IP collision" in r.output
+    assert fleet_env == []  # nothing deployed anywhere, not even the honest hosts
+
+
 def test_skip_and_unreachable_skip_deploy_only_the_changed_host(fleet_env):
-    r = _run("--skip", "gamma", "--unreachable", "skip")
+    r = _run("--skip", "gamma", "--skip", "epsilon", "--unreachable", "skip")
     assert r.exit_code == 0, r.output
     assert "leaving out unreachable: delta" in r.output
     assert len(fleet_env) == 1
@@ -82,14 +95,14 @@ def test_skip_and_unreachable_skip_deploy_only_the_changed_host(fleet_env):
 
 
 def test_unreachable_deploy_includes_the_silent_host(fleet_env):
-    r = _run("--skip", "gamma", "--unreachable", "deploy", "--reboot")
+    r = _run("--skip", "gamma", "--skip", "epsilon", "--unreachable", "deploy", "--reboot")
     assert r.exit_code == 0, r.output
     cmd = fleet_env[0]
     assert "beta" in cmd and "delta" in cmd and "--reboot" in cmd
 
 
 def test_dry_run_reports_without_deploying(fleet_env):
-    r = _run("--skip", "gamma", "--unreachable", "skip", "--dry-run")
+    r = _run("--skip", "gamma", "--skip", "epsilon", "--unreachable", "skip", "--dry-run")
     assert r.exit_code == 0, r.output
     assert "deploying 1 host(s): beta" in r.output
     assert fleet_env == []
@@ -109,7 +122,7 @@ def test_only_unknown_host_is_an_error(fleet_env):
 
 
 def test_build_on_target_goes_through_apply_remote(fleet_env):
-    r = _run("--skip", "gamma", "--unreachable", "skip", "--build-on-target", "--reboot")
+    r = _run("--skip", "gamma", "--skip", "epsilon", "--unreachable", "skip", "--build-on-target", "--reboot")
     assert r.exit_code == 0, r.output
     cmd = fleet_env[0]
     assert cmd[:5] == ["fleet", "deploy", "nixos", "apply", "remote"]
