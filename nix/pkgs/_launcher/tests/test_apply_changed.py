@@ -46,6 +46,8 @@ def fleet_env(monkeypatch, tmp_path):
         "10.0.0.5": ("/nix/store/zzz-nixos-system-other-estate-box-lxc-26.11", ""),
     }
     monkeypatch.setattr(nixos, "_expected_system", lambda root, n: expected[n])
+    monkeypatch.setattr(nixos, "_expected_systems_bulk",
+                        lambda root, ns: {n: expected[n] for n in ns})
     monkeypatch.setattr(nixos, "_running_system", lambda ip, timeout=10: running[ip])
 
     calls: list[list[str]] = []
@@ -119,6 +121,13 @@ def test_only_unknown_host_is_an_error(fleet_env):
     r = _run("--only", "omega")
     assert r.exit_code == 1
     assert "not a node of the hive: omega" in r.output
+
+
+def test_jobs_zero_evaluates_the_hive_in_one_process(fleet_env):
+    r = _run("--skip", "gamma", "--skip", "epsilon", "--unreachable", "skip", "--jobs", "0", "--dry-run")
+    assert r.exit_code == 0, r.output
+    assert "in one process" in r.output
+    assert "deploying 1 host(s): beta" in r.output
 
 
 def test_build_on_target_goes_through_apply_remote(fleet_env):

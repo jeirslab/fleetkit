@@ -422,6 +422,23 @@ def _expected_system(root, name: str) -> tuple[str | None, str]:
     return json.loads(out.stdout.strip()), ""
 
 
+def _expected_systems_bulk(root, names: list[str]) -> dict[str, tuple[str | None, str]]:
+    """All of ``names`` in ONE colmena process: nixpkgs and the shared modules
+    are evaluated once instead of once per node, which is most of the cost.
+    Needs the memory for the whole hive (a few GB for ~25 nodes); one node
+    that fails to evaluate fails the whole call, so skip such nodes."""
+    sel = " ".join(f'"{n}" = null;' for n in names)
+    out = _colmena_eval(
+        root,
+        "{ nodes, ... }: builtins.mapAttrs (_: n: n.config.system.build.toplevel.outPath) "
+        f"(builtins.intersectAttrs {{ {sel} }} nodes)")
+    if out.returncode != 0:
+        tail = "\n".join(out.stderr.strip().splitlines()[-3:])
+        return {n: (None, tail) for n in names}
+    paths = json.loads(out.stdout)
+    return {n: (paths[n], "") if n in paths else (None, "absent from the hive") for n in names}
+
+
 def _system_label(path: str) -> str:
     """``nixos-system-<hostName>-<rest>`` from a system store path, or the
     basename when it is not shaped like one."""
@@ -463,8 +480,11 @@ def _running_system(ip: str, *, timeout: int = 10) -> tuple[str | None, str]:
               help="A host that does not answer SSH: fail the run, leave it "
                    "out, or deploy it anyway (colmena will then fail on it).")
 @click.option("--jobs", type=int, default=2, show_default=True, metavar="N",
-              help="Concurrent host evaluations. Each is a nix process of its "
-                   "own; two fit an 8 GB runner.")
+              help="Concurrent host evaluations, one nix process each (two fit "
+                   "an 8 GB runner). 0 = evaluate the whole hive in ONE process: "
+                   "nixpkgs is evaluated once, not per node — far faster, needs "
+                   "the memory for every node at once, and one node that does "
+                   "not evaluate fails the lot (use --skip).")
 @click.option("--parallel", type=int, default=4, show_default=True, metavar="N",
               help="Concurrent host deploys once the changed set is known.")
 @click.option("--dry-run", is_flag=True,
@@ -524,17 +544,25 @@ def apply_changed(skips: tuple[str, ...], onlys: tuple[str, ...], unreachable: s
         console.print("[yellow]no hosts to consider[/yellow]")
         return
 
-    console.print(f"[dim]evaluating {len(names)} host closure(s), {jobs} at a time…[/dim]")
     expected: dict[str, tuple[str | None, str]] = {}
-    with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
-        futures = {pool.submit(_expected_system, root, n): n for n in names}
-        for fut in as_completed(futures):
-            name = futures[fut]
-            expected[name] = fut.result()
+    if jobs <= 0:
+        console.print(f"[dim]evaluating {len(names)} host closure(s) in one process…[/dim]")
+        expected = _expected_systems_bulk(root, names)
+        for name in names:
             path, _err = expected[name]
-            # One line per host as it lands: a CI log shows progress, not silence.
             console.print(f"  {name}: " + (f"[dim]{path.rsplit('/', 1)[-1]}[/dim]" if path
                                             else "[red]eval failed[/red]"))
+    else:
+        console.print(f"[dim]evaluating {len(names)} host closure(s), {jobs} at a time…[/dim]")
+        with ThreadPoolExecutor(max_workers=jobs) as pool:
+            futures = {pool.submit(_expected_system, root, n): n for n in names}
+            for fut in as_completed(futures):
+                name = futures[fut]
+                expected[name] = fut.result()
+                path, _err = expected[name]
+                # One line per host as it lands: a CI log shows progress, not silence.
+                console.print(f"  {name}: " + (f"[dim]{path.rsplit('/', 1)[-1]}[/dim]" if path
+                                                else "[red]eval failed[/red]"))
 
     def _probe(name: str) -> tuple[str | None, str]:
         entry = hosts.get(name) or {}
