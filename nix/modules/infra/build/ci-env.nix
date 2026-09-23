@@ -140,6 +140,11 @@ in
 
     # -- toolchain ---------------------------------------------------------
     nix.settings.experimental-features = lib.mkDefault [ "nix-command" "flakes" ];
+    # With a remote builder declared, nix still builds LOCALLY whenever a
+    # local slot is free — the remote is a spillover, not the default. A CI
+    # host is not where closures get compiled: no local slots, so every
+    # build that is not a cache hit goes to the builder.
+    nix.settings.max-jobs = mkIf (config.infra.build.remote.enable or false) (lib.mkDefault 0);
     # Claude Code and some job tooling ship dynamically linked binaries that
     # expect a conventional loader; nix-ld provides one without patching.
     programs.nix-ld.enable = true;

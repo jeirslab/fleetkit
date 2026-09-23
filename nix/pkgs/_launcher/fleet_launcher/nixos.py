@@ -130,8 +130,11 @@ def _check_remote_builder() -> None:
     # Find builder IP
     builder_ip = None
     for _name, meta in hosts.items():
-        if "builder" in (meta.get("tags") or []) and meta.get("ip"):
-            builder_ip = meta["ip"]
+        # A single-internal builder leaves `ip` empty; its internal_ip is
+        # the reachable one (the same fallback `fleet remote` applies).
+        addr = meta.get("ip") or meta.get("internal_ip")
+        if "builder" in (meta.get("tags") or []) and addr:
+            builder_ip = addr
             break
 
     if not builder_ip:

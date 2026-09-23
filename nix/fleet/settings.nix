@@ -347,6 +347,20 @@
             reads PG_CONN_STR from the environment for exactly this reason.
           '';
         };
+        peerConnStrSopsPaths = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          example = [ ''["dbs"]["xgcs-tofu"]["conn_str"]'' ];
+          description = ''
+            SOPS paths to the connection strings of OTHER state backends whose
+            guests share this fleet's cluster — another fleet declared in its
+            own repository, with its own backend, on the same hypervisors.
+            Each hands out addresses and vmids on its own, so `fleet deploy tf
+            reservations` and the preflight before every plan/apply read these
+            backends too and refuse a declaration that collides with a guest
+            any of them holds. Read-only; exported as PG_PEER_CONN_STRS.
+          '';
+        };
       };
 
       perStack = lib.mkOption {

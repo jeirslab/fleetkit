@@ -52,6 +52,7 @@
   "deploy tf preview",
   "deploy tf refresh",
   "deploy tf rekey",
+  "deploy tf reservations",
   "deploy tf state-export",
   "deploy tf state-mv",
   "deploy tf state-pull",
