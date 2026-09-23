@@ -165,6 +165,26 @@ in
       !include ${cfg.github.accessTokensFile}
     '';
     nix.settings.netrc-file = mkIf (cfg.github.netrcFile != null) (toString cfg.github.netrcFile);
+    # nix's netrc-file serves only nix's own HTTP fetches; a `git+https` input
+    # is cloned by git, which never reads it and dies on "could not read
+    # Username". So git gets a credential helper that answers from the same
+    # netrc (machine/login/password lines) for the host git asks about — the
+    # token stays in the runtime file, the helper in the store holds only its
+    # path. System-wide (/etc/gitconfig), so the runner unit and any user see it.
+    programs.git = mkIf (cfg.github.netrcFile != null) {
+      enable = true;
+      config.credential.helper = toString (pkgs.writeShellScript "git-credential-netrc" ''
+        [ "$1" = get ] || exit 0
+        host=""
+        while IFS= read -r line; do
+          case "$line" in host=*) host="''${line#host=}" ;; esac
+        done
+        [ -n "$host" ] || exit 0
+        ${pkgs.gawk}/bin/awk -v h="$host" \
+          '$1=="machine"{m=($2==h)} m&&$1=="login"{print "username=" $2} m&&$1=="password"{print "password=" $2; exit}' \
+          ${cfg.github.netrcFile}
+      '');
+    };
     # Deploy targets: one identity for the fleet's address ranges, offered to
     # nothing else. `accept-new` records each host key on first contact — a
     # changed key later still refuses, as it should.
