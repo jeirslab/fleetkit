@@ -486,6 +486,11 @@ in {
     }) (meta.interfaces or []);
     ssh_groups = meta.ssh_groups or [ "platform-admins" ];
     sudo_groups = meta.sudo_groups or [];
+    # The declared size, so a host's own modules can size themselves by it
+    # (mkHosts injects both as fleet.self.cpuCores / memoryMb): a runner
+    # decides how many jobs it takes from what the CT was given.
+    cpu_cores = meta.cpu_cores or null;
+    memory_mb = meta.memory_mb or null;
   }) enabledCompute;
 
   # SSH client view of the fleet, derived from hostsJson: every host with a

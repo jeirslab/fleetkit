@@ -112,6 +112,63 @@ in
       description = "Extra runner labels. The deploy workflow targets these via `runs-on: [self-hosted, …]`.";
     };
 
+    count = mkOption {
+      type = types.either (types.enum [ "auto" ]) types.ints.positive;
+      default = "auto";
+      example = 3;
+      description = ''
+        Runner instances on this host. One ephemeral runner takes one job at a
+        time, so an org whose gate, guardrails and deploy all target the same
+        label serialises them behind each other; N instances take N jobs. Every
+        instance carries the same labels, token source and environment; the
+        second and later are named `<name>-2`, `<name>-3`, … on GitHub and
+        `fleet-deploy-2`, … as services.
+
+        `"auto"` sizes by what the guest was declared with
+        (`fleet.compute.<name>.cpu_cores` / `memory_mb`, reaching the host as
+        `fleet.self.cpuCores` / `memoryMb`): the smaller of one job per two
+        cores and one job per `memoryPerJobMb` (6 GB: a whole-hive evaluation), never below one. A host with
+        no fleet entry gets one. `instances` shows the result.
+      '';
+    };
+
+    memoryPerJobMb = mkOption {
+      type = types.ints.positive;
+      default = 6144;
+      description = ''
+        What one job is assumed to need, for `count = "auto"`. A job on this
+        runner is mostly a nix evaluation — a whole hive in one process is a
+        few GB — so an estate whose gate is one big `nix flake check` raises
+        this for fewer, fatter slots; one whose jobs are small guardrails may
+        lower it.
+      '';
+    };
+
+    instances = mkOption {
+      type = types.ints.positive;
+      readOnly = true;
+      internal = true;
+      default =
+        if cfg.count != "auto" then cfg.count
+        else
+          let
+            self = config.fleet.self or { };
+            cores = self.cpuCores or null;
+            mem = self.memoryMb or null;
+            byCores = if cores == null then 1 else cores / 2;
+            byMem = if mem == null then byCores else mem / cfg.memoryPerJobMb;
+          in lib.max 1 (lib.min byCores byMem);
+      description = "The runner count in effect: `count` when numeric, else what `\"auto\"` derived from the host's declared size.";
+    };
+
+    serviceNames = mkOption {
+      type = types.listOf types.str;
+      readOnly = true;
+      internal = true;
+      default = map (i: if i == 1 then "fleet-deploy" else "fleet-deploy-${toString i}") (lib.range 1 cfg.instances);
+      description = "The `services.github-runners.<name>` this module defines — for other modules (ciEnv) that configure every instance.";
+    };
+
     user = mkOption {
       type = types.str;
       default = "root";
@@ -247,36 +304,44 @@ in
     # oneshot without RemainAfterExit is inactive once done, so a dependent
     # unit's next start runs it again -- which is exactly the ephemeral
     # re-registration cadence.
-    systemd.services.github-runner-fleet-deploy-token = mkIf useApp {
-      description = "Mint a GitHub Actions runner registration token from the org App";
-      wants = [ "network-online.target" ];
-      after = [ "network-online.target" ];
-      serviceConfig = {
-        Type = "oneshot";
-        ExecStart = "${mint}/bin/github-runner-app-token";
+    # Every instance re-mints (or reuses) the registration token before it
+    # starts; the oneshot is idempotent and the file write is atomic, so N
+    # instances starting together are fine.
+    systemd.services = mkIf useApp ({
+      github-runner-fleet-deploy-token = {
+        description = "Mint a GitHub Actions runner registration token from the org App";
+        wants = [ "network-online.target" ];
+        after = [ "network-online.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = "${mint}/bin/github-runner-app-token";
+        };
       };
-    };
-    systemd.services.github-runner-fleet-deploy = mkIf useApp {
+    } // lib.genAttrs (map (n: "github-runner-${n}") cfg.serviceNames) (_: {
       requires = [ "github-runner-fleet-deploy-token.service" ];
       after = [ "github-runner-fleet-deploy-token.service" ];
-    };
+    }));
 
-    services.github-runners.fleet-deploy = {
-      enable = true;
-      inherit (cfg) url name ephemeral workDir user;
-      # mkDefault: a host that already sets services.github-runners.<n>.package by hand
-      # (the way the retirement was first worked around) keeps working until it moves
-      # to infra.build.githubRunner.package.
-      package = lib.mkDefault cfg.package;
-      tokenFile = if useApp then mintedToken else cfg.tokenFile;
-      extraLabels = cfg.labels;
-      replace = true;
-      # git + nix are enough; the workflow's `nix develop` brings colmena /
-      # tofu / sops / fleet from the checked-out flake.
-      extraPackages = [ pkgs.git pkgs.nix ] ++ cfg.extraPackages;
-      extraEnvironment = lib.optionalAttrs (cfg.sopsAgeKeyFile != null) {
-        SOPS_AGE_KEY_FILE = cfg.sopsAgeKeyFile;
-      };
-    };
+    services.github-runners = lib.listToAttrs (map (svc:
+      let
+        suffix = lib.removePrefix "fleet-deploy" svc;   # "" for the first, "-2", "-3", …
+      in lib.nameValuePair svc {
+        enable = true;
+        inherit (cfg) url ephemeral workDir user;
+        name = if cfg.name == null then null else "${cfg.name}${suffix}";
+        # mkDefault: a host that already sets services.github-runners.<n>.package by hand
+        # (the way the retirement was first worked around) keeps working until it moves
+        # to infra.build.githubRunner.package.
+        package = lib.mkDefault cfg.package;
+        tokenFile = if useApp then mintedToken else cfg.tokenFile;
+        extraLabels = cfg.labels;
+        replace = true;
+        # git + nix are enough; the workflow's `nix develop` brings colmena /
+        # tofu / sops / fleet from the checked-out flake.
+        extraPackages = [ pkgs.git pkgs.nix ] ++ cfg.extraPackages;
+        extraEnvironment = lib.optionalAttrs (cfg.sopsAgeKeyFile != null) {
+          SOPS_AGE_KEY_FILE = cfg.sopsAgeKeyFile;
+        };
+      }) cfg.serviceNames);
   });
 }

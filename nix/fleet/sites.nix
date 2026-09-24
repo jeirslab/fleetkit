@@ -240,6 +240,20 @@ in
       description = "Label of the `fleet.sites` entry this host belongs to, resolved from its provider instance. null ⇒ the host is in no declared site and inherits every estate-wide value.";
     };
 
+    cpuCores = mkOption {
+      type = types.nullOr types.int;
+      default = null;
+      internal = true;
+      description = "The `cpu_cores` this host was declared with (`fleet.compute.<name>`), injected per host by `mkHosts` from `fleet.hostsJson`; null when the host has no provisioned fleet entry. Modules size themselves by it (infra.build.githubRunner.count = \"auto\").";
+    };
+
+    memoryMb = mkOption {
+      type = types.nullOr types.int;
+      default = null;
+      internal = true;
+      description = "The `memory_mb` this host was declared with, injected like `cpuCores`; null when unknown.";
+    };
+
     settings = {
       network = {
         gateway = mkOption {
