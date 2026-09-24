@@ -149,6 +149,9 @@
   "infra.build.githubRunner.name": {
     "type": "null or string"
   },
+  "infra.build.githubRunner.package": {
+    "type": "package"
+  },
   "infra.build.githubRunner.sopsAgeKeyFile": {
     "type": "null or string"
   },
