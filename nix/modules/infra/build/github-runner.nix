@@ -92,6 +92,20 @@ in
       description = "Runner display name registered with GitHub. null = the host's name.";
     };
 
+    package = mkOption {
+      type = types.package;
+      default = pkgs.github-runner;
+      defaultText = lib.literalExpression "pkgs.github-runner";
+      example = lib.literalExpression "inputs.nixpkgs-unstable.legacyPackages.x86_64-linux.github-runner";
+      description = ''
+        The runner binary. GitHub retires runner releases on its own schedule; a
+        retired one exits with "Runner version vX is deprecated and cannot receive
+        messages", the host looks healthy, and every job for its label queues. A
+        NixOS release pin cannot follow that cadence, so point this at a package set
+        that does (nixpkgs-unstable, or a pinned newer nixpkgs).
+      '';
+    };
+
     labels = mkOption {
       type = types.listOf types.str;
       default = [ "fleet-deploy" ];
@@ -250,6 +264,10 @@ in
     services.github-runners.fleet-deploy = {
       enable = true;
       inherit (cfg) url name ephemeral workDir user;
+      # mkDefault: a host that already sets services.github-runners.<n>.package by hand
+      # (the way the retirement was first worked around) keeps working until it moves
+      # to infra.build.githubRunner.package.
+      package = lib.mkDefault cfg.package;
       tokenFile = if useApp then mintedToken else cfg.tokenFile;
       extraLabels = cfg.labels;
       replace = true;
