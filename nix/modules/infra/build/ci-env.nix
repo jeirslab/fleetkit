@@ -208,13 +208,12 @@ in
     # When the runner module is on this host, its unit loads the agent's
     # token file and sees the same tools. The runner runs as its own user
     # (root by default), so the Docker socket is reachable.
-    services.github-runners = mkIf (config.infra.build.githubRunner.enable or false) {
-      fleet-deploy = {
+    services.github-runners = mkIf (config.infra.build.githubRunner.enable or false)
+      (lib.genAttrs config.infra.build.githubRunner.serviceNames (_: {
         extraPackages = config.environment.systemPackages;
         serviceOverrides = mkIf (cfg.claude.environmentFile != null) {
           EnvironmentFile = cfg.claude.environmentFile;
         };
-      };
-    };
+      }));
   };
 }

@@ -134,6 +134,9 @@
   "infra.build.githubRunner.app.privateKeyFile": {
     "type": "null or absolute path"
   },
+  "infra.build.githubRunner.count": {
+    "type": "positive integer, meaning >0"
+  },
   "infra.build.githubRunner.enable": {
     "type": "boolean"
   },
@@ -151,6 +154,9 @@
   },
   "infra.build.githubRunner.package": {
     "type": "package"
+  },
+  "infra.build.githubRunner.serviceNames": {
+    "type": "list of string"
   },
   "infra.build.githubRunner.sopsAgeKeyFile": {
     "type": "null or string"
