@@ -263,7 +263,11 @@ in
 
     services.github-runners.fleet-deploy = {
       enable = true;
-      inherit (cfg) url name ephemeral workDir user package;
+      inherit (cfg) url name ephemeral workDir user;
+      # mkDefault: a host that already sets services.github-runners.<n>.package by hand
+      # (the way the retirement was first worked around) keeps working until it moves
+      # to infra.build.githubRunner.package.
+      package = lib.mkDefault cfg.package;
       tokenFile = if useApp then mintedToken else cfg.tokenFile;
       extraLabels = cfg.labels;
       replace = true;
