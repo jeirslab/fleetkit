@@ -135,7 +135,7 @@
     "type": "null or absolute path"
   },
   "infra.build.githubRunner.count": {
-    "type": "positive integer, meaning >0"
+    "type": "value \"auto\" (singular enum) or (positive integer, meaning >0)"
   },
   "infra.build.githubRunner.enable": {
     "type": "boolean"
@@ -146,8 +146,14 @@
   "infra.build.githubRunner.extraPackages": {
     "type": "list of package"
   },
+  "infra.build.githubRunner.instances": {
+    "type": "positive integer, meaning >0"
+  },
   "infra.build.githubRunner.labels": {
     "type": "list of string"
+  },
+  "infra.build.githubRunner.memoryPerJobMb": {
+    "type": "positive integer, meaning >0"
   },
   "infra.build.githubRunner.name": {
     "type": "null or string"

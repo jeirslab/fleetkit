@@ -132,6 +132,14 @@ in
           # injection supplies. Same mechanism as internalIp above.
           ++ nixpkgs.lib.optional (providerInstance != "") ({ ... }: {
             fleet.self.providerInstance = providerInstance;
+          })
+          # The declared size, for modules that scale with the guest they run
+          # on (the runner's `count = "auto"`). Same mechanism as above.
+          ++ nixpkgs.lib.optional ((rt.cpu_cores or null) != null) ({ ... }: {
+            fleet.self.cpuCores = rt.cpu_cores;
+          })
+          ++ nixpkgs.lib.optional ((rt.memory_mb or null) != null) ({ ... }: {
+            fleet.self.memoryMb = rt.memory_mb;
           });
           tags = _tags rt;
         } // (

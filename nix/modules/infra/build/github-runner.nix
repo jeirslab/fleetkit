@@ -113,8 +113,8 @@ in
     };
 
     count = mkOption {
-      type = types.ints.positive;
-      default = 1;
+      type = types.either (types.enum [ "auto" ]) types.ints.positive;
+      default = "auto";
       example = 3;
       description = ''
         Runner instances on this host. One ephemeral runner takes one job at a
@@ -123,14 +123,49 @@ in
         instance carries the same labels, token source and environment; the
         second and later are named `<name>-2`, `<name>-3`, … on GitHub and
         `fleet-deploy-2`, … as services.
+
+        `"auto"` sizes by what the guest was declared with
+        (`fleet.compute.<name>.cpu_cores` / `memory_mb`, reaching the host as
+        `fleet.self.cpuCores` / `memoryMb`): the smaller of one job per two
+        cores and one job per `memoryPerJobMb` (6 GB: a whole-hive evaluation), never below one. A host with
+        no fleet entry gets one. `instances` shows the result.
       '';
+    };
+
+    memoryPerJobMb = mkOption {
+      type = types.ints.positive;
+      default = 6144;
+      description = ''
+        What one job is assumed to need, for `count = "auto"`. A job on this
+        runner is mostly a nix evaluation — a whole hive in one process is a
+        few GB — so an estate whose gate is one big `nix flake check` raises
+        this for fewer, fatter slots; one whose jobs are small guardrails may
+        lower it.
+      '';
+    };
+
+    instances = mkOption {
+      type = types.ints.positive;
+      readOnly = true;
+      internal = true;
+      default =
+        if cfg.count != "auto" then cfg.count
+        else
+          let
+            self = config.fleet.self or { };
+            cores = self.cpuCores or null;
+            mem = self.memoryMb or null;
+            byCores = if cores == null then 1 else cores / 2;
+            byMem = if mem == null then byCores else mem / cfg.memoryPerJobMb;
+          in lib.max 1 (lib.min byCores byMem);
+      description = "The runner count in effect: `count` when numeric, else what `\"auto\"` derived from the host's declared size.";
     };
 
     serviceNames = mkOption {
       type = types.listOf types.str;
       readOnly = true;
       internal = true;
-      default = map (i: if i == 1 then "fleet-deploy" else "fleet-deploy-${toString i}") (lib.range 1 cfg.count);
+      default = map (i: if i == 1 then "fleet-deploy" else "fleet-deploy-${toString i}") (lib.range 1 cfg.instances);
       description = "The `services.github-runners.<name>` this module defines — for other modules (ciEnv) that configure every instance.";
     };
 
