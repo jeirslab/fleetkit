@@ -53,15 +53,19 @@ let
         zoneIdRef = "\${data.cloudflare_zone.${zoneSafe}.id}";
     in lib.mapAttrs' (subdomain: value:
       let spec = builtins.isAttrs value; in
-      lib.nameValuePair "${safeName subdomain}_${zoneSafe}" {
+      # The map key is the Terraform resource id; the record NAME defaults to it
+      # but a spec may set `name` explicitly so several records can share one name
+      # (e.g. an apex with a verification TXT + an SPF TXT + two MX). `priority`
+      # is emitted only when present (MX/SRV).
+      lib.nameValuePair "${safeName subdomain}_${zoneSafe}" ({
         zone_id         = zoneIdRef;
-        name            = subdomain;
+        name            = if spec then (value.name or subdomain) else subdomain;
         type            = if spec then value.type else "A";
         content         = if spec then value.content else resolveIp value;
         ttl             = if spec then (value.ttl or 1) else 1;     # 1 = Automatic
         proxied         = if spec then (value.proxied or false) else false;  # DNS-only
         allow_overwrite = true;   # Take ownership of pre-existing records
-      }
+      } // lib.optionalAttrs (spec && value ? priority) { priority = value.priority; })
     ) e.records;
 
   allZoneData = lib.listToAttrs (map mkZoneData zoneEntries);
