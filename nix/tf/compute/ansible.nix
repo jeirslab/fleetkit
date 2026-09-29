@@ -79,6 +79,15 @@ let
     then "proxmox_virtual_environment_container.${name}"
     else "proxmox_virtual_environment_vm.${name}";
 
+  # Inventory name = the operational hostname (compute `name`, unless it is
+  # a dotted legacy override, then the key) — same rule as fleet/default.nix
+  # hostLabel. The tofu RESOURCE addresses stay keyed by the fleet key so a
+  # CTID-keyed host is `ansible_host."2011"` with inventory name `nithin`:
+  # `--limit nithin`, host_vars/nithin.yml and inventory_hostname all read
+  # as a machine name, never as a number.
+  hostLabel = key: meta:
+    if hasInfix "." (meta.name or key) then key else meta.name or key;
+
   ansibleManagedHosts = filterAttrs
     (name: meta: (playbookFor name meta) != null)
     computeInStack;
@@ -86,7 +95,7 @@ let
   emitHost = name: meta: {
     name = name;
     value = {
-      name = name;
+      name = hostLabel name meta;
       groups = [ (groupFor name meta) ];
       # Inject the bare minimum host_vars the static inventory provides
       # via group_vars/host_vars. The temp inventory the provider writes
@@ -105,7 +114,7 @@ let
     name = "${name}-ansible";
     value = {
       playbook = playbookFor name meta;
-      name = name;
+      name = hostLabel name meta;
       groups = [ (groupFor name meta) ];
       replayable = true;
       ignore_playbook_failure = false;
