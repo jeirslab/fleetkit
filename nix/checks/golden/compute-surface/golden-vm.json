@@ -431,7 +431,7 @@
         "initialization": {
           "datastore_id": "local-storage",
           "dns": {
-            "domain": "golden.test",
+            "domain": "vm.golden.test",
             "servers": [
               "192.0.2.53",
               "1.1.1.1"
@@ -455,7 +455,7 @@
         "memory": {
           "dedicated": 2048
         },
-        "name": "vm-file",
+        "name": "file-host",
         "network_device": [
           {
             "bridge": "vmbr0",

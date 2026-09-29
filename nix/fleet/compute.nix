@@ -212,7 +212,23 @@ let
         default = [];
         description = "Extra runcmd lines appended after install_nix. YAML quoting is the caller's responsibility.";
       };
-      hostname = lib.mkOption { type = lib.types.str; default = ""; description = "Override hostname (defaults to fleet.compute key)."; };
+      bootcmd = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [];
+        example = lib.literalExpression ''[ "[ sh, -c, \"echo early > /run/marker\" ]" ]'';
+        description = "Extra bootcmd lines (run by cloud-init-local, every boot, before the network is up). Emitted after mask_firstboot's entry and before the data-disk resize entries. YAML quoting is the caller's responsibility.";
+      };
+      mask_firstboot = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Prepend a bootcmd that masks systemd-firstboot.service (ln -sf /dev/null + systemctl mask --now). Stock Debian cloud images ship it enabled and, with an empty /etc/machine-id, it holds sysinit.target on an interactive locale/timezone prompt. Not needed for images prepared by nix/images/debian-cloud, which bake the same mask in.";
+      };
+      install_guest_agent = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Install qemu-guest-agent (cloud-init `packages:` with package_update) and enable it in runcmd. Pair with vm.agent = true so PVE actually talks to it.";
+      };
+      hostname = lib.mkOption { type = lib.types.str; default = ""; description = "Override the cloud-init hostname. Empty = the compute entry's `name` (which itself defaults to the fleet key)."; };
       vyos_config_commands = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [];
@@ -322,7 +338,7 @@ let
       name = lib.mkOption {
         type = lib.types.str;
         default = name;
-        description = "Hostname for the machine (defaults to the fleet attrset key).";
+        description = "Operational hostname for the machine (defaults to the fleet attrset key). Authoritative end to end: the PVE guest name / initialization.hostname, the cloud-init hostname, hostsJson.<key>.hostname, the colmena networking.hostName and the auto DNS A-record label all read this, never the key — so a host keyed by CTID or renamed in place keeps its tofu address and colmena node name.";
       };
 
       cloneFrom = lib.mkOption {
