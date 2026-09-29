@@ -35,13 +35,26 @@ in
     };
 
     appPassword = mkOption {
-      type = types.str;
+      type = types.nullOr types.str;
+      default = null;
       example = "change-me";
       description = ''
-        Password for the application user. WARNING: lands world-readable
-        in the nix store via the provisioning script — acceptable only
-        because the broker is reachable solely from the fleet-internal
-        network. Rotate to a SOPS-sourced mechanism if that changes.
+        Password for the application user as a LITERAL. WARNING: lands
+        world-readable in the nix store via the provisioning script — and
+        in git. Kept for the incumbent hosts that already carry one; new
+        hosts use `appPasswordFile`. Exactly one of the two must be set.
+      '';
+    };
+    appPasswordFile = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = lib.literalExpression ''config.sops.secrets."services/rabbitmq/password".path'';
+      description = ''
+        File holding the application user's password, read at activation
+        by the provisioning script (never in the store, never in git). Point
+        it at a sops-nix secret owned by `rabbitmq` — the setup unit runs as
+        that user — so consumers and the broker share one key in the store.
+        Exactly one of `appPassword` / `appPasswordFile` must be set.
       '';
     };
   };
@@ -50,6 +63,9 @@ in
     assertions = [{
       assertion = config.fleet.settings.domain.internal != null;
       message = "infra.data.rabbitmq.enable is set but fleet.settings.domain.internal is null — the rabbitmq.<domain.internal> management vhost needs it.";
+    } {
+      assertion = (cfg.appPassword != null) != (cfg.appPasswordFile != null);
+      message = "infra.data.rabbitmq: set exactly one of appPassword (literal, incumbent hosts) or appPasswordFile (sops-delivered, new hosts).";
     }];
 
     services.rabbitmq = {
@@ -90,9 +106,16 @@ in
         User = "rabbitmq";
       };
       environment.HOME = "/var/lib/rabbitmq";
+      # The password reaches rabbitmqctl as a shell variable, never as a
+      # literal in the unit: from the file at run time when appPasswordFile
+      # is set (the sops secret must be readable by the rabbitmq user), else
+      # the incumbent literal.
       script = ''
-        ${pkgs.rabbitmq-server}/bin/rabbitmqctl add_user ${cfg.appUser} ${cfg.appPassword} 2>/dev/null || \
-          ${pkgs.rabbitmq-server}/bin/rabbitmqctl change_password ${cfg.appUser} ${cfg.appPassword}
+        ${if cfg.appPasswordFile != null
+          then "pw=\"$(cat ${lib.escapeShellArg cfg.appPasswordFile})\""
+          else "pw=${lib.escapeShellArg cfg.appPassword}"}
+        ${pkgs.rabbitmq-server}/bin/rabbitmqctl add_user ${cfg.appUser} "$pw" 2>/dev/null || \
+          ${pkgs.rabbitmq-server}/bin/rabbitmqctl change_password ${cfg.appUser} "$pw"
         ${pkgs.rabbitmq-server}/bin/rabbitmqctl set_permissions -p / ${cfg.appUser} ".*" ".*" ".*"
         ${pkgs.rabbitmq-server}/bin/rabbitmqctl set_user_tags ${cfg.appUser} management
       '';
