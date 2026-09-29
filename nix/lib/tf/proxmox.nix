@@ -97,6 +97,8 @@ let
   # ── Declared-mode NIC helpers ──
   ifName = i: n: if n.name != null then n.name else "eth${toString i}";
 
+  inherit ((import ./name.nix { inherit lib; })) tfName;
+
   # Operational hostname for a guest: compute `name` when it is a plain
   # label, the fleet key when `name` is a dotted legacy FQDN override (see
   # fleet/default.nix hostLabel — same rule, kept in step by the
@@ -345,7 +347,7 @@ let
     else null;
 
 in rec {
-  inherit mkNetwork mkLifecycle mkProviderRef nixosLxcTemplate net;
+  inherit mkNetwork mkLifecycle mkProviderRef nixosLxcTemplate net tfName;
 
   # ── LXC container emitter ─────────────────────────────────────
   # When `meta.cloneFrom != null`, the container is provisioned by cloning
@@ -540,7 +542,7 @@ in rec {
       '';
     in {
       triggers_replace = [
-        "\${proxmox_virtual_environment_container.${name}.id}"
+        "\${proxmox_virtual_environment_container.${tfName name}.id}"
         (builtins.hashString "sha256" block)
       ];
       provisioner = [{

@@ -14,12 +14,16 @@ let
   containers = lib.filterAttrs (_: c: c.kind == "container") computeInStack;
   vms        = lib.filterAttrs (_: c: c.kind == "vm") computeInStack;
 
-  emitContainers = lib.mapAttrs helpers.mkContainer containers;
-  emitVms        = lib.mapAttrs helpers.mkVm vms;
+  # Resource names go through tfName: a numeric fleet key ("1010") is not a
+  # valid Terraform identifier and renders as `_1010`; every other key is
+  # unchanged (nix/lib/tf/name.nix).
+  byTfName = f: lib.mapAttrs' (n: c: lib.nameValuePair (helpers.tfName n) (f n c));
+  emitContainers = byTfName helpers.mkContainer containers;
+  emitVms        = byTfName helpers.mkVm vms;
 
   # Containers carrying raw lxc.conf lines get a terraform_data companion.
   extraConf = lib.filterAttrs (_: c: (c.lxc_extra_conf or []) != []) containers;
-  emitExtraConf = lib.mapAttrs' (n: c: lib.nameValuePair "${n}-lxc-conf" (helpers.mkLxcExtraConf n c)) extraConf;
+  emitExtraConf = lib.mapAttrs' (n: c: lib.nameValuePair "${helpers.tfName n}-lxc-conf" (helpers.mkLxcExtraConf n c)) extraConf;
 
 in {
   config = lib.mkIf (stackId != null && computeInStack != {}) (

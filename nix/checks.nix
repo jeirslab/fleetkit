@@ -253,6 +253,8 @@ in {
   # the renderer is called directly here) — plus the bootcmd / firstboot /
   # guest-agent additions that ride the same change.
   hostname-independent = pkgs.runCommand "fleetkit-hostname-independent-check" {
+    nativeBuildInputs = [ pkgs.jq ];
+    inherit goldenDir;
     facts = builtins.toJSON (let
       hj = golden.fleetEval.hostsJson."9112";
       nc = golden.nixosConfigurations."9112".config.networking;
@@ -282,6 +284,13 @@ in {
       selfKey = golden.nixosConfigurations."9112".config.fleet.self.key;          # 9112
       inherit dnsDupCaught;                                                       # true
       serviceOnly = !(golden.fleetEval.dnsServiceRecords ? renamed-host);         # no auto records in it
+      # Terraform resource NAME for a key (nix/lib/tf/name.nix): numeric keys
+      # get an underscore, valid identifiers are untouched.
+      tfNameNumeric = (import ./lib/tf/name.nix { lib = pkgs.lib; }).tfName "9112";        # _9112
+      tfNameSame    = (import ./lib/tf/name.nix { lib = pkgs.lib; }).tfName "lxc-internal"; # lxc-internal
+      tfNameDotted  = (import ./lib/tf/name.nix { lib = pkgs.lib; }).tfName "a.b";          # _a-b
+      goldenHasUnderscoreKey = builtins.hasAttr "_9112"
+        (builtins.fromJSON (builtins.readFile (goldenDir + "/golden-lxc.json"))).resource.proxmox_virtual_environment_container;
       selfEntryVmId = golden.nixosConfigurations."9112".config.fleet.compute.${golden.nixosConfigurations."9112".config.fleet.self.key}.vm_id;  # 9112
     });
     snippet = (import ./lib/cloud-init.nix { config = { fleet = golden.fleetEval; }; lib = pkgs.lib; })
@@ -308,6 +317,17 @@ in {
     grep -q '"selfKey":"9112"' "$factsPath"
     grep -q '"dnsDupCaught":true' "$factsPath"
     grep -q '"serviceOnly":true' "$factsPath"
+    grep -q '"tfNameNumeric":"_9112"' "$factsPath"
+    grep -q '"tfNameSame":"lxc-internal"' "$factsPath"
+    grep -q '"tfNameDotted":"_a-b"' "$factsPath"
+    grep -q '"goldenHasUnderscoreKey":true' "$factsPath"
+    # Every resource NAME in every golden render must be a Terraform
+    # identifier — tofu refuses the whole leaf otherwise ("Invalid resource
+    # name"), which is what a numeric fleet key did before tfName.
+    for g in "$goldenDir"/*.json; do
+      jq -r '.resource // {} | to_entries[] | .value | keys[]' "$g" | grep -vE '^[A-Za-z_][A-Za-z0-9_-]*$' \
+        && { echo "invalid resource name in $g"; exit 1; } || true
+    done
     grep -q '"selfEntryVmId":9112' "$factsPath"
     # cloud-init: hostname from `name`, fqdn from the per-guest domain,
     # bootcmd order (firstboot mask, then the caller's line), guest agent.

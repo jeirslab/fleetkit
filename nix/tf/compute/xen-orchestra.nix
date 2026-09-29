@@ -38,19 +38,20 @@ let
 in {
   config = lib.mkIf (stackId != null && vmsInStack != {}) (lib.mkMerge [
     {
-      resource.xenorchestra_vm = lib.mapAttrs helpers.mkXoVm vmsInStack;
+      # Resource names from keys go through tfName (nix/lib/tf/name.nix).
+      resource.xenorchestra_vm = lib.mapAttrs' (n: c: lib.nameValuePair (helpers.tfName n) (helpers.mkXoVm n c)) vmsInStack;
       # Sibling terraform_data per VM that runs `xo-cli vm.setBootOrder`
       # post-create, enforcing the two-profile boot protocol (INFRA-39):
       # persistent=cnd, transient=dnc. Works around the provider not
       # exposing boot_order on xenorchestra_vm — see comments in
       # nix/lib/tf/xen-orchestra.nix:mkBootOrderFix.
       resource.terraform_data =
-        lib.mapAttrs' (n: c: lib.nameValuePair "${n}-boot-order" (helpers.mkBootOrderFix n c))
+        lib.mapAttrs' (n: c: lib.nameValuePair "${helpers.tfName n}-boot-order" (helpers.mkBootOrderFix n c))
           vmsInStack;
     }
     (lib.mkIf (cloudCfgVms != {}) {
       resource.xenorchestra_cloud_config =
-        lib.mapAttrs helpers.mkXoCloudConfig cloudCfgVms;
+        lib.mapAttrs' (n: c: lib.nameValuePair (helpers.tfName n) (helpers.mkXoCloudConfig n c)) cloudCfgVms;
     })
     (lib.mkIf hasVyosVm {
       locals.vyos_api_token = sopsLib.sopsRef "integrations/vyos/api_token";
