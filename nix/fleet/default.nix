@@ -385,7 +385,7 @@ in {
       default = {};
       internal = true;
       description = ''
-        { name → { hostname, vmid, ip, internal_ip, tags, pve_type,
+        { name → { hostname, domain, vmid, ip, internal_ip, tags, pve_type,
                    cluster?, node_index? } } — serialised to
         .cache/fleet/hosts.json by `fleet inventory generate`, consumed by the
         NixOS side (hosts.nix) and by Colmena's deploy targeting.
@@ -432,7 +432,13 @@ in {
   # shouldn't pollute the inventory, get Colmena targets, or appear
   # in `fleet inventory`.
   config.fleet.hostsJson = mapAttrs (name: meta: {
-    hostname = name;
+    # The operational hostname (compute `name`, default = the key) and the
+    # per-guest DNS domain (compute `dns.domain`; null = none declared, the
+    # consumer falls back to fleet.network.dns_domain). Both are read by
+    # mkHosts/mkColmenaNodes and the DNS projection, so they are the ONE
+    # place a rename lands — the key stays the identity.
+    hostname = meta.name;
+    domain = let d = meta.dns.domain or null; in if d == "" then null else d;
     vmid = meta.vm_id;
     ip = meta.ip;
     internal_ip = meta.internal_ip;

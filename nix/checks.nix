@@ -224,6 +224,69 @@ in {
     touch $out
   '';
 
+  # Hostname independent of the fleet key (jeirslab/homelab#15; ADR-100 §2.1
+  # on the Skrybit consumer). The golden fixture keys one LXC by its CTID
+  # ("9112") with `name = "renamed-host"` and a per-guest `dns.domain`. Every
+  # surface that used to read the KEY must now read the NAME: hostsJson, the
+  # plain nixosConfigurations path, the colmena node (applied as the module
+  # function it is, so mkColmenaNodes itself is what is exercised — the
+  # hive path had `networking.hostName = name` while the plain path did
+  # not, and only a test of BOTH catches that split again), the DNS
+  # projections, and the cloud-init snippet (which the goldens exclude, so
+  # the renderer is called directly here) — plus the bootcmd / firstboot /
+  # guest-agent additions that ride the same change.
+  hostname-independent = pkgs.runCommand "fleetkit-hostname-independent-check" {
+    facts = builtins.toJSON (let
+      hj = golden.fleetEval.hostsJson."9112";
+      nc = golden.nixosConfigurations."9112".config.networking;
+      # mkColmenaNodes yields `{ name, ... }: { ... }` per node; apply it.
+      colmenaNode = golden.colmena."9112" { name = "9112"; };
+      dns = golden.fleetEval;
+    in {
+      hjHostname = hj.hostname;                                  # renamed-host
+      hjDomain = hj.domain;                                      # svc.lab.golden.test
+      hjDefaultDomain = golden.fleetEval.hostsJson.lxc-internal.domain;  # null (none declared)
+      plainHostName = nc.hostName;                               # renamed-host
+      plainDomain = nc.domain;                                   # svc.lab.golden.test
+      plainFqdn = nc.fqdn;                                       # renamed-host.svc.lab.golden.test
+      colmenaHostName = colmenaNode.networking.hostName;         # renamed-host
+      colmenaDomain = colmenaNode.networking.domain.content;     # mkDefault-wrapped
+      colmenaTarget = colmenaNode.deployment.targetHost;         # 192.0.2.112 (key-addressed runtime)
+      dnsByName = dns.dnsRecords.renamed-host;                   # 192.0.2.112
+      dnsNoKey = !(dns.dnsRecords ? "9112");
+      dnsByProvider = dns.dnsRecordsByProvider."proxmox.golden".renamed-host;
+      dnsUnrenamed = dns.dnsRecords.lxc-internal;                # 192.0.2.101 — default path untouched
+    });
+    snippet = (import ./lib/cloud-init.nix { config = { fleet = golden.fleetEval; }; lib = pkgs.lib; })
+      .renderCloudInitSnippet "vm-file" golden.fleetEval.compute.vm-file;
+    passAsFile = [ "facts" "snippet" ];
+  } ''
+    grep -q '"hjHostname":"renamed-host"' "$factsPath"
+    grep -q '"hjDomain":"svc.lab.golden.test"' "$factsPath"
+    grep -q '"hjDefaultDomain":null' "$factsPath"
+    grep -q '"plainHostName":"renamed-host"' "$factsPath"
+    grep -q '"plainDomain":"svc.lab.golden.test"' "$factsPath"
+    grep -q '"plainFqdn":"renamed-host.svc.lab.golden.test"' "$factsPath"
+    grep -q '"colmenaHostName":"renamed-host"' "$factsPath"
+    grep -q '"colmenaDomain":"svc.lab.golden.test"' "$factsPath"
+    grep -q '"colmenaTarget":"192.0.2.112"' "$factsPath"
+    grep -q '"dnsByName":"192.0.2.112"' "$factsPath"
+    grep -q '"dnsNoKey":true' "$factsPath"
+    grep -q '"dnsByProvider":"192.0.2.112"' "$factsPath"
+    grep -q '"dnsUnrenamed":"192.0.2.101"' "$factsPath"
+    # cloud-init: hostname from `name`, fqdn from the per-guest domain,
+    # bootcmd order (firstboot mask, then the caller's line), guest agent.
+    grep -q '^hostname: file-host$' "$snippetPath"
+    grep -q '^fqdn: file-host.vm.golden.test$' "$snippetPath"
+    grep -q '^package_update: true$' "$snippetPath"
+    grep -q '^  - qemu-guest-agent$' "$snippetPath"
+    grep -q 'systemctl mask --now systemd-firstboot.service' "$snippetPath"
+    grep -q 'echo early > /run/golden' "$snippetPath"
+    grep -q 'systemctl, enable, --now, qemu-guest-agent' "$snippetPath"
+    awk '/^bootcmd:/{b=1;next} b&&/firstboot/{f=NR} b&&/run\/golden/{g=NR} /^runcmd:/{b=0} END{exit !(f&&g&&f<g)}' "$snippetPath"
+    touch $out
+  '';
+
   # Render every leaf stack of the example fleet to Terraform JSON and
   # sanity-parse it. Catches emitter regressions that host eval misses
   # (the tf-<slug> packages are only built on demand otherwise).

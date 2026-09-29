@@ -86,6 +86,11 @@ in
       hook_script = "local:snippets/golden-hook.sh"; dns.domain = "";
       lxc_extra_conf = [ "lxc.cgroup2.devices.allow: c 188:* rwm" "lxc.mount.entry: /dev/serial/by-id dev/serial/by-id none bind,optional,create=dir" ]; };
 
+    # ── LXC keyed by id with an independent hostname + domain (ADR-100 §2.1
+    # in Skrybit; jeirslab/homelab#15): initialization.hostname, hostsJson
+    # and the DNS label must say `renamed-host`, never `9112`. ──
+    "9112" = lxc { vm_id = 9112; internal_ip = "192.0.2.112"; name = "renamed-host"; dns.domain = "svc.lab.golden.test"; tags = [ "golden" ]; };
+
     lxc-declared = lxc { vm_id = 9111; internal_ip = "192.0.2.111"; ip = "198.51.100.111"; network_mode = "declared";
       interfaces = [
         { bridge = "vmbr1"; ipv4 = "192.0.2.111/22"; gateway = "192.0.2.1"; vlan = 42; mtu = 1400; mac = "BC:24:11:00:01:11";
@@ -117,11 +122,13 @@ in
     vm-nocloudinit = vm { vm_id = 9209; internal_ip = "192.0.2.209"; image = "import:local:import/appliance.raw";
       network_mode = "declared"; interfaces = [ { bridge = "vmbr0"; ipv4 = "dhcp"; } ];
       cloud_init.enable = false; vm = { bios = "ovmf"; }; };
-    vm-file = vm { vm_id = 9205; internal_ip = "192.0.2.205"; image = "file:local:iso/example-cloud-amd64.qcow2";
-      cloud_init = { users = [ { name = "operator"; ssh_keys = [ "ssh-ed25519 AAAAGOLDEN operator@example.test" ]; } ]; runcmd = [ "echo golden" ]; }; };
+    vm-file = vm { vm_id = 9205; internal_ip = "192.0.2.205"; image = "file:local:iso/example-cloud-amd64.qcow2"; name = "file-host"; dns.domain = "vm.golden.test";
+      cloud_init = { users = [ { name = "operator"; ssh_keys = [ "ssh-ed25519 AAAAGOLDEN operator@example.test" ]; } ]; runcmd = [ "echo golden" ];
+                     bootcmd = [ "[ sh, -c, \"echo early > /run/golden\" ]" ]; mask_firstboot = true; install_guest_agent = true; }; };
   };
 
   config.fleet.hostsRegistry = {
     lxc-internal = { ... }: { infra.networking.singleInterface = true; };
+    "9112" = { ... }: { infra.networking.singleInterface = true; };
   };
 }

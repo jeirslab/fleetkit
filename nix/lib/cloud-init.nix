@@ -104,14 +104,34 @@ in {
         + "          --extra-conf \"extra-trusted-public-keys = nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=\""
       );
       extraRuncmd = map (l: "  - ${l}") ci.runcmd;
-      allRuncmd = nixRuncmd ++ extraRuncmd;
+      allRuncmd = nixRuncmd ++ guestAgentRuncmd ++ extraRuncmd;
       runcmdBlock = lib.optionalString (allRuncmd != []) (
         "\n\nruncmd:\n" + lib.concatStringsSep "\n" allRuncmd
       );
 
-      bootcmdBlock = lib.optionalString (resizeBootcmds != []) (
-        "\n\nbootcmd:\n" + lib.concatStringsSep "\n" resizeBootcmds
+      # Mask systemd-firstboot. Debian's genericcloud images ship it
+      # enabled and, with an empty /etc/machine-id, it stops sysinit.target
+      # on an interactive locale/timezone prompt. bootcmd runs from
+      # cloud-init-local, which is ordered before sysinit.target too but
+      # not against systemd-firstboot itself, so `--now` also stops a
+      # prompt that has already started. Same two commands as the
+      # image-prep path (nix/images/debian-cloud); this is the variant for
+      # a stock upstream image that was never prepared.
+      maskFirstbootBootcmd = lib.optional ci.mask_firstboot
+        "  - [ sh, -c, \"ln -sf /dev/null /etc/systemd/system/systemd-firstboot.service; systemctl mask --now systemd-firstboot.service 2>/dev/null || true\" ]";
+      extraBootcmd = map (l: "  - ${l}") ci.bootcmd;
+      allBootcmd = maskFirstbootBootcmd ++ extraBootcmd ++ resizeBootcmds;
+      bootcmdBlock = lib.optionalString (allBootcmd != []) (
+        "\n\nbootcmd:\n" + lib.concatStringsSep "\n" allBootcmd
       );
+
+      # QEMU guest agent: a package install needs the network, so it is
+      # `packages:` + an enable in runcmd, not bootcmd. PVE's agent=1 on
+      # the VM is the other half (vm.agent in the compute schema).
+      packagesBlock = lib.optionalString ci.install_guest_agent
+        "\n\npackage_update: true\npackages:\n  - qemu-guest-agent";
+      guestAgentRuncmd = lib.optional ci.install_guest_agent
+        "  - [ systemctl, enable, --now, qemu-guest-agent ]";
 
       # VyOS-specific cloud-init config-commands block. VyOS's cloud-init
       # module wraps these in a load/set/commit/save transaction; nothing
@@ -124,7 +144,13 @@ in {
             (cmd: "  - ${builtins.toJSON cmd}") ci.vyos_config_commands
       );
 
-      hostname = if ci.hostname != "" then ci.hostname else vmName;
+      # cloud_init.hostname (explicit) > vmMeta.name (the operational
+      # hostname, defaulting to the fleet key). The FQDN domain follows the
+      # per-guest dns.domain when one is declared, else the fleet-wide one.
+      hostname = if ci.hostname != "" then ci.hostname else vmMeta.name;
+      fqdnDomain =
+        let d = vmMeta.dns.domain or null;
+        in if d != null && d != "" then d else net.dns_domain;
       # final_message shows the user to SSH as. For ref-mode, that's
       # the registry key (== Authentik username); for inline, .name.
       primaryUser =
@@ -137,13 +163,13 @@ in {
     in ''
       #cloud-config
       hostname: ${hostname}
-      fqdn: ${hostname}.${net.dns_domain}
+      fqdn: ${hostname}.${fqdnDomain}
       manage_etc_hosts: true
 
       users:
         - name: root
           ssh_authorized_keys:
-            - ${net.sysadmin_ssh_key}${usersBlock}'' + fsSetupBlock + mountsBlock + writeFilesBlock + bootcmdBlock + runcmdBlock + vyosCommandsBlock + ''
+            - ${net.sysadmin_ssh_key}${usersBlock}'' + fsSetupBlock + mountsBlock + writeFilesBlock + packagesBlock + bootcmdBlock + runcmdBlock + vyosCommandsBlock + ''
 
 
       final_message: "${vmName} first-boot complete in $UPTIME seconds. SSH via ${primaryUser}@${reachAddr}."

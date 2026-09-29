@@ -28,7 +28,12 @@ let
   # would resolve but never route for fleet clients.
   fleetHosts = lib.filterAttrs (_: h: (h.provisioning or "managed") == "managed") cfg.hostsJson;
 
-  autoRecords = lib.mapAttrs (_: _internalIp) fleetHosts;
+  # A-record label = the host's operational hostname (hostsJson.hostname,
+  # compute `name`), which equals the fleet key unless the host was keyed
+  # by id or renamed. serviceAliasMap below still maps to KEYS.
+  byHostname = hs: lib.listToAttrs (lib.mapAttrsToList
+    (k: h: lib.nameValuePair (h.hostname or k) (_internalIp h)) hs);
+  autoRecords = byHostname fleetHosts;
 
   # The same auto records, split by the provider instance that provisions
   # each host. See the option below for why this is not just a convenience.
@@ -37,7 +42,7 @@ let
       (lib.mapAttrsToList (_: h: h.provider_instance or "") fleetHosts));
 
   recordsByProvider = lib.genAttrs providerInstances (inst:
-    lib.mapAttrs (_: _internalIp)
+    byHostname
       (lib.filterAttrs (_: h: (h.provider_instance or "") == inst) fleetHosts));
 
   # service-name → fleet.compute key (resolves to that host's internal IP)

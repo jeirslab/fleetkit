@@ -32,6 +32,12 @@ let
     else
       h.hostname or name;
 
+  # Per-guest DNS domain (hostsJson.domain, from compute dns.domain).
+  # null when none is declared — callers must not fall back to the
+  # fleet-wide search domain here: setting networking.domain on every
+  # existing host would move every closure.
+  _domain = h: if _isRich h then null else (h.domain or null);
+
   # Extract tags list.
   _tags = h:
     if _isRich h then
@@ -87,6 +93,7 @@ in
           providerInstance = rt.provider_instance or "";
         in {
           hostname = _hostname rt name;
+          domain = _domain rt;
           modules = [
             helpersModule
             # A registry entry may be a module FUNCTION, a PATH/string to
@@ -194,7 +201,13 @@ in
             };
             config = {
               nixpkgs.hostPlatform = "x86_64-linux";
-              networking.hostName = h.hostname;
+              # Nested attr, not `//`-merged: a shallow merge of two
+              # `networking.*` attrsets keeps only the second.
+              networking = {
+                hostName = h.hostname;
+              } // nixpkgs.lib.optionalAttrs ((h.domain or null) != null) {
+                domain = nixpkgs.lib.mkDefault h.domain;
+              };
               # Colmena injects `nodes` (the whole hive) via specialArgs;
               # this plain-nixosSystem path has no hive, so give modules
               # that consume `nodes` (e.g. nix/modules/infra/data/pgweb) an
@@ -228,7 +241,16 @@ in
   mkColmenaNodes = { hosts, globalModules ? [], sopsAgeKeyCommand ? null }:
     builtins.mapAttrs (_name: h: { name, ... }: {
       imports = globalModules ++ h.modules;
-      networking.hostName = name;
+      # The node NAME is the fleet key (what `fleet deploy nixos apply host
+      # <key>` targets); the HOSTNAME is the operational name from
+      # hostsJson. Equal by default, different for a CTID-keyed or
+      # renamed host. networking.domain follows the per-guest dns.domain
+      # under mkDefault so a host module's own value still wins.
+      networking = {
+        hostName = h.hostname or name;
+      } // nixpkgs.lib.optionalAttrs ((h.domain or null) != null) {
+        domain = nixpkgs.lib.mkDefault h.domain;
+      };
       deployment = {
         targetHost = h.targetHost;
         targetUser = "root";
