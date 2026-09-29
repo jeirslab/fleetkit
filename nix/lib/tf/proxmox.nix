@@ -561,6 +561,14 @@ in rec {
 
   mkVmAttrs = name: meta:
     let
+      # The VM's own storage: root disk, the legacy dev data disk, the
+      # cloud-init and EFI drives (when they name none themselves) and the
+      # clone target all land where the entry says. `root_disk_datastore`
+      # defaults to fleet.settings.providers.proxmox.defaultDatastore, so an
+      # entry that never set it renders exactly as before; one that did
+      # (a second site whose node has no storage by the fleet-wide name)
+      # was silently ignored here while mkContainer honoured it.
+      ds = meta.root_disk_datastore;
       # ── New-style explicit image dispatch ──
       # If meta.image is set, parse it as either "file:<file_id>" or
       # "clone:<vmid>". Takes precedence over the legacy vm_template +
