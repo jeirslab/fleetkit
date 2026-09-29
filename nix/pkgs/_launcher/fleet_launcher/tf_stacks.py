@@ -1600,11 +1600,20 @@ def _expected_hostname(name: str, body: dict) -> str:
     return init.get("hostname") or name
 
 
-def _verify_pve(vmid: int, node: str, expect: str) -> tuple[bool, str]:
-    """Confirm the object at `vmid` is the one the config means."""
+def _verify_pve(vmid: int, node: str, expect: str,
+                instance: str | None = None) -> tuple[bool, str]:
+    """Confirm the object at `vmid` is the one the config means.
+
+    `instance` is the resource's provider alias (`proxmox.dell-2` → dell-2):
+    the check must reach THAT site's API, not whichever instance the
+    launcher's startup export happened to pick (main._setup_env takes the
+    flat keys or the first instance in sorted order — on a two-site fleet
+    that is the wrong endpoint half the time, and the symptom was every
+    dell-2 row reported "unverified" with a perfectly good token in sops).
+    """
     try:
         from . import pve_api
-        api = pve_api.get_client()
+        api = pve_api.get_client(instance=instance)
         cfg = pve_api.get_container_config(api, int(vmid), node=node)
     except BaseException as e:
         # BaseException, not Exception: pve_api exits the process when
@@ -1626,7 +1635,8 @@ def _verify_pve(vmid: int, node: str, expect: str) -> tuple[bool, str]:
     return "ok", actual
 
 
-def _adopt_rows(wd: Path, verify: bool, in_state: set[str]) -> list[dict]:
+def _adopt_rows(wd: Path, verify: bool, in_state: set[str],
+                allow_updates: bool = False) -> list[dict]:
     cfg = json.loads((wd / "config.tf.json").read_text())
     # cloudflare_record bodies reference their zone via a data-source
     # interpolation, not a literal id, so capture the data.cloudflare_zone
@@ -1714,7 +1724,9 @@ def _adopt_rows(wd: Path, verify: bool, in_state: set[str]) -> list[dict]:
                 continue
             if verify and kind and "/" in str(rid):
                 node, vmid = str(rid).split("/", 1)
-                verdict, detail = _verify_pve(vmid, node, _expected_hostname(name, body))
+                from .pve_creds import instance_of_provider_ref
+                verdict, detail = _verify_pve(vmid, node, _expected_hostname(name, body),
+                                              instance=instance_of_provider_ref(body.get("provider")))
                 if verdict == "absent":
                     # The normal path for a resource that has not been
                     # provisioned yet — a plain apply will create it.
@@ -1722,8 +1734,19 @@ def _adopt_rows(wd: Path, verify: bool, in_state: set[str]) -> list[dict]:
                                  "note": "not provisioned yet — apply will create it"})
                     continue
                 if verdict == "mismatch":
+                    # The object at node/vmid IS the declared one — vmid is the
+                    # identity, the hostname is a mutable field. A hostname that
+                    # differs is exactly the in-place update --allow-updates
+                    # exists for (a rename adopted under a new key). Without the
+                    # flag it stays a refusal: the operator must say the update
+                    # is intended.
+                    if allow_updates:
+                        rows.append({"addr": addr, "id": rid, "state": "adopt",
+                                     "note": f"{detail} — in-place hostname update "
+                                             "after import (--allow-updates)"})
+                        continue
                     rows.append({"addr": addr, "id": rid, "state": "mismatch",
-                                 "note": detail})
+                                 "note": detail + " — pass --allow-updates if the rename is intended"})
                     continue
                 if verdict == "unverified":
                     rows.append({"addr": addr, "id": rid, "state": "unverified",
@@ -1787,7 +1810,8 @@ def tf_adopt(scope: str, targets: tuple[str, ...], yes: bool,
             console.print("[dim]state backend not consulted — 'in-state' cannot be "
                           "detected in this run[/dim]")
 
-        rows = _adopt_rows(wd, verify=not no_verify, in_state=in_state)
+        rows = _adopt_rows(wd, verify=not no_verify, in_state=in_state,
+                           allow_updates=allow_updates)
         if targets:
             rows = [r for r in rows if r["addr"] in targets]
         if not rows:

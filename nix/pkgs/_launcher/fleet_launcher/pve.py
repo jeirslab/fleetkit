@@ -51,9 +51,19 @@ def _ssh_cmd(host: str, user: str = "root") -> list[str]:
 
 
 @click.group("pve")
-def pve():
+@click.option("--instance", "instance", default=None, metavar="NAME",
+              help="Proxmox provider instance (fleet.providers.proxmox.<NAME>) whose "
+                   "endpoint + token to use, read from integrations.proxmox.<NAME> in "
+                   "sops. Default: the launcher's startup export (flat keys, else the "
+                   "first instance in sorted order).")
+def pve(instance: str | None):
     """Proxmox VE host management."""
-    pass
+    if instance:
+        # pve_api.get_client() reads this as its default instance, so every
+        # verb under this group talks to the chosen site without each one
+        # growing an option of its own.
+        import os
+        os.environ["FLEET_PVE_INSTANCE"] = instance
 
 
 @pve.command("install-nix")
