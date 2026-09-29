@@ -63,6 +63,17 @@
     grafana = import ./tf/grafana.nix { inherit lib; };
   };
 
+  # Cloud-init user-data renderer (./cloud-init.nix): the one the XO emitter
+  # and the golden checks use. It reads fleet.network and fleet.access.users,
+  # so it is a function of the manifest `config` at the call site. A
+  # consumer that uploads per-VM snippets on Proxmox — a `kind = "file"`
+  # resource whose `data` is the rendered user-data, paired with a VM whose
+  # `image = "file:…"` — needs exactly this renderer, and vendoring a copy
+  # is how a consumer ends up with one that predates bootcmd / firstboot
+  # masking / guest-agent install (found in Skrybit/infrastructure, whose
+  # copy had been deleted and whose snippet module still imported it).
+  cloudInit = { config }: import ./cloud-init.nix { inherit config lib; };
+
   # Images component family (mkBootstrapImage / templates / targets). The
   # single source of the bootstrap-template builder and the ADR-0003
   # template references, shared by the tf LXC file-upload emitter
