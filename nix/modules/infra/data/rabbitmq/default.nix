@@ -106,16 +106,20 @@ in
         User = "rabbitmq";
       };
       environment.HOME = "/var/lib/rabbitmq";
-      # The password reaches rabbitmqctl as a shell variable, never as a
-      # literal in the unit: from the file at run time when appPasswordFile
-      # is set (the sops secret must be readable by the rabbitmq user), else
-      # the incumbent literal.
-      script = ''
-        ${if cfg.appPasswordFile != null
-          then "pw=\"$(cat ${lib.escapeShellArg cfg.appPasswordFile})\""
-          else "pw=${lib.escapeShellArg cfg.appPassword}"}
+      # appPasswordFile: the password reaches rabbitmqctl as a shell
+      # variable read from the file at run time (the sops secret must be
+      # readable by the rabbitmq user). appPassword: the incumbent script,
+      # byte for byte — the literal hosts' closures must not move on a
+      # fleetkit bump (site 1 is frozen on the consumer).
+      script = if cfg.appPasswordFile != null then ''
+        pw="$(cat ${lib.escapeShellArg cfg.appPasswordFile})"
         ${pkgs.rabbitmq-server}/bin/rabbitmqctl add_user ${cfg.appUser} "$pw" 2>/dev/null || \
           ${pkgs.rabbitmq-server}/bin/rabbitmqctl change_password ${cfg.appUser} "$pw"
+        ${pkgs.rabbitmq-server}/bin/rabbitmqctl set_permissions -p / ${cfg.appUser} ".*" ".*" ".*"
+        ${pkgs.rabbitmq-server}/bin/rabbitmqctl set_user_tags ${cfg.appUser} management
+      '' else ''
+        ${pkgs.rabbitmq-server}/bin/rabbitmqctl add_user ${cfg.appUser} ${cfg.appPassword} 2>/dev/null || \
+          ${pkgs.rabbitmq-server}/bin/rabbitmqctl change_password ${cfg.appUser} ${cfg.appPassword}
         ${pkgs.rabbitmq-server}/bin/rabbitmqctl set_permissions -p / ${cfg.appUser} ".*" ".*" ".*"
         ${pkgs.rabbitmq-server}/bin/rabbitmqctl set_user_tags ${cfg.appUser} management
       '';
