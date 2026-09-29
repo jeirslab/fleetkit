@@ -1635,7 +1635,8 @@ def _verify_pve(vmid: int, node: str, expect: str,
     return "ok", actual
 
 
-def _adopt_rows(wd: Path, verify: bool, in_state: set[str]) -> list[dict]:
+def _adopt_rows(wd: Path, verify: bool, in_state: set[str],
+                allow_updates: bool = False) -> list[dict]:
     cfg = json.loads((wd / "config.tf.json").read_text())
     # cloudflare_record bodies reference their zone via a data-source
     # interpolation, not a literal id, so capture the data.cloudflare_zone
@@ -1733,8 +1734,19 @@ def _adopt_rows(wd: Path, verify: bool, in_state: set[str]) -> list[dict]:
                                  "note": "not provisioned yet — apply will create it"})
                     continue
                 if verdict == "mismatch":
+                    # The object at node/vmid IS the declared one — vmid is the
+                    # identity, the hostname is a mutable field. A hostname that
+                    # differs is exactly the in-place update --allow-updates
+                    # exists for (a rename adopted under a new key). Without the
+                    # flag it stays a refusal: the operator must say the update
+                    # is intended.
+                    if allow_updates:
+                        rows.append({"addr": addr, "id": rid, "state": "adopt",
+                                     "note": f"{detail} — in-place hostname update "
+                                             "after import (--allow-updates)"})
+                        continue
                     rows.append({"addr": addr, "id": rid, "state": "mismatch",
-                                 "note": detail})
+                                 "note": detail + " — pass --allow-updates if the rename is intended"})
                     continue
                 if verdict == "unverified":
                     rows.append({"addr": addr, "id": rid, "state": "unverified",
@@ -1798,7 +1810,8 @@ def tf_adopt(scope: str, targets: tuple[str, ...], yes: bool,
             console.print("[dim]state backend not consulted — 'in-state' cannot be "
                           "detected in this run[/dim]")
 
-        rows = _adopt_rows(wd, verify=not no_verify, in_state=in_state)
+        rows = _adopt_rows(wd, verify=not no_verify, in_state=in_state,
+                           allow_updates=allow_updates)
         if targets:
             rows = [r for r in rows if r["addr"] in targets]
         if not rows:
