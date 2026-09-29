@@ -256,6 +256,11 @@ in {
       dnsNoKey = !(dns.dnsRecords ? "9112");
       dnsByProvider = dns.dnsRecordsByProvider."proxmox.golden".renamed-host;
       dnsUnrenamed = dns.dnsRecords.lxc-internal;                # 192.0.2.101 — default path untouched
+      # dotted legacy name: key everywhere, the dotted string nowhere
+      legacyHj = golden.fleetEval.hostsJson.lxc-legacy-fqdn.hostname;   # lxc-legacy-fqdn
+      legacyDns = dns.dnsRecords.lxc-legacy-fqdn;                       # 192.0.2.113
+      legacyDotted = dns.dnsRecords ? "legacy.fqdn.golden.test";        # false
+      legacyPve = golden.fleetEval.compute.lxc-legacy-fqdn.name;        # the override itself is kept as data
     });
     snippet = (import ./lib/cloud-init.nix { config = { fleet = golden.fleetEval; }; lib = pkgs.lib; })
       .renderCloudInitSnippet "vm-file" golden.fleetEval.compute.vm-file;
@@ -274,6 +279,10 @@ in {
     grep -q '"dnsNoKey":true' "$factsPath"
     grep -q '"dnsByProvider":"192.0.2.112"' "$factsPath"
     grep -q '"dnsUnrenamed":"192.0.2.101"' "$factsPath"
+    grep -q '"legacyHj":"lxc-legacy-fqdn"' "$factsPath"
+    grep -q '"legacyDns":"192.0.2.113"' "$factsPath"
+    grep -q '"legacyDotted":false' "$factsPath"
+    grep -q '"legacyPve":"legacy.fqdn.golden.test"' "$factsPath"
     # cloud-init: hostname from `name`, fqdn from the per-guest domain,
     # bootcmd order (firstboot mask, then the caller's line), guest agent.
     grep -q '^hostname: file-host$' "$snippetPath"

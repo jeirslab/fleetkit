@@ -338,7 +338,7 @@ let
       name = lib.mkOption {
         type = lib.types.str;
         default = name;
-        description = "Operational hostname for the machine (defaults to the fleet attrset key). Authoritative end to end: the PVE guest name / initialization.hostname, the cloud-init hostname, hostsJson.<key>.hostname, the colmena networking.hostName and the auto DNS A-record label all read this, never the key — so a host keyed by CTID or renamed in place keeps its tofu address and colmena node name.";
+        description = "Operational hostname for the machine (defaults to the fleet attrset key). Authoritative end to end: the PVE guest name / initialization.hostname, the cloud-init hostname, hostsJson.<key>.hostname, the colmena networking.hostName and the auto DNS A-record label all read this, never the key — so a host keyed by CTID or renamed in place keeps its tofu address and colmena node name. A DOTTED value is treated as a legacy FQDN-style override and is NOT used as a label: those surfaces keep the fleet key for it (the incumbent tier-1 hosts rely on this).";
       };
 
       cloneFrom = lib.mkOption {
