@@ -37,6 +37,8 @@
 
 let
   inherit (lib) filterAttrs mapAttrs' hasInfix elem;
+  # Resource names / addresses from keys go through tfName (nix/lib/tf/name.nix).
+  inherit (import ../../lib/tf/name.nix { inherit lib; }) tfName;
 
   ansibleTree = ../../../ansible;
 
@@ -76,8 +78,8 @@ let
   # was just created. Forces apply ordering.
   computeRef = name: meta:
     if meta.kind == "container"
-    then "proxmox_virtual_environment_container.${name}"
-    else "proxmox_virtual_environment_vm.${name}";
+    then "proxmox_virtual_environment_container.${tfName name}"
+    else "proxmox_virtual_environment_vm.${tfName name}";
 
   # Inventory name = the operational hostname (compute `name`, unless it is
   # a dotted legacy override, then the key) — same rule as fleet/default.nix
@@ -93,7 +95,7 @@ let
     computeInStack;
 
   emitHost = name: meta: {
-    name = name;
+    name = tfName name;
     value = {
       name = hostLabel name meta;
       groups = [ (groupFor name meta) ];
@@ -111,7 +113,7 @@ let
   };
 
   emitPlaybook = name: meta: {
-    name = "${name}-ansible";
+    name = "${tfName name}-ansible";
     value = {
       playbook = playbookFor name meta;
       name = hostLabel name meta;
@@ -122,7 +124,7 @@ let
       # temp inventory the provider generates has the right group + vars.
       depends_on = [
         "${computeRef name meta}"
-        "ansible_host.${name}"
+        "ansible_host.${tfName name}"
       ];
     };
   };
@@ -130,7 +132,7 @@ let
   ansibleEnabled = (config.fleet.providers.ansible or null) != null;
 in {
   config = lib.mkIf (stackId != null && ansibleEnabled && ansibleManagedHosts != {}) {
-    resource.ansible_host = mapAttrs' (n: m: { name = n; value = (emitHost n m).value; }) ansibleManagedHosts;
+    resource.ansible_host = mapAttrs' (n: m: { name = tfName n; value = (emitHost n m).value; }) ansibleManagedHosts;
     resource.ansible_playbook = mapAttrs' emitPlaybook ansibleManagedHosts;
   };
 }

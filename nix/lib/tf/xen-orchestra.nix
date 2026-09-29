@@ -11,6 +11,7 @@
 # discover their name_labels).
 
 let
+  inherit (import ./name.nix { inherit lib; }) tfName;
   # Per-VM cloud-init renderer — shared with the Proxmox emitter via
   # the extracted helper at nix/lib/cloud-init.nix.
   inherit (import ../cloud-init.nix { inherit config lib; })
@@ -136,7 +137,7 @@ in rec {
         # made cloud-init skip the sibling network-config (INFRA-194;
         # first real exercise of this path — NixOS VMs don't use it and
         # VyOS went the prebaked-template route instead).
-        cloud_config = "\${xenorchestra_cloud_config.${name}.template}";
+        cloud_config = "\${xenorchestra_cloud_config.${tfName name}.template}";
       })
       // (lib.optionalAttrs ((xoa.cloud_network_config or null) != null) {
         # Cloud-init network-config v2, verbatim from fleet. Rendered into
@@ -208,14 +209,14 @@ in rec {
   mkBootOrderFix = name: meta:
     let order = bootOrderFor meta;
     in {
-      triggers_replace = [ "\${xenorchestra_vm.${name}.id}" order ];
+      triggers_replace = [ "\${xenorchestra_vm.${tfName name}.id}" order ];
       provisioner = [{
         local-exec = {
           # `nix shell nixpkgs#…` (flake registry), NOT `nix-shell -p` —
           # the latter needs a channels NIX_PATH, which flakes-only
           # operator hosts don't have (all 13 hooks failed with "file
           # 'nixpkgs' was not found in the Nix search path", INFRA-234).
-          command = ''nix shell nixpkgs#nodejs --command npx --yes xo-cli vm.setBootOrder vm=''${xenorchestra_vm.${name}.id} order=${order}'';
+          command = ''nix shell nixpkgs#nodejs --command npx --yes xo-cli vm.setBootOrder vm=''${xenorchestra_vm.${tfName name}.id} order=${order}'';
         };
       }];
     };
@@ -244,4 +245,5 @@ in rec {
     name_label = meta.name_label;
     pool_id    = "\${data.xenorchestra_pool.xo-pool-main.id}";
   };
+  inherit tfName;
 }
