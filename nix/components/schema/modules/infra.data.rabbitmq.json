@@ -1,6 +1,9 @@
 {
   "infra.data.rabbitmq.appPassword": {
-    "type": "string"
+    "type": "null or string"
+  },
+  "infra.data.rabbitmq.appPasswordFile": {
+    "type": "null or string"
   },
   "infra.data.rabbitmq.appUser": {
     "type": "string"
