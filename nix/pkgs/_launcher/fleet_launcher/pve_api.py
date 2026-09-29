@@ -27,29 +27,50 @@ console = Console()
 # Client
 # ---------------------------------------------------------------------------
 
-_client: ProxmoxAPI | None = None
+# One cached client per provider instance ("" = the environment's default,
+# i.e. whatever main._setup_env exported at startup).
+_clients: dict[str, ProxmoxAPI] = {}
 
 
-def get_client() -> ProxmoxAPI:
-    """Create or return a cached proxmoxer client from environment variables."""
-    global _client
-    if _client is not None:
-        return _client
+def get_client(instance: str | None = None) -> ProxmoxAPI:
+    """Return a cached proxmoxer client.
 
-    endpoint = os.environ.get("PROXMOX_VE_ENDPOINT", "")
-    username = os.environ.get("PROXMOX_VE_USERNAME", "root@pam")
-    password = os.environ.get("PROXMOX_VE_PASSWORD", "")
-    api_token = os.environ.get("PROXMOX_VE_API_TOKEN", "")
-    insecure = os.environ.get("PROXMOX_VE_INSECURE", "false").lower() in ("true", "1", "yes")
+    `instance` names a `fleet.providers.proxmox.<instance>`; its endpoint and
+    token are read from `integrations.proxmox.<instance>` in sops
+    (pve_creds). Without it (and without FLEET_PVE_INSTANCE, which
+    `fleet pve --instance` sets), the PROXMOX_VE_* environment applies —
+    the single-site behaviour, unchanged.
+    """
+    instance = instance or os.environ.get("FLEET_PVE_INSTANCE") or ""
+    if instance in _clients:
+        return _clients[instance]
 
-    if not endpoint:
-        console.print("[red]ERROR:[/red] PROXMOX_VE_ENDPOINT not set (source .env)")
-        sys.exit(1)
-    if not password and not api_token:
-        console.print(
-            "[red]ERROR:[/red] neither PROXMOX_VE_API_TOKEN nor PROXMOX_VE_PASSWORD "
-            "is set — no way to authenticate to the PVE API")
-        sys.exit(1)
+    if instance:
+        from . import pve_creds
+        creds = pve_creds.instance_credentials(instance)
+        endpoint = creds["endpoint"]
+        username = creds["username"]
+        password = creds["password"]
+        api_token = creds["api_token"]
+        insecure = creds["insecure"]
+        if not endpoint:
+            raise RuntimeError(f"integrations.proxmox.{instance}.endpoint is empty")
+        if not password and not api_token:
+            raise RuntimeError(f"integrations.proxmox.{instance} has neither api_token nor password")
+    else:
+        endpoint = os.environ.get("PROXMOX_VE_ENDPOINT", "")
+        username = os.environ.get("PROXMOX_VE_USERNAME", "root@pam")
+        password = os.environ.get("PROXMOX_VE_PASSWORD", "")
+        api_token = os.environ.get("PROXMOX_VE_API_TOKEN", "")
+        insecure = os.environ.get("PROXMOX_VE_INSECURE", "false").lower() in ("true", "1", "yes")
+        if not endpoint:
+            console.print("[red]ERROR:[/red] PROXMOX_VE_ENDPOINT not set (source .env)")
+            sys.exit(1)
+        if not password and not api_token:
+            console.print(
+                "[red]ERROR:[/red] neither PROXMOX_VE_API_TOKEN nor PROXMOX_VE_PASSWORD "
+                "is set — no way to authenticate to the PVE API")
+            sys.exit(1)
 
     parsed = urlparse(endpoint)
     host = parsed.hostname or endpoint
@@ -65,11 +86,13 @@ def get_client() -> ProxmoxAPI:
         ident, _, token_value = api_token.partition("=")
         token_user, _, token_name = ident.partition("!")
         if not (token_value and token_name):
-            console.print(
-                "[red]ERROR:[/red] PROXMOX_VE_API_TOKEN is not in "
-                "`user@realm!tokenid=uuid` form")
+            msg = (f"integrations.proxmox.{instance}.api_token" if instance
+                   else "PROXMOX_VE_API_TOKEN") + " is not in `user@realm!tokenid=uuid` form"
+            if instance:
+                raise RuntimeError(msg)
+            console.print(f"[red]ERROR:[/red] {msg}")
             sys.exit(1)
-        _client = ProxmoxAPI(
+        client = ProxmoxAPI(
             host,
             port=port,
             user=token_user or username,
@@ -78,17 +101,17 @@ def get_client() -> ProxmoxAPI:
             verify_ssl=not insecure,
             timeout=30,
         )
-        return _client
-
-    _client = ProxmoxAPI(
-        host,
-        port=port,
-        user=username,
-        password=password,
-        verify_ssl=not insecure,
-        timeout=30,
-    )
-    return _client
+    else:
+        client = ProxmoxAPI(
+            host,
+            port=port,
+            user=username,
+            password=password,
+            verify_ssl=not insecure,
+            timeout=30,
+        )
+    _clients[instance] = client
+    return client
 
 
 def get_host() -> str:

@@ -1600,11 +1600,20 @@ def _expected_hostname(name: str, body: dict) -> str:
     return init.get("hostname") or name
 
 
-def _verify_pve(vmid: int, node: str, expect: str) -> tuple[bool, str]:
-    """Confirm the object at `vmid` is the one the config means."""
+def _verify_pve(vmid: int, node: str, expect: str,
+                instance: str | None = None) -> tuple[bool, str]:
+    """Confirm the object at `vmid` is the one the config means.
+
+    `instance` is the resource's provider alias (`proxmox.dell-2` → dell-2):
+    the check must reach THAT site's API, not whichever instance the
+    launcher's startup export happened to pick (main._setup_env takes the
+    flat keys or the first instance in sorted order — on a two-site fleet
+    that is the wrong endpoint half the time, and the symptom was every
+    dell-2 row reported "unverified" with a perfectly good token in sops).
+    """
     try:
         from . import pve_api
-        api = pve_api.get_client()
+        api = pve_api.get_client(instance=instance)
         cfg = pve_api.get_container_config(api, int(vmid), node=node)
     except BaseException as e:
         # BaseException, not Exception: pve_api exits the process when
@@ -1714,7 +1723,9 @@ def _adopt_rows(wd: Path, verify: bool, in_state: set[str]) -> list[dict]:
                 continue
             if verify and kind and "/" in str(rid):
                 node, vmid = str(rid).split("/", 1)
-                verdict, detail = _verify_pve(vmid, node, _expected_hostname(name, body))
+                from .pve_creds import instance_of_provider_ref
+                verdict, detail = _verify_pve(vmid, node, _expected_hostname(name, body),
+                                              instance=instance_of_provider_ref(body.get("provider")))
                 if verdict == "absent":
                     # The normal path for a resource that has not been
                     # provisioned yet — a plain apply will create it.
