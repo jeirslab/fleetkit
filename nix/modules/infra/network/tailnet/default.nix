@@ -6,7 +6,13 @@ let
   headscalePolicy = import ../../../../lib/headscale-policy.nix { inherit lib; };
   # The fleet-manifest entry for this host (null if absent) — used by
   # infra.network.tailnet.fleetNode to derive this node's ACL tags.
-  fleetEntry = config.fleet.compute.${config.networking.hostName} or null;
+  # Indexed by the fleet KEY (fleet.self.key, injected by mkHosts), with the
+  # hostname as a fallback for evaluations outside mkHosts (the plain
+  # component checks). A renamed or CTID-keyed host has hostname != key.
+  fleetEntry =
+    let key = config.fleet.self.key or null;
+    in if key != null && (config.fleet.compute ? ${key}) then config.fleet.compute.${key}
+       else config.fleet.compute.${config.networking.hostName} or null;
   p = config.sops.placeholder;
 
   # Initial-enrollment flags: handed to the upstream

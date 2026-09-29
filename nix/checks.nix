@@ -149,6 +149,23 @@ let
     !(builtins.tryEval
         (builtins.deepSeq collisionEval.config.fleet.compute true)).success;
 
+  # Negative test: two hosts (distinct keys) with the same hostname must
+  # make the estate-wide DNS projection throw rather than drop one.
+  dnsDupEval = nixpkgs.lib.evalModules {
+    modules = [
+      ./fleet
+      { _module.args.fleetLib =
+          import ./lib/module-args.nix { lib = nixpkgs.lib; inherit pkgs; }; }
+      ./checks/fixtures/compute-surface
+      { config.fleet.compute.lxc-twin = {
+          env = "golden"; stack = "lxc"; provider_instance = "proxmox.golden"; kind = "container";
+          node = "pve1"; root_disk_datastore = "local-lvm";
+          vm_id = 9199; internal_ip = "192.0.2.199"; name = "renamed-host"; }; }
+    ];
+  };
+  dnsDupCaught =
+    !(builtins.tryEval (builtins.deepSeq dnsDupEval.config.fleet.dnsRecords true)).success;
+
   fleetPkg = pkgs.callPackage ./pkgs/_launcher {
     xoa-cli = pkgs.callPackage ./pkgs/xoa-cli { };
   };
@@ -261,6 +278,11 @@ in {
       legacyDns = dns.dnsRecords.lxc-legacy-fqdn;                       # 192.0.2.113
       legacyDotted = dns.dnsRecords ? "legacy.fqdn.golden.test";        # false
       legacyPve = golden.fleetEval.compute.lxc-legacy-fqdn.name;        # the override itself is kept as data
+      # fleet.self.key: the module-side index into fleet.compute is the KEY
+      selfKey = golden.nixosConfigurations."9112".config.fleet.self.key;          # 9112
+      inherit dnsDupCaught;                                                       # true
+      serviceOnly = !(golden.fleetEval.dnsServiceRecords ? renamed-host);         # no auto records in it
+      selfEntryVmId = golden.nixosConfigurations."9112".config.fleet.compute.${golden.nixosConfigurations."9112".config.fleet.self.key}.vm_id;  # 9112
     });
     snippet = (import ./lib/cloud-init.nix { config = { fleet = golden.fleetEval; }; lib = pkgs.lib; })
       .renderCloudInitSnippet "vm-file" golden.fleetEval.compute.vm-file;
@@ -283,6 +305,10 @@ in {
     grep -q '"legacyDns":"192.0.2.113"' "$factsPath"
     grep -q '"legacyDotted":false' "$factsPath"
     grep -q '"legacyPve":"legacy.fqdn.golden.test"' "$factsPath"
+    grep -q '"selfKey":"9112"' "$factsPath"
+    grep -q '"dnsDupCaught":true' "$factsPath"
+    grep -q '"serviceOnly":true' "$factsPath"
+    grep -q '"selfEntryVmId":9112' "$factsPath"
     # cloud-init: hostname from `name`, fqdn from the per-guest domain,
     # bootcmd order (firstboot mask, then the caller's line), guest agent.
     grep -q '^hostname: file-host$' "$snippetPath"

@@ -221,6 +221,19 @@ in
   };
 
   options.fleet.self = {
+    key = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      internal = true;
+      description = ''
+        The fleet key (`fleet.compute` attr name; the CTID as a string on a
+        CTID-keyed estate) of the host currently being evaluated, injected
+        per host by `mkHosts`. The one correct index into `fleet.compute`,
+        `fleet.hostsJson` and `fleet.secrets` from inside a host's NixOS
+        config — `networking.hostName` is NOT the key once a host is
+        renamed or keyed by id (fleetkit#21). null in the manifest eval.
+      '';
+    };
     providerInstance = mkOption {
       type = types.str;
       default = "";
