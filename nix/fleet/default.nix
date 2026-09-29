@@ -52,6 +52,17 @@ let
     + "${e.env}.${e.stack}";
   stacksById = groupBy stackIdOf allEntries;
 
+  # A dotted `name` is a legacy FQDN-style override (tier-1 PVE hosts on the
+  # incumbent consumer: key `pve-apps`, name `apps.pve.example.xen`). It is
+  # not a hostname label in the fleet's own zone, so every label surface
+  # (hostsJson.hostname, DNS records, colmena hostName, PVE hostname,
+  # cloud-init) keeps the KEY for those — byte-identical to the behaviour
+  # before `name` became authoritative. Only a plain single-label `name`
+  # renames a host.
+  hostLabel = key: meta:
+    if lib.hasInfix "." (meta.name or key) then key else meta.name or key;
+
+
   # ── Validator helpers ──────────────────────────────────────────
   # 1. Unique vm_id within (provider_instance, kind) — NOT global.
   computeGroups = groupBy (e: "${e.provider_instance}/${e.kind}")
@@ -437,7 +448,7 @@ in {
     # consumer falls back to fleet.network.dns_domain). Both are read by
     # mkHosts/mkColmenaNodes and the DNS projection, so they are the ONE
     # place a rename lands — the key stays the identity.
-    hostname = meta.name;
+    hostname = hostLabel name meta;
     domain = let d = meta.dns.domain or null; in if d == "" then null else d;
     vmid = meta.vm_id;
     ip = meta.ip;

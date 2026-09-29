@@ -147,7 +147,10 @@ in {
       # cloud_init.hostname (explicit) > vmMeta.name (the operational
       # hostname, defaulting to the fleet key). The FQDN domain follows the
       # per-guest dns.domain when one is declared, else the fleet-wide one.
-      hostname = if ci.hostname != "" then ci.hostname else vmMeta.name;
+      hostname =
+        if ci.hostname != "" then ci.hostname
+        else if lib.hasInfix "." (vmMeta.name or vmName) then vmName   # dotted = legacy FQDN override, keep the key
+        else vmMeta.name or vmName;
       fqdnDomain =
         let d = vmMeta.dns.domain or null;
         in if d != null && d != "" then d else net.dns_domain;

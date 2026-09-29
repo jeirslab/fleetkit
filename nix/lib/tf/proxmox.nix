@@ -96,6 +96,13 @@ let
 
   # ── Declared-mode NIC helpers ──
   ifName = i: n: if n.name != null then n.name else "eth${toString i}";
+
+  # Operational hostname for a guest: compute `name` when it is a plain
+  # label, the fleet key when `name` is a dotted legacy FQDN override (see
+  # fleet/default.nix hostLabel — same rule, kept in step by the
+  # hostname-independent check).
+  hostLabel = key: meta:
+    if lib.hasInfix "." (meta.name or key) then key else meta.name or key;
   bridgeFor = n: if n.vnet != null then n.vnet else n.bridge;
   nicCommon = n:
     lib.optionalAttrs (n.vlan != null) { vlan_id = n.vlan; }
@@ -397,7 +404,7 @@ in rec {
       # would only create import-parity drift on existing containers.
       initConfig = lib.optionalAttrs (hasCustomImage && lxcOsType != "nixos") {
         initialization = {
-          hostname = meta.name;
+          hostname = hostLabel name meta;
           user_account = {
             keys = [ config.fleet.network.sysadmin_ssh_key ];
           };
@@ -494,12 +501,12 @@ in rec {
       # operational hostname, defaulting to the fleet key), never the key
       # itself, so a host keyed by CTID or renamed after creation keeps its
       # tofu address: bpg updates initialization.hostname in place.
-      // (mkNetwork (meta // { _name = meta.name; })) // (mkLifecycle lifecycleMeta)
+      // (mkNetwork (meta // { _name = hostLabel name meta; })) // (mkLifecycle lifecycleMeta)
       # initConfig is recursive-merged LAST so its initialization.user_account
       # joins mkNetwork's initialization.{hostname,dns,ip_config} instead of
       # being clobbered by Nix's shallow // operator.
       // (let merged = lib.recursiveUpdate
-            (((mkNetwork (meta // { _name = meta.name; })).initialization or {}))
+            (((mkNetwork (meta // { _name = hostLabel name meta; })).initialization or {}))
             (initConfig.initialization or {});
           in lib.optionalAttrs hasCustomImage { initialization = merged; });
 
@@ -624,7 +631,7 @@ in rec {
       provider = "proxmox.${builtins.elemAt (lib.strings.splitString "." meta.provider_instance) 1}";
       node_name = resolveNode meta;
       vm_id = meta.vm_id;
-      name = meta.name;
+      name = hostLabel name meta;
       tags = meta.tags;
       started = meta.start_on_create;
 

@@ -91,6 +91,9 @@ in
     # and the DNS label must say `renamed-host`, never `9112`. ──
     "9112" = lxc { vm_id = 9112; internal_ip = "192.0.2.112"; name = "renamed-host"; dns.domain = "svc.lab.golden.test"; tags = [ "golden" ]; };
 
+    # ── Legacy dotted `name`: must NOT rename — every label surface keeps the key. ──
+    lxc-legacy-fqdn = lxc { vm_id = 9113; internal_ip = "192.0.2.113"; name = "legacy.fqdn.golden.test"; };
+
     lxc-declared = lxc { vm_id = 9111; internal_ip = "192.0.2.111"; ip = "198.51.100.111"; network_mode = "declared";
       interfaces = [
         { bridge = "vmbr1"; ipv4 = "192.0.2.111/22"; gateway = "192.0.2.1"; vlan = 42; mtu = 1400; mac = "BC:24:11:00:01:11";
