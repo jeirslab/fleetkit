@@ -139,6 +139,11 @@ in
           # injection supplies. Same mechanism as internalIp above.
           ++ nixpkgs.lib.optional (providerInstance != "") ({ ... }: {
             fleet.self.providerInstance = providerInstance;
+            # The fleet KEY of the host being built. Modules that need this host's
+            # manifest entry read `config.fleet.compute.${config.fleet.self.key}`,
+            # never `.${config.networking.hostName}`: hostname and key differ for a
+            # CTID-keyed or renamed host (fleetkit#21).
+            fleet.self.key = name;
           });
           tags = _tags rt;
         } // (

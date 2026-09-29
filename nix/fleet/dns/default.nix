@@ -31,9 +31,21 @@ let
   # A-record label = the host's operational hostname (hostsJson.hostname,
   # compute `name`), which equals the fleet key unless the host was keyed
   # by id or renamed. serviceAliasMap below still maps to KEYS.
-  byHostname = hs: lib.listToAttrs (lib.mapAttrsToList
-    (k: h: lib.nameValuePair (h.hostname or k) (_internalIp h)) hs);
-  autoRecords = byHostname fleetHosts;
+  # Two hosts with the same hostname in ONE record set is an eval error,
+  # never a silent listToAttrs first-wins: the same label at two sites
+  # (site 1 `netcore`, site 2 `netcore`) is legitimate per partition and a
+  # trap in the flat projection. A consumer serving a resolver at one
+  # site composes dnsRecordsByProvider for its own instances plus
+  # dnsServiceRecords instead of reading dnsRecords.
+  byHostname = what: hs:
+    let pairs = lib.mapAttrsToList (k: h: { label = h.hostname or k; key = k; ip = _internalIp h; }) hs;
+        counts = lib.foldl' (acc: p: acc // { ${p.label} = (acc.${p.label} or []) ++ [ p.key ]; }) {} pairs;
+        dupes = lib.filterAttrs (_: keys: builtins.length keys > 1) counts;
+    in if dupes == {} then lib.listToAttrs (map (p: lib.nameValuePair p.label p.ip) pairs)
+       else throw ("fleet.dns: duplicate hostname label(s) in ${what}: "
+         + lib.concatStringsSep "; " (lib.mapAttrsToList (l: ks: "${l} ← keys ${toString ks}") dupes)
+         + ". Same-named hosts must sit in different provider instances and be served from dnsRecordsByProvider, not dnsRecords.");
+  autoRecords = byHostname "fleet.dnsRecords (estate-wide)" fleetHosts;
 
   # The same auto records, split by the provider instance that provisions
   # each host. See the option below for why this is not just a convenience.
@@ -42,7 +54,7 @@ let
       (lib.mapAttrsToList (_: h: h.provider_instance or "") fleetHosts));
 
   recordsByProvider = lib.genAttrs providerInstances (inst:
-    byHostname
+    byHostname "fleet.dnsRecordsByProvider.${inst}"
       (lib.filterAttrs (_: h: (h.provider_instance or "") == inst) fleetHosts));
 
   # service-name → fleet.compute key (resolves to that host's internal IP)
@@ -89,6 +101,17 @@ in
   };
 
   # ── Derived exports ─────────────────────────────────────────────
+  options.fleet.dnsServiceRecords = lib.mkOption {
+    type = lib.types.attrsOf lib.types.str;
+    default = {};
+    internal = true;
+    description = ''
+      Service aliases (serviceAliasMap, resolved to the host's internal IP)
+      merged with dnsStaticRecords — dnsRecords WITHOUT the auto per-host
+      A records. The complement of dnsRecordsByProvider: a resolver that
+      serves one site composes `byProvider.<its instances> // this`.
+    '';
+  };
   options.fleet.dnsRecords = lib.mkOption {
     type = lib.types.attrsOf lib.types.str;
     default = {};
@@ -130,6 +153,7 @@ in
   };
 
   config.fleet.dnsRecords = autoRecords // resolvedAliases // cfg.dnsStaticRecords;
+  config.fleet.dnsServiceRecords = resolvedAliases // cfg.dnsStaticRecords;
   config.fleet.dnsRecordsByProvider = recordsByProvider;
   config.fleet.publicDnsRecords = resolvedAliases // cfg.dnsPublicOverrides;
 }
