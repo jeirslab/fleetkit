@@ -994,6 +994,71 @@
         "unprivileged": false,
         "vm_id": 9104
       },
+      "lxc-plane": {
+        "console": {
+          "type": "console"
+        },
+        "cpu": {
+          "cores": 2
+        },
+        "disk": {
+          "datastore_id": "local-lvm",
+          "size": 16
+        },
+        "features": {
+          "fuse": true,
+          "keyctl": true,
+          "nesting": true
+        },
+        "initialization": {
+          "dns": {
+            "domain": "plane.golden.test",
+            "servers": [
+              "192.0.2.254",
+              "1.1.1.1"
+            ]
+          },
+          "hostname": "lxc-plane",
+          "ip_config": [
+            {
+              "ipv4": {
+                "address": "192.0.2.114/24",
+                "gateway": "192.0.2.254"
+              }
+            }
+          ]
+        },
+        "lifecycle": [
+          {
+            "ignore_changes": [
+              "operating_system",
+              "initialization"
+            ]
+          }
+        ],
+        "memory": {
+          "dedicated": 2048,
+          "swap": 2048
+        },
+        "mount_point": [],
+        "network_interface": [
+          {
+            "bridge": "vmbr2",
+            "name": "eth0"
+          }
+        ],
+        "node_name": "pve1",
+        "operating_system": {
+          "template_file_id": "nix-store:vztmpl/nixos-bootstrap-lxc-latest.tar.xz",
+          "type": "nixos"
+        },
+        "provider": "proxmox.golden",
+        "start_on_boot": true,
+        "started": true,
+        "tags": [],
+        "unprivileged": true,
+        "vm_id": 9114
+      },
       "lxc-router": {
         "console": {
           "type": "console"

@@ -450,6 +450,16 @@ in {
     # place a rename lands — the key stays the identity.
     hostname = hostLabel name meta;
     domain = let d = meta.dns.domain or null; in if d == "" then null else d;
+    # The plane this guest sits on, from its DECLARED interfaces: the first
+    # interface carrying a gateway names the router of that plane, and the
+    # create-time DNS servers name its resolvers. A multi-plane site (ops /
+    # staging / sandbox behind one router) cannot express these as one
+    # site-wide value; infra.networking reads them per host (null = the
+    # site-resolved value, i.e. every host without declared interfaces).
+    plane_gateway =
+      let withGw = lib.filter (i: (i.gateway or null) != null) (meta.interfaces or []);
+      in if withGw == [] then null else (lib.head withGw).gateway;
+    dns_servers = meta.dns.servers or null;
     vmid = meta.vm_id;
     ip = meta.ip;
     internal_ip = meta.internal_ip;
