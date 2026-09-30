@@ -94,6 +94,12 @@ in
     # ── Legacy dotted `name`: must NOT rename — every label surface keeps the key. ──
     lxc-legacy-fqdn = lxc { vm_id = 9113; internal_ip = "192.0.2.113"; name = "legacy.fqdn.golden.test"; };
 
+    # ── A host on a second plane behind the same router: declared gateway
+    # and DNS decide its route + resolvers (public resolver dropped). ──
+    lxc-plane = lxc { vm_id = 9114; internal_ip = "192.0.2.114"; network_mode = "declared";
+      interfaces = [ { bridge = "vmbr2"; ipv4 = "192.0.2.114/24"; gateway = "192.0.2.254"; } ];
+      dns = { servers = [ "192.0.2.254" "1.1.1.1" ]; domain = "plane.golden.test"; }; };
+
     lxc-declared = lxc { vm_id = 9111; internal_ip = "192.0.2.111"; ip = "198.51.100.111"; network_mode = "declared";
       interfaces = [
         { bridge = "vmbr1"; ipv4 = "192.0.2.111/22"; gateway = "192.0.2.1"; vlan = 42; mtu = 1400; mac = "BC:24:11:00:01:11";
@@ -133,5 +139,6 @@ in
   config.fleet.hostsRegistry = {
     lxc-internal = { ... }: { infra.networking.singleInterface = true; };
     "9112" = { ... }: { infra.networking.singleInterface = true; };
+    lxc-plane = { ... }: { infra.networking.singleInterface = true; };
   };
 }

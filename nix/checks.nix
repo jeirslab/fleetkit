@@ -289,6 +289,11 @@ in {
       tfNameNumeric = (import ./lib/tf/name.nix { lib = pkgs.lib; }).tfName "9112";        # _9112
       tfNameSame    = (import ./lib/tf/name.nix { lib = pkgs.lib; }).tfName "lxc-internal"; # lxc-internal
       tfNameDotted  = (import ./lib/tf/name.nix { lib = pkgs.lib; }).tfName "a.b";          # _a-b
+      # plane gateway + resolvers from the declared interface / dns.servers
+      planeGw = (builtins.head golden.nixosConfigurations.lxc-plane.config.systemd.network.networks."10-eth0".routes).Gateway;  # 192.0.2.254
+      planeDns = golden.nixosConfigurations.lxc-plane.config.systemd.network.networks."10-eth0".networkConfig.DNS;              # [192.0.2.254], 1.1.1.1 dropped
+      siteDnsUnchanged = golden.nixosConfigurations."9112".config.systemd.network.networks."10-eth0".networkConfig.DNS
+        == golden.fleetEval.self.settings.network.internalResolvers;   # a host without declared interfaces keeps the site's
       goldenHasUnderscoreKey = builtins.hasAttr "_9112"
         (builtins.fromJSON (builtins.readFile (goldenDir + "/golden-lxc.json"))).resource.proxmox_virtual_environment_container;
       selfEntryVmId = golden.nixosConfigurations."9112".config.fleet.compute.${golden.nixosConfigurations."9112".config.fleet.self.key}.vm_id;  # 9112
@@ -321,6 +326,9 @@ in {
     grep -q '"tfNameSame":"lxc-internal"' "$factsPath"
     grep -q '"tfNameDotted":"_a-b"' "$factsPath"
     grep -q '"goldenHasUnderscoreKey":true' "$factsPath"
+    grep -q '"planeGw":"192.0.2.254"' "$factsPath"
+    grep -q '"planeDns":\["192.0.2.254"\]' "$factsPath"
+    grep -q '"siteDnsUnchanged":true' "$factsPath"
     # Every resource NAME in every golden render must be a Terraform
     # identifier — tofu refuses the whole leaf otherwise ("Invalid resource
     # name"), which is what a numeric fleet key did before tfName.

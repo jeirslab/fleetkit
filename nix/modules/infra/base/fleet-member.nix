@@ -39,6 +39,25 @@ let
   # `configuring` until wait-online times out and colmena calls the whole
   # activation failed.
   selfNet = config.fleet.self.settings.network;
+
+  # Plane-level values from this host's own manifest entry (hostsJson,
+  # via fleet.self.key): a declared interface's gateway and the declared
+  # private DNS servers win over the site-resolved ones. A site with several
+  # planes behind one router (dell-2: ops 10.43, staging 10.41, sandbox
+  # 10.42, the router owning .1 on each) has no single correct site gateway;
+  # a host given the wrong plane's .1 gets no default route at all (networkd
+  # drops an off-link gateway) and wait-online fails the activation.
+  # Public resolvers in dns.servers are dropped here on purpose: this link
+  # is fleet-DNS-only (INFRA-107); they exist for the create-time resolv.conf.
+  selfEntry = let k = config.fleet.self.key or null;
+              in if k != null then config.fleet.hostsJson.${k} or {} else {};
+  # RFC 1918, CGNAT (100.64/10, tailnets) and the RFC 5737 documentation
+  # ranges (fixtures); anything else is a public resolver and is dropped.
+  isPrivate = ip: builtins.match "(10\\..*|192\\.168\\..*|172\\.(1[6-9]|2[0-9]|3[01])\\..*|100\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\..*|192\\.0\\.2\\..*|198\\.51\\.100\\..*|203\\.0\\.113\\..*)" ip != null;
+  planeGateway = selfEntry.plane_gateway or null;
+  planeResolvers = let d = selfEntry.dns_servers or null; in lib.filter isPrivate (if d == null then [] else d);
+  hostGateway = if planeGateway != null then planeGateway else selfNet.gateway;
+  hostResolvers = if planeResolvers != [] then planeResolvers else selfNet.internalResolvers;
   selfCache = config.fleet.self.settings.cache;
   selfCa = config.fleet.self.settings.internalCa;
 in
@@ -137,10 +156,10 @@ in
         # a future move only requires editing the manifest.
         matchConfig.Name = "eth0";
         addresses = [{ Address = "${netCfg.internalIp}/${toString config.fleet.network.internal_prefix_len}"; }];
-        routes = lib.optional (selfNet.gateway != null)
-          { Gateway = selfNet.gateway; };
+        routes = lib.optional (hostGateway != null)
+          { Gateway = hostGateway; };
         # Fleet-DNS-only (no public resolver on this link) — see INFRA-107.
-        networkConfig.DNS = selfNet.internalResolvers;
+        networkConfig.DNS = hostResolvers;
         # Routing domains pinned to this link — same split-DNS rationale as
         # the vmbr0 branch above (INFRA-107).
         networkConfig.Domains = config.fleet.network.search_domains;
