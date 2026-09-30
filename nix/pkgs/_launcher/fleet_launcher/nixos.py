@@ -207,6 +207,8 @@ def apply_all(args: tuple[str, ...], no_refresh: bool):
               help="Stage as `boot` goal and reboot the target after activation. "
                    "Required when critical components change (dbus-implementation, "
                    "kernel, init system) — NixOS refuses to switch live then.")
+@click.option("--no-substitute", "no_substitute", is_flag=True,
+              help="Push the closure as a plain stream (colmena --no-substitute) instead of letting the target substitute each path from its caches first. The default is right when the target can reach a fast cache; it crawls when the target has no route yet or when cache.nixos.org answers slowly (one narinfo round-trip per missing path), and a fresh host that can neither substitute nor offload is exactly that case.")
 @click.option("--build-on-target/--no-build-on-target", "build_on_target", default=None,
               help="Build the closure on the target (colmena --build-on-target) so it offloads to ITS site's builder and pulls the result over the LAN, instead of building here and pushing every path across the WAN. Default: on when the target's site declares build machines (fleet.sites.<site>.build.machines), off otherwise.")
 @click.option("--dry-activate", "dry_activate", is_flag=True,
@@ -214,7 +216,7 @@ def apply_all(args: tuple[str, ...], no_refresh: bool):
                    "do (which units restart/reload) without switching. Read-only "
                    "on the target's running system. Mutually exclusive with --reboot.")
 def apply_host(names: tuple[str, ...], ip: str | None, no_refresh: bool, no_session: bool,
-               wait: bool, reboot: bool, build_on_target: bool | None, dry_activate: bool):
+               wait: bool, reboot: bool, no_substitute: bool, build_on_target: bool | None, dry_activate: bool):
     """Deploy NixOS config to one or more hosts.
 
     NAMES are Colmena node names (e.g. ``netgate build auth``).
@@ -252,6 +254,8 @@ def apply_host(names: tuple[str, ...], ip: str | None, no_refresh: bool, no_sess
             c.append("--build-on-target")
         elif build_on_target is False:
             c.append("--no-build-on-target")
+        if no_substitute:
+            c.append("--no-substitute")
         return c
 
     backgrounding = not no_session and not env_get("FLEET_NO_SESSION")
@@ -385,6 +389,8 @@ def apply_host(names: tuple[str, ...], ip: str | None, no_refresh: bool, no_sess
         cmd.append("--reboot")
     if _site_builds_on_target(names, build_on_target):
         cmd.append("--build-on-target")
+    if no_substitute:
+        cmd.append("--no-substitute")
     run_shell(cmd, interactive=True, log_label=f"deploy-host-{selector}")
 
 
