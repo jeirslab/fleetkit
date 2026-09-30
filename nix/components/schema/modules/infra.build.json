@@ -50,6 +50,12 @@
   "infra.build.builder.maxJobs": {
     "type": "signed integer"
   },
+  "infra.build.builder.offload.authorizedKeys": {
+    "type": "list of string"
+  },
+  "infra.build.builder.offload.user": {
+    "type": "string"
+  },
   "infra.build.builder.trustedUsers": {
     "type": "list of string"
   },

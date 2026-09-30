@@ -316,6 +316,15 @@
               trusted_public_keys = fleetEval.settings.cache.trustedPublicKeys;
             };
             network.sysadmin_ssh_key = fleetEval.network.sysadmin_ssh_key;
+            # Sites (INFRA-307): which provider instances belong to which site
+            # and the builders that site's hosts offload to — what lets
+            # `fleet deploy nixos apply host` build on the target's own site.
+            sites = nixpkgs.lib.mapAttrs (_: s: {
+              provider_instances = s.providerInstances;
+              build_machines = map (m: m.hostName)
+                (if s.build.machines != null then s.build.machines else fleetEval.settings.build.machines);
+            }) fleetEval.sites;
+            build.machines = map (m: m.hostName) fleetEval.settings.build.machines;
           });
 
           # fleet.settings as JSON — read by eval-free CLI features that

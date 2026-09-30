@@ -150,6 +150,14 @@ let
         };
       };
 
+      build = {
+        machines = mkOption {
+          type = types.nullOr (types.listOf (import ./build-machine.nix { inherit lib; }));
+          default = null;
+          example = lib.literalExpression ''[ { hostName = "192.0.2.25"; sshUser = "nix-offload"; maxJobs = 6; } ]'';
+          description = "Per-site override of `fleet.settings.build.machines` — the remote builders THIS site's hosts offload to (infra.build.remote) and the launcher deploys through (`fleet deploy nixos apply host` builds on the target, which offloads here, when the target's site declares machines). Replaces the estate-wide list: a builder across the WAN is slower than building locally. null ⇒ inherit the estate-wide value.";
+        };
+      };
       internalCa = {
         acmeDirectory = mkOption {
           type = types.nullOr types.str;
@@ -254,6 +262,12 @@ in
     };
 
     settings = {
+      build.machines = mkOption {
+        type = types.listOf (import ./build-machine.nix { inherit lib; });
+        internal = true;
+        readOnly = true;
+        description = "Site-resolved `fleet.settings.build.machines` for this host — what infra.build.remote offloads to.";
+      };
       network = {
         gateway = mkOption {
           type = types.nullOr types.str;
@@ -309,6 +323,7 @@ in
     fleet.self.site = selfSite;
 
     fleet.self.settings = {
+      build.machines = pick (x: x.build.machines) cfg.settings.build.machines;
       network = {
         gateway = pick (x: x.network.gateway) cfg.network.gateway;
         internalResolvers = pick (x: x.network.internalResolvers) cfg.network.internal_resolvers;

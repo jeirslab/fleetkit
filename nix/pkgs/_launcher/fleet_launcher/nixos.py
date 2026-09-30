@@ -207,12 +207,14 @@ def apply_all(args: tuple[str, ...], no_refresh: bool):
               help="Stage as `boot` goal and reboot the target after activation. "
                    "Required when critical components change (dbus-implementation, "
                    "kernel, init system) — NixOS refuses to switch live then.")
+@click.option("--build-on-target/--no-build-on-target", "build_on_target", default=None,
+              help="Build the closure on the target (colmena --build-on-target) so it offloads to ITS site's builder and pulls the result over the LAN, instead of building here and pushing every path across the WAN. Default: on when the target's site declares build machines (fleet.sites.<site>.build.machines), off otherwise.")
 @click.option("--dry-activate", "dry_activate", is_flag=True,
               help="Build and copy the closure, then show what activation WOULD "
                    "do (which units restart/reload) without switching. Read-only "
                    "on the target's running system. Mutually exclusive with --reboot.")
 def apply_host(names: tuple[str, ...], ip: str | None, no_refresh: bool, no_session: bool,
-               wait: bool, reboot: bool, dry_activate: bool):
+               wait: bool, reboot: bool, build_on_target: bool | None, dry_activate: bool):
     """Deploy NixOS config to one or more hosts.
 
     NAMES are Colmena node names (e.g. ``netgate build auth``).
@@ -246,6 +248,10 @@ def apply_host(names: tuple[str, ...], ip: str | None, no_refresh: bool, no_sess
             c.append("--reboot")
         if dry_activate:
             c.append("--dry-activate")
+        if build_on_target is True:
+            c.append("--build-on-target")
+        elif build_on_target is False:
+            c.append("--no-build-on-target")
         return c
 
     backgrounding = not no_session and not env_get("FLEET_NO_SESSION")
@@ -377,7 +383,43 @@ def apply_host(names: tuple[str, ...], ip: str | None, no_refresh: bool, no_sess
            "--impure", "--on", selector]
     if reboot:
         cmd.append("--reboot")
+    if _site_builds_on_target(names, build_on_target):
+        cmd.append("--build-on-target")
     run_shell(cmd, interactive=True, log_label=f"deploy-host-{selector}")
+
+
+def _site_builds_on_target(names: tuple[str, ...], explicit: bool | None) -> bool:
+    """Decide whether this deploy builds on the target.
+
+    Explicit flag wins. Otherwise: yes when EVERY targeted host's site declares
+    build machines in the catalog (`sites.<site>.build_machines`), because then
+    the target offloads to its own site's builder and pulls the closure over
+    the LAN; no when any host's site (or a host with no site) has none — that
+    host would compile on itself, which OOMs a small CT.
+    """
+    if explicit is not None:
+        return explicit
+    from . import config as _cfg
+    sites = _cfg.get("sites", {}) or {}
+    if not sites:
+        return False
+    try:
+        with open(fleet_cache_dir(find_project_root()) / "hosts.json") as f:
+            hosts = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return False
+    by_instance = {pi: (label, s) for label, s in sites.items() for pi in (s.get("provider_instances") or [])}
+    decided: list[str] = []
+    for name in names:
+        pi = str((hosts.get(name) or {}).get("provider_instance", ""))
+        label, site = by_instance.get(pi, (None, {}))
+        machines = site.get("build_machines") or []
+        if not machines:
+            return False
+        decided.append(f"{name} → builds on {', '.join(machines)} (site {label})")
+    for line in decided:
+        console.print(f"[green]Remote build:[/green] {line}")
+    return True
 
 
 @apply.command("remote")
