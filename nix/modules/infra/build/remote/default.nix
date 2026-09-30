@@ -42,9 +42,11 @@ let
     (config.infra.networking.internalIp or "")
     (config.infra.networking.externalIp or "")
   ];
+  # Site-resolved (fleet.sites.<site>.build.machines wins over the
+  # estate-wide list): a host offloads to ITS site's builder.
   machines = builtins.filter
     (m: !(builtins.elem m.hostName selfNames))
-    config.fleet.settings.build.machines;
+    config.fleet.self.settings.build.machines;
 in
 {
   options.infra.build.remote = {
@@ -67,8 +69,8 @@ in
   config = mkIf cfg.enable {
     assertions = [
       {
-        assertion = config.fleet.settings.build.machines != [ ];
-        message = "infra.build.remote.enable is on but fleet.settings.build.machines is empty — nothing to offload to. Declare the builder in the fleet manifest, or turn this off.";
+        assertion = config.fleet.self.settings.build.machines != [ ];
+        message = "infra.build.remote.enable is on but neither fleet.settings.build.machines nor this host's site declares a build machine — nothing to offload to. Declare the builder in the fleet manifest (per site under fleet.sites.<site>.build.machines), or turn this off.";
       }
     ];
 

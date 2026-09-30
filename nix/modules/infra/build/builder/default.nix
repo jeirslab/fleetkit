@@ -34,6 +34,19 @@ in
       default = "[::]:5000";
       description = "Address:port harmonia binary cache listens on.";
     };
+    offload = {
+      user = mkOption {
+        type = types.str;
+        default = "nix-offload";
+        description = "Unprivileged account that offloading hosts (infra.build.remote) connect as; added to trusted-users so the daemon accepts their store operations. Created only when authorizedKeys is non-empty. Name it in the machine entry's `sshUser`.";
+      };
+      authorizedKeys = mkOption {
+        type = types.listOf types.str;
+        default = [];
+        example = [ "ssh-ed25519 AAAA… fleet-offload" ];
+        description = "Public halves of the offload keys (the private half is the consumers' services/builder/ssh_priv_key). Empty = no offload account; remote builds then need root's own key, which is the operator key and does not belong on hosts.";
+      };
+    };
   };
 
   config = mkIf cfg.enable {
@@ -43,10 +56,18 @@ in
     # its closure, without mkForce-ing its way out of the framework.
     infra.integrations.docker.enable = lib.mkDefault true;
 
+    users.users = lib.mkIf (cfg.offload.authorizedKeys != []) {
+      ${cfg.offload.user} = {
+        isNormalUser = true;
+        description = "nix remote-build offload account";
+        openssh.authorizedKeys.keys = cfg.offload.authorizedKeys;
+      };
+    };
     nix.settings = {
       max-jobs = cfg.maxJobs;
       cores = cfg.cores;
-      trusted-users = cfg.trustedUsers;
+      trusted-users = cfg.trustedUsers
+        ++ lib.optional (cfg.offload.authorizedKeys != []) cfg.offload.user;
       substituters = lib.mkAfter [
         "https://nix-community.cachix.org"
       ];
