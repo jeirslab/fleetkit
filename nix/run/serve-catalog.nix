@@ -17,7 +17,10 @@ let
       ts       = hostCfg.config.infra.network.tailnet or {};
       domain   = let d = ts.serveUIDomain or (hostCfg.config.fleet.settings.domain.tailnetSuffix or "");
                  in if d == null then "" else d;
-      fqdn     = "${hostName}.${domain}";
+      # The tailnet name, not the registry key: a CTID-keyed or renamed host
+      # (and any host with an explicit tailnet.hostname) serves its UIs on
+      # the name the module put into its Caddy vhost.
+      fqdn     = "${ts.hostname or hostName}.${domain}";
       enabled  = lib.filterAttrs (_: u: u.enable) (ts.serveUI or {});
       # serveUI.backendAddress is loopback (tailscale-serve proxies to a local
       # port *on the host*), which is useless in a fleet-wide catalog — every

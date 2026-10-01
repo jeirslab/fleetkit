@@ -68,9 +68,31 @@ in
                                   manifest via lib/headscale-policy.nix
           * `extraUpFlags`      — --login-server (from
                                   fleet.settings.tailnet.controlUrl),
-                                  --hostname=<host>, --accept-dns=false
+                                  --hostname=<hostname option>,
+                                  --accept-dns=false
         Turns the per-host tailnet rollout into a single line per
         host regardless of that host's module structure.
+      '';
+    };
+
+    hostname = mkOption {
+      type = types.str;
+      default = config.networking.hostName;
+      defaultText = lib.literalExpression "config.networking.hostName";
+      example = "web-1-site2";
+      description = ''
+        This node's name on the tailnet: the `--hostname` that `fleetNode`
+        passes to `tailscale up`, hence the coordination server's node name
+        and the MagicDNS label `<hostname>.<base-domain>`. Also the host part
+        of every `serveUI` vhost, which must match the MagicDNS name the
+        browser resolves.
+
+        Defaults to the OS hostname. Set it when the OS hostname is not
+        unique across the tailnet — typically two sites (or two fleets on
+        one coordination server) that each run a host of the same name:
+        the second node would otherwise be renamed by the server with a
+        random suffix, and every name derived from it would drift. The OS
+        hostname, the fleet DNS name and the manifest key are unaffected.
       '';
     };
 
@@ -358,7 +380,7 @@ in
     (mkIf (cfg.serveUI != {}) (
       let
         enabled   = lib.filterAttrs (_: u: u.enable) cfg.serveUI;
-        fqdn      = "${config.networking.hostName}.${cfg.serveUIDomain}";
+        fqdn      = "${cfg.hostname}.${cfg.serveUIDomain}";
         proxyLine = u: "reverse_proxy http://${u.backendAddress}:${toString u.backendPort}";
         # Group entries by tailnet-side port: one Caddy vhost + one serve
         # forwarder per distinct servePort.
@@ -429,7 +451,7 @@ in
             lib.optional (tailnet.controlUrl != null)
               "--login-server=${tailnet.controlUrl}"
             ++ [
-              "--hostname=${config.networking.hostName}"
+              "--hostname=${cfg.hostname}"
               "--accept-dns=false"
             ]);
         };

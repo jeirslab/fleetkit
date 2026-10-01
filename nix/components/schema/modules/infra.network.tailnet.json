@@ -44,6 +44,9 @@
   "infra.network.tailnet.funnel.routes.<name>.path": {
     "type": "string"
   },
+  "infra.network.tailnet.hostname": {
+    "type": "string"
+  },
   "infra.network.tailnet.outboundProxy": {
     "type": "null or 16 bit unsigned integer; between 0 and 65535 (both inclusive)"
   },
