@@ -346,6 +346,29 @@ let
       ''}/nixos-bootstrap-lxc-latest.tar.xz"
     else null;
 
+  # NixOS cloud-init VM disk from the same machinery (target
+  # "proxmox-vm-cloud"): the disk a VM entry imports as its root disk
+  # (`image = "file:<datastore>:iso/<file_name>"` → bpg disk.file_id) and
+  # then finishes through the cloud-init drive — a NixOS KVM guest with no
+  # template VMID, no qmrestore and no hypervisor shell. Compressed qcow2
+  # (see nix/images/deployer/lib/formats/proxmox-cloud.nix for why not raw),
+  # copied to the ADR-0003 "latest" handle for the same state-diffing reason
+  # as the LXC tarball. Same deploy key and caches, same nixpkgs pin.
+  preparedNixosVmCloudImagePath =
+    if pkgs != null && fleetLib != null
+    then
+      let
+        image = fleetLib.images.mkBootstrapImage {
+          target = "proxmox-vm-cloud";
+          deployKey = config.fleet.network.sysadmin_ssh_key;
+          inherit (config.fleet.settings.cache) substituters trustedPublicKeys;
+        };
+      in "${pkgs.runCommand "nixos-bootstrap-cloud" { } ''
+        mkdir -p $out
+        cp ${image}/*.qcow2 $out/nixos-bootstrap-cloud-latest.qcow2
+      ''}/nixos-bootstrap-cloud-latest.qcow2"
+    else null;
+
 in rec {
   inherit mkNetwork mkLifecycle mkProviderRef nixosLxcTemplate net tfName;
 
@@ -611,6 +634,18 @@ in rec {
       newStyle = imageStr != null;
       declared = meta.network_mode == "declared";
 
+      # Which cloud-init identity a new-style VM gets. The per-VM user-data
+      # snippet (`local:snippets/<name>-user-data.yaml`) exists only for
+      # entries that declare `cloud_init.users` — that is the filter the
+      # consumer-side snippet emitter renders from — so a `file:` image is
+      # pointed at it only when it will exist. A `file:` image WITHOUT users
+      # (a NixOS cloud image, whose users and services arrive by colmena
+      # after first boot) gets root + the sysadmin key via user_account, the
+      # same identity a `clone:` NixOS VM gets. Before this distinction every
+      # `file:` image referenced the snippet unconditionally, so such a VM
+      # named a file nothing had uploaded and PVE refused the create.
+      wantsSnippet = newStyle && imageKind == "file" && meta.cloud_init.users != [];
+
       # Data disks → virtio1, virtio2, ... in declaration order.
       dataDiskEntries = lib.imap0 (i: dd: {
         interface = "virtio${toString (i + 1)}";
@@ -691,10 +726,11 @@ in rec {
         dns = dnsFor meta;
       } // (
         # Declared NICs: ip_config mirrors `interfaces` one-to-one; the
-        # cloud-init identity follows the image kind (a file: image gets
-        # the per-VM snippet, everything else the sysadmin key).
+        # cloud-init identity follows `wantsSnippet` (a file: image WITH
+        # cloud_init.users gets the per-VM snippet, everything else root +
+        # the sysadmin key through user_account).
         if declared then
-          (if newStyle && imageKind == "file"
+          (if wantsSnippet
            then { user_data_file_id = "local:snippets/${name}-user-data.yaml"; }
            else { user_account = { username = "root"; keys = [ net.sysadmin_ssh_key ]; }; })
           // { ip_config = map ipConfigFor meta.interfaces; }
@@ -703,9 +739,9 @@ in rec {
         # nix/fleet/resources.nix's renderCloudInitSnippet, uploaded as
         # local:snippets/<name>-user-data.yaml. NixOS clone VMs in
         # new-style still get just the sysadmin key via user_account
-        # (no custom snippet needed) — distinguished by imageKind.
+        # (no custom snippet needed) — distinguished by `wantsSnippet`.
         if newStyle then (
-          if imageKind == "clone" then {
+          if !wantsSnippet then {
             user_account = { username = "root"; keys = [ net.sysadmin_ssh_key ]; };
             ip_config = [
               { ipv4 = { address = "dhcp"; }; }
@@ -893,18 +929,26 @@ in rec {
   } // (lib.optionalAttrs (meta ? upload_timeout) { upload_timeout = meta.upload_timeout; })
     // (mkLifecycle meta);
 
-  # File resource. Two source modes:
+  # File resource. Three source modes:
   #   • inline string content (default) — emits `source_raw`. Used for
   #     cloud-init snippets and hookscripts.
-  #   • binary file (set meta.source = "nixos-lxc-image") — emits
-  #     `source_file` pointing at a nix-built image. The bpg provider SCPs
-  #     the file up to PVE on apply.
+  #   • meta.source = "nixos-lxc-image" — emits `source_file` pointing at the
+  #     nix-built NixOS LXC bootstrap template (content type vztmpl).
+  #   • meta.source = "nixos-vm-cloud-image" — emits `source_file` pointing
+  #     at the nix-built NixOS cloud-init VM disk (images target
+  #     proxmox-vm-cloud, compressed qcow2). Upload it to a storage with
+  #     `iso` content under a `.img` file_name (PVE refuses `.qcow2` there)
+  #     and reference it from a VM entry as
+  #     `image = "file:<datastore>:iso/<file_name>"`.
+  #   The bpg provider pushes `source_file` up to the node on apply (the PVE
+  #   upload API for iso/vztmpl content; node SSH for snippets).
   # (The "debian-cloud-image" source was removed with the Debian-VM path —
   #  INFRA-137.)
   mkFile = name: meta:
     let
+      source = meta.source or null;
       sourceBlock =
-        if (meta.source or null) == "nixos-lxc-image" then
+        if source == "nixos-lxc-image" then
           assert lib.assertMsg (preparedNixosLxcTemplatePath != null)
             "mkFile: meta.source=\"nixos-lxc-image\" requires pkgs and fleetLib in scope (the images-family builder).";
           { source_file = [{
@@ -912,6 +956,16 @@ in rec {
               file_name = meta.file_name;
             }];
           }
+        else if source == "nixos-vm-cloud-image" then
+          assert lib.assertMsg (preparedNixosVmCloudImagePath != null)
+            "mkFile: meta.source=\"nixos-vm-cloud-image\" requires pkgs and fleetLib in scope (the images-family builder).";
+          { source_file = [{
+              path = preparedNixosVmCloudImagePath;
+              file_name = meta.file_name;
+            }];
+          }
+        else if source != null then
+          throw "mkFile(${name}): unknown source \"${toString source}\" (known: nixos-lxc-image, nixos-vm-cloud-image; omit `source` for inline `data`)"
         else
           { source_raw = [{
               data = meta.data;
