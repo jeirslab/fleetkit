@@ -32,10 +32,10 @@ let
       register = "proxmox-vm";
     };
     proxmox-vm-cloud = {
-      description = "Proxmox VE cloud-init VM disk (raw .img; register as a template, clone via a cloud-init drive). PVE injects per-clone IP/hostname/keys. Upstream proxmoxCloudImage.";
+      description = "Proxmox VE cloud-init VM disk (compressed qcow2; upload to an `iso` storage and import as a VM's root disk via disk.file_id, or register as a template and clone — either way PVE injects per-instance IP/hostname/keys through the cloud-init drive). Built by fleetkit's own proxmox-cloud format: nixpkgs' proxmox-image.nix exports only the VMA.";
       format = "proxmox-cloud";
       platform = ../modules/platform/proxmox-vm-cloud.nix;
-      artifact = "*.img";
+      artifact = "*.qcow2";
       # NOTE: deploy-side registration for a raw disk differs from the VMA
       # (qm importdisk + qm template, not qmrestore); the register verb is a
       # deploy-side TODO. Kept as proxmox-vm here so the table stays complete.
