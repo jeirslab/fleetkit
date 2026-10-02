@@ -57,6 +57,7 @@
     ./build/lxc-template-factory.nix # infra.build.lxcTemplateFactory
     ./build/deploy-runner.nix # infra.build.deployRunner (GitOps CD, poll)
     ./build/github-runner.nix # infra.build.githubRunner (GitOps CD, push)
+    ./build/ci-env.nix # infra.build.ciEnv (the CI environment profile: runner host, act image, agent box)
     ./build/wiki-publisher.nix # infra.build.wikiPublisher
     ./build/registry-proxy.nix # infra.build.registryProxy
     ./build/apt-cache # apt-cacher-ng (infra.build.aptCache)

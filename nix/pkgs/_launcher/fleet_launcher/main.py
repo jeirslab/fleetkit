@@ -343,6 +343,18 @@ def _setup_env() -> None:
                 capture_output=True, text=True, timeout=10)
             if result.returncode == 0 and result.stdout.strip():
                 _setenv_if_blank("PG_CONN_STR", result.stdout.strip())
+        # Peer backends (other fleets on the same cluster): resolved the same
+        # way, joined by newlines. A peer that does not resolve is left out,
+        # not fatal — the reservations preflight reports how many it read.
+        peers = []
+        for peer_path in (_cfg_get("backend_pg.peer_conn_str_sops_paths") or []):
+            r = subprocess.run(
+                [sops, "-d", "--extract", peer_path, _sops_file_for(peer_path, secrets_file)],
+                capture_output=True, text=True, timeout=10)
+            if r.returncode == 0 and r.stdout.strip():
+                peers.append(r.stdout.strip())
+        if peers:
+            _setenv_if_blank("PG_PEER_CONN_STRS", "\n".join(peers))
     except Exception:
         pass
 
