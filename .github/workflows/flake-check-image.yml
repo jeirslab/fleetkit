@@ -1,0 +1,51 @@
+# flake-check-image — build .#flake-check-image and publish it to
+# ghcr.io/<owner>/fleetkit-flake-check, tagged with the branch name (what the
+# flake-check workflow pulls: its `tool-ref`) and the commit. Rebuilds only
+# when something that goes into the image changed: the engine, the image
+# definition, or the flake/lock (nixpkgs → nix, git, certs).
+#
+# The package is created private on first push; make it public once
+# (Package settings → Change visibility) so consumers in other orgs can pull
+# it without credentials — fleetkit itself is public.
+
+name: flake-check-image
+
+on:
+  push:
+    branches: [ main, stable, unstable ]
+    paths:
+      - nix/pkgs/flake-check/**
+      - flake.nix
+      - flake.lock
+      - .github/workflows/flake-check-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: flake-check-image-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v16
+      - name: Build
+        run: nix build -L .#flake-check-image
+      - name: Push to GHCR
+        env:
+          OWNER: ${{ github.repository_owner }}
+          BRANCH: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          image="ghcr.io/${OWNER,,}/fleetkit-flake-check"
+          creds="${GITHUB_ACTOR}:${GH_TOKEN}"
+          for tag in "${BRANCH}" "${GITHUB_SHA::12}"; do
+            nix run nixpkgs#skopeo -- copy --dest-creds "${creds}" \
+              docker-archive:result "docker://${image}:${tag}"
+          done
+          echo "pushed ${image}:${BRANCH} and :${GITHUB_SHA::12}" >> "${GITHUB_STEP_SUMMARY}"

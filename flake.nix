@@ -379,6 +379,16 @@
         # pve-cli (wraps Corsinvest cv4pve) — kubectl-style remote CLI for Proxmox VE.
         pve-cli = pkgs.callPackage ./nix/pkgs/pve-cli { };
 
+        # Update a flake's inputs and prove it still evaluates — the engine
+        # behind .github/workflows/flake-check.yml, the reusable workflow
+        # consumers run inside their own repos.
+        flake-check = pkgs.callPackage ./nix/pkgs/flake-check { };
+        # …and the minimal image that workflow's eval step runs in on
+        # GitHub-hosted runners (published by flake-check-image.yml).
+        flake-check-image = pkgs.callPackage ./nix/pkgs/flake-check/image.nix {
+          inherit flake-check;
+        };
+
         # Options documentation site (mdBook + nixosOptionsDoc, generated
         # from the module declarations — cannot drift from the code).
         docs = import ./docs {

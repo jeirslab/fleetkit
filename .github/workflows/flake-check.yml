@@ -1,0 +1,169 @@
+# flake-check — reusable workflow, run INSIDE a consumer repo with that
+# repo's own token: update the flake's inputs (all, or the ones named), prove
+# every nixosConfiguration and check still evaluates, then open an
+# auto-merging PR with the new flake.lock — or, if anything that evaluated
+# before breaks, open an issue in the consumer repo naming the input that
+# broke it, and change nothing. Engine: nix/pkgs/flake-check.
+#
+# Caller (e.g. .github/workflows/flake-check.yml in the consumer):
+#
+#   name: flake-check
+#   on:
+#     schedule: [{ cron: "17 6 * * *" }]
+#     workflow_dispatch:
+#   permissions: { contents: write, pull-requests: write, issues: write }
+#   jobs:
+#     flake-check:
+#       uses: jeirslab/fleetkit/.github/workflows/flake-check.yml@main
+#       secrets: inherit
+#       # with: { inputs: "fleetkit nixpkgs" }   # default: every input
+#
+# Repo variables (optional):
+#   RUNNER_NAME           runs-on label for the eval job; unset → ubuntu-latest
+#   FLAKE_CHECK_BRANCHES  branches to check, space/comma separated;
+#                         unset → the repo's default branch, whatever it's called
+# Repo secret (optional):
+#   FLAKE_ACCESS_TOKEN    token nix uses for github: inputs the built-in token
+#                         can't read (private repos elsewhere in the org)
+#
+# Where the eval runs: on a GitHub-hosted runner, inside
+# ghcr.io/jeirslab/fleetkit-flake-check:<tool-ref> (no nix install); on a
+# self-hosted runner, with the host's own nix (assumed present — this fleet's
+# runners are NixOS).
+#
+# Auto-merge needs "Allow auto-merge" in the repo settings; without it the PR
+# is left open with a warning. PRs opened with the built-in token don't
+# trigger other workflows — this job's eval report is the check.
+
+name: flake-check
+
+on:
+  workflow_call:
+    inputs:
+      inputs:
+        description: Flake inputs to update, space separated. Empty = all of them.
+        type: string
+        default: ""
+      tool-ref:
+        description: fleetkit ref (and image tag) to run the flake-check engine from.
+        type: string
+        default: main
+    secrets:
+      FLAKE_ACCESS_TOKEN:
+        required: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      branches: ${{ steps.plan.outputs.branches }}
+      runner: ${{ steps.plan.outputs.runner }}
+    steps:
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LIST: ${{ vars.FLAKE_CHECK_BRANCHES }}
+          RUNNER: ${{ vars.RUNNER_NAME }}
+        run: |
+          list="${LIST:-$(gh api "repos/${GITHUB_REPOSITORY}" --jq .default_branch)}"
+          printf 'branches=%s\n' "$(tr -s ', ' '\n' <<< "${list}" | sed '/^$/d' | jq -Rnc '[inputs]')" >> "${GITHUB_OUTPUT}"
+          printf 'runner=%s\n' "${RUNNER:-ubuntu-latest}" >> "${GITHUB_OUTPUT}"
+
+  check:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: ${{ fromJSON(needs.plan.outputs.branches) }}
+    runs-on: ${{ needs.plan.outputs.runner }}
+    concurrency: flake-check-${{ matrix.branch }}
+    env:
+      BRANCH: ${{ matrix.branch }}
+      INPUTS: ${{ inputs.inputs }}
+      TOOL_REF: ${{ inputs.tool-ref }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch }}
+
+      - id: check
+        name: Update inputs and evaluate
+        env:
+          TOKEN: ${{ secrets.FLAKE_ACCESS_TOKEN || github.token }}
+          HAS_ACCESS_TOKEN: ${{ secrets.FLAKE_ACCESS_TOKEN != '' }}
+          NIX_CONFIG: |
+            experimental-features = nix-command flakes
+            access-tokens = github.com=${{ secrets.FLAKE_ACCESS_TOKEN || github.token }}
+        run: |
+          set +e
+          # git+https inputs go through git's own credentials, not nix's
+          # access-tokens. Hand git the token too — always in the container
+          # (it has no credential helper), on a self-hosted runner only when
+          # FLAKE_ACCESS_TOKEN is set (otherwise the host's own git setup wins).
+          if [ "${RUNNER_ENVIRONMENT}" = github-hosted ] || [ "${HAS_ACCESS_TOKEN}" = true ]; then
+            export GIT_CONFIG_COUNT=1
+            export GIT_CONFIG_KEY_0="url.https://x-access-token:${TOKEN}@github.com/.insteadOf"
+            export GIT_CONFIG_VALUE_0="https://github.com/"
+          fi
+          if [ "${RUNNER_ENVIRONMENT}" = github-hosted ]; then
+            # shellcheck disable=SC2086  # INPUTS is a space-separated list
+            docker run --rm -v "${PWD}:/work" -w /work -e NIX_CONFIG -e JOBS \
+              -e GIT_CONFIG_COUNT -e GIT_CONFIG_KEY_0 -e GIT_CONFIG_VALUE_0 \
+              "ghcr.io/jeirslab/fleetkit-flake-check:${TOOL_REF}" \
+              flake-check --json /work/.flake-check.json --report /work/.flake-check-report.md ${INPUTS}
+          else
+            # shellcheck disable=SC2086
+            nix run "github:jeirslab/fleetkit/${TOOL_REF}#flake-check" -- \
+              --json "${PWD}/.flake-check.json" --report "${PWD}/.flake-check-report.md" ${INPUTS}
+          fi
+          rc=$?
+          echo "rc=${rc}" >> "${GITHUB_OUTPUT}"
+          case "${rc}" in 0|1|3) exit 0 ;; *) exit "${rc}" ;; esac
+
+      - name: Keep the JSON result
+        if: always() && steps.check.outputs.rc != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: flake-check-${{ strategy.job-index }}
+          path: .flake-check.json
+          if-no-files-found: ignore
+
+      - name: Open auto-merging PR
+        if: steps.check.outputs.rc == '0'
+        run: |
+          head="flake-check/${BRANCH}"
+          title="flake.lock: update ${INPUTS:-inputs} (${BRANCH})"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "${head}"
+          git commit -m "${title}" -- flake.lock
+          git push --force origin "${head}"
+          pr="$(gh pr list --head "${head}" --base "${BRANCH}" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "${pr}" ]; then
+            gh pr edit "${pr}" --title "${title}" --body-file .flake-check-report.md
+          else
+            gh pr create --base "${BRANCH}" --head "${head}" --title "${title}" --body-file .flake-check-report.md
+            pr="$(gh pr list --head "${head}" --base "${BRANCH}" --state open --json number --jq '.[0].number')"
+          fi
+          gh pr merge "${pr}" --auto --squash \
+            || echo "::warning::auto-merge isn't enabled on this repo; PR #${pr} left open for review"
+
+      - name: Open issue (update blocked)
+        if: steps.check.outputs.rc == '1'
+        run: |
+          title="flake-check: updating ${INPUTS:-inputs} breaks ${BRANCH}"
+          # The title is built from input and branch names only — no quotes to escape.
+          n="$(gh issue list --state open --json number,title --jq ".[] | select(.title == \"${title}\") | .number" | head -1)"
+          {
+            cat .flake-check-report.md
+            echo
+            echo "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > "${RUNNER_TEMP}/issue.md"
+          if [ -n "${n}" ]; then
+            gh issue comment "${n}" --body-file "${RUNNER_TEMP}/issue.md"
+          else
+            gh issue create --title "${title}" --body-file "${RUNNER_TEMP}/issue.md"
+          fi
+          echo "::error::updating ${INPUTS:-inputs} breaks ${BRANCH}; flake.lock unchanged"
+          exit 1
