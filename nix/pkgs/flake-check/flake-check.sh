@@ -10,11 +10,13 @@
 # For each regression it then tries every changed input on its own, so the
 # result names the dependency that broke it.
 #
-# Evaluation is bulk first: one nix process, every attr under
-# builtins.tryEval, so nixpkgs and shared modules are evaluated once. What
-# tryEval can't catch (type errors, abort, infinite recursion) or a bulk run
-# that dies outright falls back to one `nix eval` per attr, which is also
-# where each failure's real error message comes from.
+# Evaluation is bulk first: attrs in chunks, one nix process per chunk with
+# every attr under builtins.tryEval, so nixpkgs and shared modules are
+# evaluated once per chunk instead of once per host. What tryEval can't catch
+# (type errors, abort, infinite recursion) kills only its chunk, whose
+# members fall back to one `nix eval` each — which is also where every
+# failure's real error message comes from. Attrs that failed before the
+# update stay out of the bulk pass after it.
 #
 # On success the updated flake.lock is left in place for the caller to
 # commit; on a regression the original flake.lock is restored.
@@ -25,7 +27,9 @@
 #   --json FILE    write the result as JSON (the source of truth)
 #   --report FILE  write a markdown summary rendered from that JSON
 #   --no-bulk      skip the one-process pass (huge flakes, tight memory)
-# Env: JOBS (parallel per-attr evals, default 4), NIX_FLAGS (extra nix flags)
+# Env: JOBS (parallel per-attr evals, default 4), BULK_CHUNK (attrs per bulk
+#      process, default 8), BULK_JOBS (bulk processes at once, default 2),
+#      NIX_FLAGS (extra nix flags)
 # Exit: 0 updated, no regressions · 1 regression (lock restored)
 #       2 error / no verdict      · 3 nothing to update (already at tip)
 
@@ -38,7 +42,7 @@ while (( $# )); do
         --json) JSON="${2:?--json needs a file}"; shift ;;
         --report) REPORT="${2:?--report needs a file}"; shift ;;
         --no-bulk) BULK=0 ;;
-        -h|--help) sed -n '3,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '3,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
         -*) echo "error: unknown flag '$1'" >&2; exit 2 ;;
         *) INPUTS+=("$1") ;;
     esac
@@ -53,6 +57,8 @@ for i in "${INPUTS[@]}"; do
 done
 
 JOBS="${JOBS:-4}"
+BULK_CHUNK="${BULK_CHUNK:-8}"
+BULK_JOBS="${BULK_JOBS:-2}"
 read -r -a NIXF <<< "${NIX_FLAGS:-}"
 SYSTEM="$(nix eval --raw --impure --expr builtins.currentSystem)"
 WORK="$(mktemp -d)"
@@ -78,21 +84,24 @@ list_attrs() {
             (builtins.attrNames ((o.checks or {}).${SYSTEM} or {}))" </dev/null | jq -r '.[]'
 }
 
-# One process, every attr under tryEval: {"<attr path>": true|false}.
-# false means "tryEval caught an error"; an uncatchable error kills the run.
-bulk_eval() {  # <out.json>
+# One process, the attr paths in the JSON array $2 under tryEval:
+# {"<attr path>": true|false}. false means "tryEval caught an error"; an
+# uncatchable error (type error, abort, infinite recursion) kills the run.
+bulk_eval() {  # <out.json> <include.json>
     nix eval --json "${NIXF[@]}" --impure --expr "
         let
           o = (builtins.getFlake \"${FLAKE}\").outputs;
+          want = builtins.fromJSON (builtins.readFile \"$2\");
           ok = d: (builtins.tryEval (builtins.seq d.drvPath true)).success;
+          keep = e: builtins.elem e.name want;
         in
-          builtins.listToAttrs (
+          builtins.listToAttrs (builtins.filter keep (
             map (h: { name = \"nixosConfigurations.\\\"\${h}\\\".config.system.build.toplevel\";
                       value = ok o.nixosConfigurations.\${h}.config.system.build.toplevel; })
                 (builtins.attrNames (o.nixosConfigurations or {}))
             ++ map (c: { name = \"checks.${SYSTEM}.\\\"\${c}\\\"\";
                          value = ok o.checks.${SYSTEM}.\${c}; })
-                (builtins.attrNames ((o.checks or {}).${SYSTEM} or {})))" \
+                (builtins.attrNames ((o.checks or {}).${SYSTEM} or {}))))" \
         </dev/null >"$1" 2>"$1.err"
 }
 
@@ -107,19 +116,42 @@ eval_one() {  # <attr> <out-prefix>
 throttle() { while (( $(jobs -rp | wc -l) >= JOBS )); do wait -n || true; done; }
 
 # Evaluate the attrs in $2 (newline list) into ${WORK}/<phase>/<n>.{res,log}.
-# $3 = 1 to try the bulk pass first. Per-attr evals run in parallel, and
-# each failure gets one serial retry: parallel evals of the same git inputs
-# race in nix's fetcher cache ("getting Git object …: object not found").
+# $3 = 1 to try the bulk pass first; $4 = JSON array of attr paths to keep
+# out of it (default none). Per-attr evals run in parallel, and each failure
+# gets one serial retry: parallel evals of the same git inputs race in nix's
+# fetcher cache ("getting Git object …: object not found").
 phase() {
-    local dir="${WORK}/$1" bulk="${3:-0}" n=0 a
+    local dir="${WORK}/$1" bulk="${3:-0}" n=0 a c chunks
     mkdir -p "${dir}"
-    if (( bulk )) && bulk_eval "${dir}/bulk.json"; then
-        while read -r a; do
-            n=$((n + 1))
-            [[ "$(jq -r --arg a "${a}" '.[$a]' "${dir}/bulk.json")" == true ]] && echo ok > "${dir}/${n}.res"
-        done <<< "$2"
-    elif (( bulk )); then
-        echo "  bulk pass died ($(grep -m1 'error:' "${dir}/bulk.json.err" | cut -c1-120)); per-attr" >&2
+    if (( bulk )); then
+        # Chunks of BULK_CHUNK attrs, BULK_JOBS processes at a time: shared
+        # evaluation within a chunk, and one uncatchable failure only sends
+        # its own chunk to the per-attr path.
+        jq -Rn --argjson skip "${4:-[]}" --argjson size "${BULK_CHUNK}" \
+            '[inputs | select(. as $a | $skip | index($a) | not)]
+             | [range(0; length; $size) as $i | .[$i:$i + $size]]' <<< "$2" > "${dir}/chunks.json"
+        chunks="$(jq length "${dir}/chunks.json")"
+        for (( c = 0; c < chunks; c++ )); do
+            jq -c ".[${c}]" "${dir}/chunks.json" > "${dir}/chunk-${c}.in.json"
+            while (( $(jobs -rp | wc -l) >= BULK_JOBS )); do wait -n || true; done
+            bulk_eval "${dir}/chunk-${c}.json" "${dir}/chunk-${c}.in.json" &
+        done
+        wait
+        for (( c = 0; c < chunks; c++ )); do
+            if [[ -s "${dir}/chunk-${c}.json" ]] && jq -e 'type == "object"' "${dir}/chunk-${c}.json" >/dev/null 2>&1; then
+                jq -s 'add' "${dir}/bulk.json" "${dir}/chunk-${c}.json" 2>/dev/null > "${dir}/bulk.tmp" \
+                    || cp "${dir}/chunk-${c}.json" "${dir}/bulk.tmp"
+                mv "${dir}/bulk.tmp" "${dir}/bulk.json"
+            else
+                echo "  bulk chunk $((c + 1))/${chunks} died ($(grep -v '^warning\|evaluation warning\|^\s*$' "${dir}/chunk-${c}.json.err" | tail -1 | cut -c1-120)); per-attr for its members" >&2
+            fi
+        done
+        if [[ -f "${dir}/bulk.json" ]]; then
+            while read -r a; do
+                n=$((n + 1))
+                [[ "$(jq -r --arg a "${a}" '.[$a]' "${dir}/bulk.json")" == true ]] && echo ok > "${dir}/${n}.res"
+            done <<< "$2"
+        fi
     fi
     n=0
     while read -r a; do
@@ -199,8 +231,16 @@ if [[ "$(jq length "${WORK}/changed.json")" == 0 ]]; then
     exit 3
 fi
 
+# Attrs that already failed at baseline stay out of the candidate bulk pass:
+# whatever broke them may be uncatchable and would take every other attr
+# down to the slow per-attr path with it.
+n=0; BASEFAIL="[]"
+while read -r a; do
+    n=$((n + 1))
+    [[ "$(cat "${WORK}/base/${n}.res")" == ok ]] || BASEFAIL="$(jq -c --arg a "${a}" '. + [$a]' <<< "${BASEFAIL}")"
+done <<< "${ATTRS}"
 echo "candidate eval…" >&2
-phase cand "${ATTRS}" "${BULK}"
+phase cand "${ATTRS}" "${BULK}" "${BASEFAIL}"
 
 # --- per-attr results
 n=0; REGATTRS=""
