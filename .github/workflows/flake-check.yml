@@ -90,14 +90,26 @@ jobs:
       - id: check
         name: Update inputs and evaluate
         env:
+          TOKEN: ${{ secrets.FLAKE_ACCESS_TOKEN || github.token }}
+          HAS_ACCESS_TOKEN: ${{ secrets.FLAKE_ACCESS_TOKEN != '' }}
           NIX_CONFIG: |
             experimental-features = nix-command flakes
             access-tokens = github.com=${{ secrets.FLAKE_ACCESS_TOKEN || github.token }}
         run: |
           set +e
+          # git+https inputs go through git's own credentials, not nix's
+          # access-tokens. Hand git the token too — always in the container
+          # (it has no credential helper), on a self-hosted runner only when
+          # FLAKE_ACCESS_TOKEN is set (otherwise the host's own git setup wins).
+          if [ "${RUNNER_ENVIRONMENT}" = github-hosted ] || [ "${HAS_ACCESS_TOKEN}" = true ]; then
+            export GIT_CONFIG_COUNT=1
+            export GIT_CONFIG_KEY_0="url.https://x-access-token:${TOKEN}@github.com/.insteadOf"
+            export GIT_CONFIG_VALUE_0="https://github.com/"
+          fi
           if [ "${RUNNER_ENVIRONMENT}" = github-hosted ]; then
             # shellcheck disable=SC2086  # INPUTS is a space-separated list
             docker run --rm -v "${PWD}:/work" -w /work -e NIX_CONFIG -e JOBS \
+              -e GIT_CONFIG_COUNT -e GIT_CONFIG_KEY_0 -e GIT_CONFIG_VALUE_0 \
               "ghcr.io/jeirslab/fleetkit-flake-check:${TOOL_REF}" \
               flake-check --json /work/.flake-check.json --report /work/.flake-check-report.md ${INPUTS}
           else

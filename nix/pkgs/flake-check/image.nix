@@ -22,6 +22,12 @@ dockerTools.buildLayeredImageWithNixDb {
     coreutils
     bashInteractive
     dockerTools.fakeNss # /etc/passwd + /etc/group with root/nobody
+    # The checkout is bind-mounted from the runner and owned by its user, not
+    # the container's root; without this libgit2 refuses to open it.
+    (writeTextDir "etc/gitconfig" ''
+      [safe]
+      	directory = *
+    '')
     (writeTextDir "etc/nix/nix.conf" ''
       experimental-features = nix-command flakes
       sandbox = false
