@@ -144,6 +144,14 @@ in
             # never `.${config.networking.hostName}`: hostname and key differ for a
             # CTID-keyed or renamed host (fleetkit#21).
             fleet.self.key = name;
+          })
+          # The declared size, for modules that scale with the guest they run
+          # on (the runner's `count = "auto"`). Same mechanism as above.
+          ++ nixpkgs.lib.optional ((rt.cpu_cores or null) != null) ({ ... }: {
+            fleet.self.cpuCores = rt.cpu_cores;
+          })
+          ++ nixpkgs.lib.optional ((rt.memory_mb or null) != null) ({ ... }: {
+            fleet.self.memoryMb = rt.memory_mb;
           });
           tags = _tags rt;
         } // (

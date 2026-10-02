@@ -130,8 +130,11 @@ def _check_remote_builder() -> None:
     # Find builder IP
     builder_ip = None
     for _name, meta in hosts.items():
-        if "builder" in (meta.get("tags") or []) and meta.get("ip"):
-            builder_ip = meta["ip"]
+        # A single-internal builder leaves `ip` empty; its internal_ip is
+        # the reachable one (the same fallback `fleet remote` applies).
+        addr = meta.get("ip") or meta.get("internal_ip")
+        if "builder" in (meta.get("tags") or []) and addr:
+            builder_ip = addr
             break
 
     if not builder_ip:
@@ -215,8 +218,13 @@ def apply_all(args: tuple[str, ...], no_refresh: bool):
               help="Build and copy the closure, then show what activation WOULD "
                    "do (which units restart/reload) without switching. Read-only "
                    "on the target's running system. Mutually exclusive with --reboot.")
+@click.option("--parallel", type=int, default=None, metavar="N",
+              help="With --wait: run at most N host jobs at once (default: all of "
+                   "them). Bound it on a small runner — every job is a colmena "
+                   "build+copy of its own.")
 def apply_host(names: tuple[str, ...], ip: str | None, no_refresh: bool, no_session: bool,
-               wait: bool, reboot: bool, no_substitute: bool, build_on_target: bool | None, dry_activate: bool):
+               wait: bool, reboot: bool, no_substitute: bool, build_on_target: bool | None,
+               dry_activate: bool, parallel: int | None):
     """Deploy NixOS config to one or more hosts.
 
     NAMES are Colmena node names (e.g. ``netgate build auth``).
@@ -270,7 +278,7 @@ def apply_host(names: tuple[str, ...], ip: str | None, no_refresh: bool, no_sess
             "cwd": find_project_root(),
             "description": f"Colmena deploy to {name}",
         } for name in names]
-        sys.exit(run_and_wait(specs))
+        sys.exit(run_and_wait(specs, max_workers=parallel))
 
     if backgrounding:
         dispatched_any = False
@@ -426,6 +434,278 @@ def _site_builds_on_target(names: tuple[str, ...], explicit: bool | None) -> boo
     for line in decided:
         console.print(f"[green]Remote build:[/green] {line}")
     return True
+
+def _colmena_eval(root, expr: str) -> subprocess.CompletedProcess[str]:
+    """``colmena eval`` of ``expr`` (a ``{ nodes, ... }:`` function) against the
+    hive this checkout deploys — ``--impure`` like every other colmena call
+    here, so hosts.json and secrets are readable during evaluation."""
+    return subprocess.run(
+        ["colmena", "eval", "--impure", "-E", expr],
+        cwd=root, capture_output=True, text=True,
+    )
+
+
+def _hive_node_names(root) -> list[str]:
+    """The hive's node names — the deployable set. Asked of colmena, not read
+    from hosts.json: hosts.json also carries adopted (non-NixOS) guests, and a
+    host with no closure is not a deploy target."""
+    out = _colmena_eval(root, "{ nodes, ... }: builtins.attrNames nodes")
+    if out.returncode != 0:
+        console.print(f"[red]could not list the hive's nodes:[/red]\n{out.stderr.strip()}")
+        sys.exit(1)
+    return sorted(json.loads(out.stdout))
+
+
+def _expected_system(root, name: str) -> tuple[str | None, str]:
+    """The store path this tree would activate on ``name`` — evaluated, not
+    built (an output path is a function of the derivation alone), and
+    evaluated THROUGH COLMENA: the hive pins its own nixpkgs (overlays,
+    allowUnfree, a path import that labels itself ``pre-git``), so a plain
+    ``nixosConfigurations`` eval of the same modules is a different
+    derivation and would never match what a host runs. Returns
+    ``(path, error)``; ``path`` is None when the closure does not evaluate."""
+    out = _colmena_eval(
+        root, f'{{ nodes, ... }}: nodes."{name}".config.system.build.toplevel.outPath')
+    if out.returncode != 0:
+        tail = "\n".join(out.stderr.strip().splitlines()[-3:])
+        return None, tail
+    return json.loads(out.stdout.strip()), ""
+
+
+def _expected_systems_bulk(root, names: list[str]) -> dict[str, tuple[str | None, str]]:
+    """All of ``names`` in ONE colmena process: nixpkgs and the shared modules
+    are evaluated once instead of once per node, which is most of the cost.
+    Needs the memory for the whole hive (a few GB for ~25 nodes); one node
+    that fails to evaluate fails the whole call, so skip such nodes."""
+    sel = " ".join(f'"{n}" = null;' for n in names)
+    out = _colmena_eval(
+        root,
+        "{ nodes, ... }: builtins.mapAttrs (_: n: n.config.system.build.toplevel.outPath) "
+        f"(builtins.intersectAttrs {{ {sel} }} nodes)")
+    if out.returncode != 0:
+        tail = "\n".join(out.stderr.strip().splitlines()[-3:])
+        return {n: (None, tail) for n in names}
+    paths = json.loads(out.stdout)
+    return {n: (paths[n], "") if n in paths else (None, "absent from the hive") for n in names}
+
+
+def _system_label(path: str) -> str:
+    """``nixos-system-<hostName>-<rest>`` from a system store path, or the
+    basename when it is not shaped like one."""
+    base = path.rsplit("/", 1)[-1]
+    return base.split("-", 1)[1] if "-" in base else base
+
+
+def _system_belongs_to(path: str, name: str) -> bool:
+    """Whether a running system path was built for node ``name``: NixOS names
+    the toplevel ``nixos-system-<networking.hostName>-<version>``, and the
+    hive sets hostName to the node name. A mismatch means the address is
+    answered by some other machine."""
+    return _system_label(path).startswith(f"nixos-system-{name}-")
+
+
+def _running_system(ip: str, *, timeout: int = 10) -> tuple[str | None, str]:
+    """What ``ip`` is running now: the target of ``/run/current-system``.
+    Returns ``(path, error)``; ``path`` is None when the host does not answer."""
+    out = subprocess.run(
+        ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new",
+         "-o", f"ConnectTimeout={timeout}", f"root@{ip}",
+         "readlink -f /run/current-system"],
+        capture_output=True, text=True, timeout=timeout + 20,
+    )
+    if out.returncode != 0 or not out.stdout.strip():
+        tail = "\n".join(out.stderr.strip().splitlines()[-2:]) or f"rc={out.returncode}"
+        return None, tail
+    return out.stdout.strip(), ""
+
+
+@apply.command("changed")
+@click.option("--skip", "skips", multiple=True, metavar="HOST",
+              help="Leave HOST out (repeatable) — e.g. one whose closure does "
+                   "not evaluate yet, or one that is deployed by hand.")
+@click.option("--only", "onlys", multiple=True, metavar="HOST",
+              help="Consider only HOST (repeatable). Default: every node of the hive.")
+@click.option("--unreachable", type=click.Choice(["fail", "skip", "deploy"]),
+              default="fail", show_default=True,
+              help="A host that does not answer SSH: fail the run, leave it "
+                   "out, or deploy it anyway (colmena will then fail on it).")
+@click.option("--jobs", type=int, default=2, show_default=True, metavar="N",
+              help="Concurrent host evaluations, one nix process each (two fit "
+                   "an 8 GB runner). 0 = evaluate the whole hive in ONE process: "
+                   "nixpkgs is evaluated once, not per node — far faster, needs "
+                   "the memory for every node at once, and one node that does "
+                   "not evaluate fails the lot (use --skip).")
+@click.option("--parallel", type=int, default=4, show_default=True, metavar="N",
+              help="Concurrent host deploys once the changed set is known.")
+@click.option("--dry-run", is_flag=True,
+              help="Report which hosts differ and exit without deploying.")
+@click.option("--reboot", is_flag=True, help="Forwarded to `apply host`.")
+@click.option("--dry-activate", "dry_activate", is_flag=True, help="Forwarded to `apply host`.")
+@click.option("--build-on-target", is_flag=True,
+              help="Build each closure on its host (`apply remote`) instead of "
+                   "here — for a workstation without a remote builder. Not "
+                   "combinable with --dry-activate.")
+def apply_changed(skips: tuple[str, ...], onlys: tuple[str, ...], unreachable: str,
+                  jobs: int, parallel: int, dry_run: bool, reboot: bool, dry_activate: bool,
+                  build_on_target: bool):
+    """Deploy every host whose running system differs from this tree.
+
+    The continuous-deploy entry point: what a merge to the deploy branch
+    runs. For each node of the hive the closure this checkout would
+    activate is evaluated through colmena (not built) and compared with
+    what the host reports at ``/run/current-system``. Hosts that already
+    run it are left alone; the rest go through ``apply host … --wait`` and
+    the exit code is the real aggregate result.
+
+    Comparing against the hosts rather than against the previous commit
+    means a host whose last deploy failed is picked up on the next push,
+    and a deploy from a fresh clone needs no history. It costs one
+    evaluation per host — the same work the gate does — and one SSH
+    round-trip each.
+
+    \b
+    Examples:
+      fleet deploy nixos apply changed --dry-run
+      fleet deploy nixos apply changed --skip tracelab --unreachable skip
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from ._util import fleet_executable
+
+    root = find_project_root()
+    _refresh_inventory()
+    hosts_file = fleet_cache_dir(root) / "hosts.json"
+    try:
+        with open(hosts_file) as f:
+            hosts = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        console.print(f"[red]cannot read {hosts_file}:[/red] {exc}")
+        sys.exit(1)
+
+    names = _hive_node_names(root)
+    if onlys:
+        unknown = sorted(set(onlys) - set(names))
+        if unknown:
+            console.print(f"[red]not a node of the hive:[/red] {', '.join(unknown)}")
+            sys.exit(1)
+        names = [n for n in names if n in onlys]
+    names = [n for n in names if n not in skips]
+    if not names:
+        console.print("[yellow]no hosts to consider[/yellow]")
+        return
+
+    expected: dict[str, tuple[str | None, str]] = {}
+    if jobs <= 0:
+        console.print(f"[dim]evaluating {len(names)} host closure(s) in one process…[/dim]")
+        expected = _expected_systems_bulk(root, names)
+        for name in names:
+            path, _err = expected[name]
+            console.print(f"  {name}: " + (f"[dim]{path.rsplit('/', 1)[-1]}[/dim]" if path
+                                            else "[red]eval failed[/red]"))
+    else:
+        console.print(f"[dim]evaluating {len(names)} host closure(s), {jobs} at a time…[/dim]")
+        with ThreadPoolExecutor(max_workers=jobs) as pool:
+            futures = {pool.submit(_expected_system, root, n): n for n in names}
+            for fut in as_completed(futures):
+                name = futures[fut]
+                expected[name] = fut.result()
+                path, _err = expected[name]
+                # One line per host as it lands: a CI log shows progress, not silence.
+                console.print(f"  {name}: " + (f"[dim]{path.rsplit('/', 1)[-1]}[/dim]" if path
+                                                else "[red]eval failed[/red]"))
+
+    def _probe(name: str) -> tuple[str | None, str]:
+        entry = hosts.get(name) or {}
+        ip = entry.get("ip") or entry.get("internal_ip") or ""
+        if not ip:
+            return None, "no ip in hosts.json"
+        try:
+            return _running_system(ip)
+        except subprocess.TimeoutExpired:
+            return None, "ssh timed out"
+
+    console.print(f"[dim]asking {len(names)} host(s) what they run…[/dim]")
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        running = dict(zip(names, pool.map(_probe, names)))
+
+    changed: list[str] = []
+    eval_failed: list[str] = []
+    down: list[str] = []
+    imposters: list[str] = []
+    t = Table(title="deploy plan")
+    t.add_column("host", style="cyan")
+    t.add_column("state", style="bold")
+    t.add_column("detail", overflow="fold")
+    for name in names:
+        want, eerr = expected[name]
+        have, herr = running[name]
+        if want is None:
+            eval_failed.append(name)
+            t.add_row(name, "[red]eval failed[/red]", eerr)
+        elif have is None:
+            down.append(name)
+            t.add_row(name, "[yellow]unreachable[/yellow]", herr)
+        elif not _system_belongs_to(have, name):
+            # The address answered, but with another host's system: an IP
+            # collision (two estates declaring the same address, a guest
+            # re-provisioned under a new name). Deploying would overwrite a
+            # machine that is not ours — never, whatever the flags say.
+            imposters.append(name)
+            t.add_row(name, "[red]wrong host[/red]",
+                      f"runs {_system_label(have)} — not {name}; refusing")
+        elif want == have:
+            t.add_row(name, "[green]current[/green]", want.rsplit("/", 1)[-1])
+        else:
+            changed.append(name)
+            t.add_row(name, "[magenta]changed[/magenta]",
+                      f"{have.rsplit('/', 1)[-1]} → {want.rsplit('/', 1)[-1]}")
+    console.print(t)
+
+    rc = 0
+    if imposters:
+        console.print(f"[red]{len(imposters)} address(es) answer as another host:[/red] "
+                      f"{', '.join(imposters)} — an IP collision; resolve it in the "
+                      f"fleet declarations, nothing is deployed there")
+        rc = 1
+    if eval_failed:
+        console.print(f"[red]{len(eval_failed)} host(s) do not evaluate:[/red] "
+                      f"{', '.join(eval_failed)} — fix them or pass --skip")
+        rc = 1
+    if down:
+        if unreachable == "fail":
+            console.print(f"[red]{len(down)} host(s) unreachable:[/red] {', '.join(down)} "
+                          f"(--unreachable skip|deploy to proceed without them)")
+            rc = 1
+        elif unreachable == "deploy":
+            changed += down
+        else:
+            console.print(f"[yellow]leaving out unreachable:[/yellow] {', '.join(down)}")
+    if rc:
+        sys.exit(rc)
+    if not changed:
+        console.print("[green]every host already runs this tree — nothing to deploy[/green]")
+        return
+    console.print(f"[bold]deploying {len(changed)} host(s):[/bold] {', '.join(changed)}")
+    if dry_run:
+        return
+
+    if build_on_target:
+        if dry_activate:
+            console.print("[red]--build-on-target cannot --dry-activate[/red]")
+            sys.exit(2)
+        cmd = [fleet_executable(), "deploy", "nixos", "apply", "remote", *changed]
+        if reboot:
+            cmd.append("--reboot")
+    else:
+        cmd = [fleet_executable(), "deploy", "nixos", "apply", "host", *changed,
+               "--wait", "--no-refresh", "--parallel", str(parallel)]
+        if reboot:
+            cmd.append("--reboot")
+        if dry_activate:
+            cmd.append("--dry-activate")
+    result = run_shell(cmd, cwd=root, interactive=True, exit_on_fail=False,
+                       log_label="deploy-changed")
+    sys.exit(result.returncode)
 
 
 @apply.command("remote")

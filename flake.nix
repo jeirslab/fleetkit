@@ -275,6 +275,8 @@
             sops.files = fleetEval.settings.sopsFiles;
             # Where the launcher finds PG_CONN_STR for the pg backend.
             backend_pg.conn_str_sops_path = fleetEval.settings.backend.pg.connStrSopsPath;
+            # …and the other backends sharing the cluster (reservations preflight).
+            backend_pg.peer_conn_str_sops_paths = fleetEval.settings.backend.pg.peerConnStrSopsPaths;
             # …and the AWS_* keys for the s3 backend. Null = ["integrations"]["aws"].
             backend_s3.creds_sops_path = fleetEval.settings.backend.s3.credsSopsPath;
             cli.extensions_dir = fleetEval.settings.cli.extensionsDir;
@@ -446,6 +448,9 @@
       # (nixpkgs + nixos-generators + modules-as-arguments); never imports the
       # fleet/module eval path.
       images = import ./nix/images/deployer/lib { inherit nixpkgs nixos-generators; };
+      # The CI environment as an OCI job image for `act` / `container:` jobs
+      # (the ciEnv profile's toolchain at /bin; not a bootable rootfs).
+      mkCiImage = import ./nix/lib/ci-image.nix;
     };
 
     # Generic NixOS modules + the fleet schema, importable piecemeal by
@@ -453,6 +458,9 @@
     nixosModules = {
       default = ./nix/modules;
       fleetSchema = ./nix/fleet;
+      # The CI environment profile on its own (infra.build.ciEnv), for image
+      # builds that must not drag in the whole infra family and its sops-nix needs.
+      ciEnv = ./nix/modules/infra/build/ci-env.nix;
     };
 
     templates.minimal = {

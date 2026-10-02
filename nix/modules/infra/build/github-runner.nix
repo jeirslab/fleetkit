@@ -53,8 +53,29 @@ in
       '';
     };
 
+    app = {
+      id = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = "5027214";
+        description = ''
+          Register through the organization's GitHub App instead of a PAT. The App
+          needs the organization permission "Self-hosted runners: read & write" and
+          must be installed on `url`'s organization. Takes priority over `tokenFile`:
+          before every start (so before every ephemeral re-registration) a oneshot
+          unit mints an installation token from the App key and exchanges it for a
+          one-hour registration token. No long-lived credential exists on the host.
+        '';
+      };
+      privateKeyFile = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+        description = "The App's private key (PEM), provided by the secrets store at runtime. Never a path in the Nix store.";
+      };
+    };
     tokenFile = mkOption {
-      type = types.path;
+      type = types.nullOr types.path;
+      default = null;
       example = lib.literalExpression ''config.sops.secrets."github/runner-pat".path'';
       description = ''
         Absolute path to a file holding a fine-grained PAT with read+write on
@@ -71,10 +92,81 @@ in
       description = "Runner display name registered with GitHub. null = the host's name.";
     };
 
+    package = mkOption {
+      type = types.package;
+      default = pkgs.github-runner;
+      defaultText = lib.literalExpression "pkgs.github-runner";
+      example = lib.literalExpression "inputs.nixpkgs-unstable.legacyPackages.x86_64-linux.github-runner";
+      description = ''
+        The runner binary. GitHub retires runner releases on its own schedule; a
+        retired one exits with "Runner version vX is deprecated and cannot receive
+        messages", the host looks healthy, and every job for its label queues. A
+        NixOS release pin cannot follow that cadence, so point this at a package set
+        that does (nixpkgs-unstable, or a pinned newer nixpkgs).
+      '';
+    };
+
     labels = mkOption {
       type = types.listOf types.str;
       default = [ "fleet-deploy" ];
       description = "Extra runner labels. The deploy workflow targets these via `runs-on: [self-hosted, …]`.";
+    };
+
+    count = mkOption {
+      type = types.either (types.enum [ "auto" ]) types.ints.positive;
+      default = "auto";
+      example = 3;
+      description = ''
+        Runner instances on this host. One ephemeral runner takes one job at a
+        time, so an org whose gate, guardrails and deploy all target the same
+        label serialises them behind each other; N instances take N jobs. Every
+        instance carries the same labels, token source and environment; the
+        second and later are named `<name>-2`, `<name>-3`, … on GitHub and
+        `fleet-deploy-2`, … as services.
+
+        `"auto"` sizes by what the guest was declared with
+        (`fleet.compute.<name>.cpu_cores` / `memory_mb`, reaching the host as
+        `fleet.self.cpuCores` / `memoryMb`): the smaller of one job per two
+        cores and one job per `memoryPerJobMb` (6 GB: a whole-hive evaluation), never below one. A host with
+        no fleet entry gets one. `instances` shows the result.
+      '';
+    };
+
+    memoryPerJobMb = mkOption {
+      type = types.ints.positive;
+      default = 6144;
+      description = ''
+        What one job is assumed to need, for `count = "auto"`. A job on this
+        runner is mostly a nix evaluation — a whole hive in one process is a
+        few GB — so an estate whose gate is one big `nix flake check` raises
+        this for fewer, fatter slots; one whose jobs are small guardrails may
+        lower it.
+      '';
+    };
+
+    instances = mkOption {
+      type = types.ints.positive;
+      readOnly = true;
+      internal = true;
+      default =
+        if cfg.count != "auto" then cfg.count
+        else
+          let
+            self = config.fleet.self or { };
+            cores = self.cpuCores or null;
+            mem = self.memoryMb or null;
+            byCores = if cores == null then 1 else cores / 2;
+            byMem = if mem == null then byCores else mem / cfg.memoryPerJobMb;
+          in lib.max 1 (lib.min byCores byMem);
+      description = "The runner count in effect: `count` when numeric, else what `\"auto\"` derived from the host's declared size.";
+    };
+
+    serviceNames = mkOption {
+      type = types.listOf types.str;
+      readOnly = true;
+      internal = true;
+      default = map (i: if i == 1 then "fleet-deploy" else "fleet-deploy-${toString i}") (lib.range 1 cfg.instances);
+      description = "The `services.github-runners.<name>` this module defines — for other modules (ciEnv) that configure every instance.";
     };
 
     user = mkOption {
@@ -129,18 +221,127 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
-    services.github-runners.fleet-deploy = {
-      enable = true;
-      inherit (cfg) url tokenFile name ephemeral workDir user;
-      extraLabels = cfg.labels;
-      replace = true;
-      # git + nix are enough; the workflow's `nix develop` brings colmena /
-      # tofu / sops / fleet from the checked-out flake.
-      extraPackages = [ pkgs.git pkgs.nix ] ++ cfg.extraPackages;
-      extraEnvironment = lib.optionalAttrs (cfg.sopsAgeKeyFile != null) {
-        SOPS_AGE_KEY_FILE = cfg.sopsAgeKeyFile;
+  config = mkIf cfg.enable (
+    let
+      useApp = cfg.app.id != null;
+      # The org from the runner URL (https://github.com/<org>); a repository URL
+      # keeps its owner, which is also what the App's installation is keyed by.
+      org = builtins.head (lib.splitString "/" (lib.removePrefix "https://github.com/" cfg.url));
+      tokenDir = "/run/github-runner-token";
+      mintedToken = "${tokenDir}/fleet-deploy";
+      mint = pkgs.writeShellApplication {
+        name = "github-runner-app-token";
+        runtimeInputs = with pkgs; [ coreutils openssl curl jq ];
+        text = ''
+          # App JWT (RS256, 9 minutes) -> installation token for the org ->
+          # runner registration token (1 h) -> the file the runner unit reads.
+          b64() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+          now=$(date +%s)
+          header=$(printf '{"alg":"RS256","typ":"JWT"}' | b64)
+          payload=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((now - 60))" "$((now + 540))" "${cfg.app.id}" | b64)
+          sig=$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -sign "${cfg.app.privateKeyFile}" | b64)
+          jwt="$header.$payload.$sig"
+          # Name the step in the failure: a 403 from the registration endpoint is
+          # "the App lacks Self-hosted runners: write"; from /app/installations it
+          # is a bad key or id. Both read the same without this.
+          step=""
+          api() { curl -fsS -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$@" || { echo "github-runner: $step failed (HTTP error above)" >&2; exit 1; }; }
+          step="list App installations (bad App id or private key?)"
+          inst=$(api -H "Authorization: Bearer $jwt" https://api.github.com/app/installations \
+                 | jq -r --arg org "${org}" '.[] | select(.account.login == $org) | .id' | head -n1)
+          if [ -z "$inst" ]; then
+            echo "github-runner: App ${cfg.app.id} is not installed on ${org}" >&2; exit 1
+          fi
+          step="mint an installation token for ${org}"
+          itok=$(api -X POST -H "Authorization: Bearer $jwt" \
+                 "https://api.github.com/app/installations/$inst/access_tokens" | jq -r .token)
+          step="mint a runner registration token for ${org} (does the App have Self-hosted runners: write, accepted on the installation?)"
+          rtok=$(api -X POST -H "Authorization: Bearer $itok" \
+                 "https://api.github.com/orgs/${org}/actions/runners/registration-token" | jq -r .token)
+          if [ -z "$rtok" ] || [ "$rtok" = null ]; then
+            echo "github-runner: could not mint a registration token for ${org} (does the App have 'Self-hosted runners: write'?)" >&2; exit 1
+          fi
+          install -d -m 0700 "${tokenDir}"
+          umask 077; printf '%s' "$rtok" > "${mintedToken}.tmp" && mv "${mintedToken}.tmp" "${mintedToken}"
+        '';
       };
-    };
-  };
+      # The same App, as a token any job on this host may use to read the org's
+      # own repositories (the private engine, above all): prints an installation
+      # token for the runner URL's organization. The org workflows call it on a
+      # self-hosted runner so a consumer needs no ORG_APP_PRIVATE_KEY secret.
+      orgAppToken = pkgs.writeShellApplication {
+        name = "org-app-token";
+        runtimeInputs = with pkgs; [ coreutils openssl curl jq ];
+        text = ''
+          b64() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+          now=$(date +%s)
+          header=$(printf '{"alg":"RS256","typ":"JWT"}' | b64)
+          payload=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((now - 60))" "$((now + 540))" "${cfg.app.id}" | b64)
+          sig=$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -sign "${cfg.app.privateKeyFile}" | b64)
+          jwt="$header.$payload.$sig"
+          api() { curl -fsS -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$@"; }
+          inst=$(api -H "Authorization: Bearer $jwt" https://api.github.com/app/installations \
+                 | jq -r --arg org "${org}" '.[] | select(.account.login == $org) | .id' | head -n1)
+          [ -n "$inst" ] || { echo "org-app-token: App ${cfg.app.id} is not installed on ${org}" >&2; exit 1; }
+          api -X POST -H "Authorization: Bearer $jwt" "https://api.github.com/app/installations/$inst/access_tokens" | jq -r .token
+        '';
+      };
+    in
+    {
+    environment.systemPackages = lib.optional useApp orgAppToken;
+    assertions = [
+      {
+        assertion = useApp || cfg.tokenFile != null;
+        message = "infra.build.githubRunner: set either app.{id,privateKeyFile} or tokenFile.";
+      }
+      {
+        assertion = !useApp || cfg.app.privateKeyFile != null;
+        message = "infra.build.githubRunner: app.id is set but app.privateKeyFile is not.";
+      }
+    ];
+
+    # Fresh registration token before EVERY start of the runner unit: a
+    # oneshot without RemainAfterExit is inactive once done, so a dependent
+    # unit's next start runs it again -- which is exactly the ephemeral
+    # re-registration cadence.
+    # Every instance re-mints (or reuses) the registration token before it
+    # starts; the oneshot is idempotent and the file write is atomic, so N
+    # instances starting together are fine.
+    systemd.services = mkIf useApp ({
+      github-runner-fleet-deploy-token = {
+        description = "Mint a GitHub Actions runner registration token from the org App";
+        wants = [ "network-online.target" ];
+        after = [ "network-online.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = "${mint}/bin/github-runner-app-token";
+        };
+      };
+    } // lib.genAttrs (map (n: "github-runner-${n}") cfg.serviceNames) (_: {
+      requires = [ "github-runner-fleet-deploy-token.service" ];
+      after = [ "github-runner-fleet-deploy-token.service" ];
+    }));
+
+    services.github-runners = lib.listToAttrs (map (svc:
+      let
+        suffix = lib.removePrefix "fleet-deploy" svc;   # "" for the first, "-2", "-3", …
+      in lib.nameValuePair svc {
+        enable = true;
+        inherit (cfg) url ephemeral workDir user;
+        name = if cfg.name == null then null else "${cfg.name}${suffix}";
+        # mkDefault: a host that already sets services.github-runners.<n>.package by hand
+        # (the way the retirement was first worked around) keeps working until it moves
+        # to infra.build.githubRunner.package.
+        package = lib.mkDefault cfg.package;
+        tokenFile = if useApp then mintedToken else cfg.tokenFile;
+        extraLabels = cfg.labels;
+        replace = true;
+        # git + nix are enough; the workflow's `nix develop` brings colmena /
+        # tofu / sops / fleet from the checked-out flake.
+        extraPackages = [ pkgs.git pkgs.nix ] ++ cfg.extraPackages;
+        extraEnvironment = lib.optionalAttrs (cfg.sopsAgeKeyFile != null) {
+          SOPS_AGE_KEY_FILE = cfg.sopsAgeKeyFile;
+        };
+      }) cfg.serviceNames);
+  });
 }

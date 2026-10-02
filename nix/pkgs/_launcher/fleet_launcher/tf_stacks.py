@@ -283,17 +283,131 @@ def tf_list() -> None:
     console.print(t)
 
 
+def _guests_in_leaf(wd: Path) -> set[str]:
+    """Resource names of the Proxmox guests a staged leaf declares — read from
+    its config.tf.json, so the preflight knows which hosts THIS apply touches."""
+    from .reservations import PVE_TYPES
+    try:
+        cfg = json.loads((wd / "config.tf.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return set()
+    names: set[str] = set()
+    for rtype in PVE_TYPES:
+        names |= set((cfg.get("resource") or {}).get(rtype, {}).keys())
+    return names
+
+
+def _reservations_preflight(root: Path, *, skip: bool = False,
+                            in_scope: set[str] | None = None) -> None:
+    """Refuse, before tofu runs, a declared host whose address or vmid is
+    already held by a different resource in ANY state of the shared backend
+    (another stack, or another fleet's repository on the same cluster).
+    ``in_scope`` names the guests the matched leaves declare: a collision on
+    one of them refuses the run; a collision elsewhere in the fleet is
+    reported and the run goes on — an unrelated stack's mistake must not
+    block this one. Without a pg connection there is nothing to ask; that is
+    reported, not fatal — backend-check is the place that diagnoses it."""
+    from ._util import fleet_cache_dir
+    from .reservations import backend_reservations, declared_hosts, find_conflicts
+
+    if skip or os.environ.get("FLEET_SKIP_RESERVATIONS") == "1":
+        console.print("[yellow]reservations:[/yellow] check skipped on request")
+        return
+    hosts_file = fleet_cache_dir(root) / "hosts.json"
+    try:
+        with open(hosts_file) as f:
+            hosts = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        console.print("[dim]reservations: no hosts.json to check against[/dim]")
+        return
+    try:
+        reservations = backend_reservations(root)
+    except subprocess.SubprocessError as exc:
+        console.print(f"[yellow]reservations:[/yellow] could not read the backend ({exc}); "
+                      "continuing without the check")
+        return
+    if reservations is None:
+        console.print("[dim]reservations: PG_CONN_STR unset — not a pg backend, or its "
+                      "connection string did not resolve; check skipped[/dim]")
+        return
+    conflicts = find_conflicts(declared_hosts(hosts), reservations)
+    if not conflicts:
+        console.print(f"[green]reservations:[/green] no collision against "
+                      f"{len(reservations)} guest(s) in the backend")
+        return
+    t = Table(title="declared here, held elsewhere")
+    t.add_column("host", style="cyan")
+    t.add_column("collides on")
+    t.add_column("held by", overflow="fold")
+    t.add_column("kind")
+    for c in conflicts:
+        t.add_row(c.host, c.what, f"{c.held_by.schema} / {c.held_by.address}"
+                  + (f" @{c.held_by.node}" if c.held_by.node else ""), c.kind)
+    console.print(t)
+    blocking = [c for c in conflicts if in_scope is None or c.host in in_scope]
+    if not blocking:
+        console.print(f"[yellow]reservations:[/yellow] {len(conflicts)} collision(s) elsewhere "
+                      "in the fleet, none on a guest this apply touches — continuing; "
+                      "fix them before applying those stacks")
+        return
+    console.print("[red]refusing:[/red] an address or vmid is not an identity — resolve the "
+                  "collision in the fleet declarations (move one of them). "
+                  "FLEET_SKIP_RESERVATIONS=1 overrides, deliberately.")
+    sys.exit(1)
+
+
+@tf_stacks.command("reservations")
+def tf_reservations() -> None:
+    """Every guest address and vmid held by ANY state in the backend, and the
+    collisions with this fleet's declarations.
+
+    Fleets that share a cluster and a pg backend but live in separate
+    repositories hand out addresses independently; this is the one place
+    that sees them all. Read-only.
+    """
+    from ._util import fleet_cache_dir
+    from .reservations import backend_reservations, declared_hosts, find_conflicts
+
+    root = find_project_root()
+    reservations = backend_reservations(root)
+    if reservations is None:
+        console.print("[red]PG_CONN_STR unset[/red] — run `fleet deploy tf backend-check`")
+        sys.exit(1)
+    t = Table(title="reservations in the state backend")
+    t.add_column("address(es)", style="cyan")
+    t.add_column("vmid")
+    t.add_column("state / resource", overflow="fold")
+    t.add_column("node", style="dim")
+    for r in sorted(reservations, key=lambda r: (tuple(int(p) for p in (r.ips[0] if r.ips else "0").split(".")), r.name)):
+        t.add_row(", ".join(r.ips) or "-", str(r.vmid or "-"), f"{r.schema} / {r.address}", r.node or "-")
+    console.print(t)
+    hosts_file = fleet_cache_dir(root) / "hosts.json"
+    if hosts_file.exists():
+        with open(hosts_file) as f:
+            conflicts = find_conflicts(declared_hosts(json.load(f)), reservations)
+        if conflicts:
+            console.print(f"[red]{len(conflicts)} collision(s) with this fleet's declarations:[/red]")
+            for c in conflicts:
+                console.print(f"  {c.host}: {c.what} {c.kind} by {c.held_by.schema} / {c.held_by.address}")
+            sys.exit(1)
+        console.print("[green]no collision with this fleet's declarations[/green]")
+
+
 @tf_stacks.command("preview")
 @click.argument("scope")
 @click.option("--target", multiple=True,
               help="Pass through to tofu -target. Can repeat. Limited to a single leaf.")
-def tf_preview(scope: str, target: tuple[str, ...]) -> None:
+@click.option("--skip-reservations", is_flag=True,
+              help="Do not check declared addresses/vmids against the backend's other states.")
+def tf_preview(scope: str, target: tuple[str, ...], skip_reservations: bool) -> None:
     """tofu plan for leaves matching SCOPE."""
     root = find_project_root()
     leaves = _resolve_scope(root, scope)
     if target and len(leaves) > 1:
         console.print(f"[red]ERROR:[/red] --target requires a single leaf (got {len(leaves)}).")
         sys.exit(1)
+    scope_guests = set().union(*(_guests_in_leaf(_stage_json(root, l)) for l in leaves))
+    _reservations_preflight(root, skip=skip_reservations, in_scope=scope_guests)
     for leaf in leaves:
         console.print(f"── preview {leaf} ──", style="bold cyan")
         wd = _stage_json(root, leaf)
@@ -315,7 +429,10 @@ def tf_preview(scope: str, target: tuple[str, ...]) -> None:
               help="After apply, refresh .cache/fleet/hosts.json from XOA (qemu-guest-agent "
                    "IP discovery for XCP-ng VMs). Only triggers on env=infra leaves; "
                    "proxmox applies skip the refresh regardless.")
-def tf_apply(scope: str, target: tuple[str, ...], yes: bool, parallelism: int, inventory: bool) -> None:
+@click.option("--skip-reservations", is_flag=True,
+              help="Do not check declared addresses/vmids against the backend's other states.")
+def tf_apply(scope: str, target: tuple[str, ...], yes: bool, parallelism: int, inventory: bool,
+             skip_reservations: bool) -> None:
     """tofu apply for leaves matching SCOPE.
 
     Post-apply inventory refresh policy:
@@ -333,6 +450,8 @@ def tf_apply(scope: str, target: tuple[str, ...], yes: bool, parallelism: int, i
     if target and len(leaves) > 1:
         console.print(f"[red]ERROR:[/red] --target requires a single leaf (got {len(leaves)}).")
         sys.exit(1)
+    scope_guests = set().union(*(_guests_in_leaf(_stage_json(root, l)) for l in leaves))
+    _reservations_preflight(root, skip=skip_reservations, in_scope=scope_guests)
 
     # Track which applied leaves are XOA-affecting (env=infra).
     # Proxmox leaves don't trigger inventory refresh — Proxmox CT

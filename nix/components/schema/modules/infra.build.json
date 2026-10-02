@@ -59,6 +59,54 @@
   "infra.build.builder.trustedUsers": {
     "type": "list of string"
   },
+  "infra.build.ciEnv.actImage": {
+    "type": "string"
+  },
+  "infra.build.ciEnv.claude.enable": {
+    "type": "boolean"
+  },
+  "infra.build.ciEnv.claude.environmentFile": {
+    "type": "null or absolute path"
+  },
+  "infra.build.ciEnv.claude.instructions": {
+    "type": "strings concatenated with \"\\n\""
+  },
+  "infra.build.ciEnv.claude.package": {
+    "type": "package"
+  },
+  "infra.build.ciEnv.deploy.sshHosts": {
+    "type": "list of string"
+  },
+  "infra.build.ciEnv.deploy.sshKeyFile": {
+    "type": "null or absolute path"
+  },
+  "infra.build.ciEnv.docker.enable": {
+    "type": "boolean"
+  },
+  "infra.build.ciEnv.enable": {
+    "type": "boolean"
+  },
+  "infra.build.ciEnv.extraPackages": {
+    "type": "list of package"
+  },
+  "infra.build.ciEnv.github.accessTokensFile": {
+    "type": "null or absolute path"
+  },
+  "infra.build.ciEnv.github.netrcFile": {
+    "type": "null or absolute path"
+  },
+  "infra.build.ciEnv.tailscale.authKeyFile": {
+    "type": "null or absolute path"
+  },
+  "infra.build.ciEnv.tailscale.enable": {
+    "type": "boolean"
+  },
+  "infra.build.ciEnv.tailscale.loginServer": {
+    "type": "null or string"
+  },
+  "infra.build.ciEnv.tailscale.userspace": {
+    "type": "boolean"
+  },
   "infra.build.deployRunner.branch": {
     "type": "string"
   },
@@ -86,6 +134,15 @@
   "infra.build.deployRunner.workingDir": {
     "type": "string"
   },
+  "infra.build.githubRunner.app.id": {
+    "type": "null or string"
+  },
+  "infra.build.githubRunner.app.privateKeyFile": {
+    "type": "null or absolute path"
+  },
+  "infra.build.githubRunner.count": {
+    "type": "value \"auto\" (singular enum) or (positive integer, meaning >0)"
+  },
   "infra.build.githubRunner.enable": {
     "type": "boolean"
   },
@@ -95,17 +152,29 @@
   "infra.build.githubRunner.extraPackages": {
     "type": "list of package"
   },
+  "infra.build.githubRunner.instances": {
+    "type": "positive integer, meaning >0"
+  },
   "infra.build.githubRunner.labels": {
     "type": "list of string"
   },
+  "infra.build.githubRunner.memoryPerJobMb": {
+    "type": "positive integer, meaning >0"
+  },
   "infra.build.githubRunner.name": {
     "type": "null or string"
+  },
+  "infra.build.githubRunner.package": {
+    "type": "package"
+  },
+  "infra.build.githubRunner.serviceNames": {
+    "type": "list of string"
   },
   "infra.build.githubRunner.sopsAgeKeyFile": {
     "type": "null or string"
   },
   "infra.build.githubRunner.tokenFile": {
-    "type": "absolute path"
+    "type": "null or absolute path"
   },
   "infra.build.githubRunner.url": {
     "type": "string"
