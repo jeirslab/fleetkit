@@ -31,6 +31,7 @@ in
       (leaf "infra.base" ../modules/infra/base) # githubAccessToken, networking, nix.gc, platform.*
       (leaf "infra.build" ../modules/infra/build) # hydra, attic, builder, aptCache, remote, …
       (leaf "infra.integrations" ../modules/infra/integrations) # argocd, docker
+      (leaf "infra.addons" ../../add-ons) # opt-in add-ons (llm-agents, …); source is the consumer's flake input
 
       # ── clean per-leaf components ──
       (leaf "infra.auth.sssd" ../modules/infra/auth/sssd)

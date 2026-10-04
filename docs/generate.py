@@ -22,13 +22,13 @@ FLEET_ORDER = ["settings", "network", "compute", "providers", "resources"]
 # order: strata first (mirroring nix/modules/infra/<stratum>/), then the
 # always-on base groups.
 INFRA_ORDER = ["network", "ingress", "pki", "observability", "data", "build",
-               "mail", "auth", "provisioning", "integrations",
+               "mail", "auth", "provisioning", "integrations", "addons",
                "services", "networking", "platform"]
 
 # Strata whose pages nest one section per module (infra.<stratum>.<module>).
 # The rest (infra.ingress, the base groups) are a single flat option tree.
 NESTED_STRATA = {"network", "pki", "observability", "data", "build",
-                 "mail", "auth", "provisioning", "integrations"}
+                 "mail", "auth", "provisioning", "integrations", "addons"}
 
 
 def md_escape_anchor(name: str) -> str:

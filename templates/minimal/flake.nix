@@ -25,6 +25,12 @@
       globalModules = [ ];
       # Per-host flake-input modules, e.g. { myhost = [ inputs.microvm.nixosModules.host ]; }
       hostExtraModules = { };
+      # Opt-in add-ons (see add-ons/ in fleetkit): hand mkFleet the flake input of
+      # each add-on you want, then enable it per host. Nothing here is fetched or
+      # locked unless you add the input. First add-on: numtide/llm-agents.nix
+      # (AI coding agents): add `llm-agents.url = "github:numtide/llm-agents.nix";`
+      # to this flake's inputs, then
+      # addons = { llm-agents = inputs.llm-agents; };
     };
   in
   {

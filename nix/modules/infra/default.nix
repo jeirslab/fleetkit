@@ -75,5 +75,8 @@
     # ── infra.integrations — third-party glue ──
     ./integrations/argocd.nix
     ./integrations/docker.nix
+
+    # ── infra.addons — opt-in modules for niche external Nix tooling (repo-root add-ons/) ──
+    ../../../add-ons
   ];
 }
