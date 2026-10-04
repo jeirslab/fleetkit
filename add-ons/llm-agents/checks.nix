@@ -29,6 +29,13 @@ let
   stubInput.packages.x86_64-linux = {
     fake-agent = tool "fake-agent";
     fake-mcp = tool "fake-mcp";
+    # llm-agents.nix's own convention: `free = true` but not redistributable, shortName "unfree".
+    fake-upstream-unfree = (tool "fake-upstream-unfree").overrideAttrs (o: {
+      meta = (o.meta or { }) // {
+        license = { shortName = "unfree"; fullName = "Unfree"; free = true; redistributable = false; };
+        mainProgram = "fake-upstream-unfree";
+      };
+    });
     fake-unfree = (tool "fake-unfree").overrideAttrs (o: {
       meta = (o.meta or { }) // { license = lib.licenses.unfree; mainProgram = "fake-unfree"; };
     });
@@ -63,6 +70,9 @@ let
     } ];
     addon-unfree-denied = [ 9303 "192.0.2.133" {
       infra.addons.llmAgents = { enable = true; packages = [ "fake-unfree" ]; };
+    } ];
+    addon-upstream-unfree-denied = [ 9307 "192.0.2.137" {
+      infra.addons.llmAgents = { enable = true; packages = [ "fake-upstream-unfree" ]; };
     } ];
     addon-unknown = [ 9304 "192.0.2.134" {
       infra.addons.llmAgents = { enable = true; packages = [ "no-such-tool" ]; };
@@ -100,6 +110,7 @@ let
     skipsUnselected = !(hasPkg "addon-ok" "fake-unfree");
     unfreeAcceptedWhenEnabled = hasPkg "addon-unfree-ok" "fake-unfree";
     unfreeRefused = fails fleet "addon-unfree-denied";
+    upstreamUnfreeRefused = fails fleet "addon-upstream-unfree-denied";
     unknownRefused = fails fleet "addon-unknown";
     unresolvedMcpRefused = fails fleet "addon-mcp-unresolved";
     missingInputRefused = fails fleetNoInput "addon-ok";

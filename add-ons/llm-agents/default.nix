@@ -22,9 +22,13 @@ let
   known = lib.filter (n: upstream ? ${n}) wanted;
   unknown = lib.filter (n: !(upstream ? ${n})) wanted;
 
-  # Unfree = any licence entry with free = false. A package with no licence
-  # metadata is treated as free (nothing says otherwise).
-  isUnfree = p: lib.any (l: !(l.free or true)) (lib.toList (p.meta.license or [ ]));
+  # Unfree = any licence entry that says so. nixpkgs marks unfree with `free = false`, but
+  # llm-agents.nix declares its own `unfree` licence with `free = true, redistributable = false`
+  # (shortName "unfree"), so all three signals count. A package with no licence metadata is
+  # treated as free (nothing says otherwise).
+  isUnfree = p: lib.any
+    (l: !(l.free or true) || !(l.redistributable or true) || (l.shortName or "") == "unfree")
+    (lib.toList (p.meta.license or [ ]));
   unfreePicked = lib.filter (n: isUnfree upstream.${n}) known;
   installable = if cfg.unfree.enable then known else lib.filter (n: !(isUnfree upstream.${n})) known;
 
