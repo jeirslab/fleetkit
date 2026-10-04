@@ -31,5 +31,32 @@
   },
   "infra.addons.llmAgents.unfree.enable": {
     "type": "boolean"
+  },
+  "infra.addons.llmServing.coldStore.cacheSizeLimit": {
+    "type": "null or string"
+  },
+  "infra.addons.llmServing.coldStore.clientEnv": {
+    "type": "attribute set of string"
+  },
+  "infra.addons.llmServing.coldStore.dataDir": {
+    "type": "absolute path"
+  },
+  "infra.addons.llmServing.coldStore.enable": {
+    "type": "boolean"
+  },
+  "infra.addons.llmServing.coldStore.listenAddress": {
+    "type": "string"
+  },
+  "infra.addons.llmServing.coldStore.mirrorNetloc": {
+    "type": "null or string"
+  },
+  "infra.addons.llmServing.coldStore.openFirewall": {
+    "type": "boolean"
+  },
+  "infra.addons.llmServing.coldStore.port": {
+    "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)"
+  },
+  "infra.addons.llmServing.coldStore.prefetch.enable": {
+    "type": "boolean"
   }
 }
