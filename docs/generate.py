@@ -148,6 +148,7 @@ def main(options_json: str, src_dir: str) -> None:
         "# Summary\n",
         "- [Introduction](./introduction.md)",
         "- [Compute surface and networking modes](./compute-surface.md)",
+        "- [Sibling estates and the manifest (proposal)](./sibling-manifest.md)",
         "- [Fleet manifest](./fleet/index.md)",
     ]
     summary += [f"  - [fleet.{g}](./fleet/{g}.md)" for g in fleet_sorted]
