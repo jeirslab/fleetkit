@@ -34,7 +34,7 @@ What is wanted is the **facts**, not the source.
 - Controlling a sibling. At most: opening a PR or triggering a workflow in the sibling's own
   repository. Each estate stays sovereign over its own state.
 - Sharing OpenTofu state. Each estate keeps its own backend.
-- Putting secret **values** in the manifest.
+- Putting secret **values** in the manifest (they travel only in the generated sops bundle).
 
 ## What the manifest is built from
 
@@ -51,7 +51,7 @@ Candidate v0 contents:
 | network | CIDR(s), gateway, DNS, **VMID range**, **IP range** (free and claimed) |
 | gpu | cards, current holder, exclusivity group, schedule (see below) |
 | endpoints | shared service URLs and model catalogs (the "shared variables") |
-| secrets | references only: which sops file, which recipients, which keys inside |
+| secrets | everything except the value: name, file, host, owner/mode, restart units, recipients |
 
 ## Visibility (deny by default)
 
@@ -63,12 +63,18 @@ the shape of an instance (which host names exist) is not.
 
 ## Secrets
 
-The manifest stays plain JSON so humans and agents can read it. Secrets a sibling must use travel
-as separate **sops files** next to it, encrypted to the sibling's recipients (its developer
-machines and hosts). They are authored once with both estates' recipients via path rules in
-`.sops.yaml`, so exporting copies ciphertext and CI never decrypts. Revoking a recipient does not
-undo what it already read: rotate. git-crypt is deliberately not used (second key system, and an
-encrypted manifest blinds agents).
+The manifest describes every secret in full **except its value**: name, key inside the file, source
+file, owning host, owner/mode, restart units and the recipient list. Anyone reading it, human or
+agent, can see what exists and who can decrypt it, never what it says.
+
+What a sibling must actually use is delivered as **one generated sops file** per sibling, holding
+only the values that sibling needs, encrypted to specific recipients (its developer machines and
+hosts). The sibling keeps owning its own secrets; the bundle only adds what the provider shares.
+
+The generator must decrypt the source secrets and re-encrypt them into the bundle, so it runs where
+an admin key exists (the owner's machine, or a CI job with a dedicated key), not in an arbitrary
+pipeline. Revoking a recipient does not undo what it already read: rotate. git-crypt is deliberately
+not used (a second key system, and an encrypted manifest blinds agents).
 
 ## Power schedules and exclusion groups
 
