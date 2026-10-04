@@ -3,6 +3,14 @@
 # One file per host: the provisioning entry (fleet.compute.<name>) and,
 # for NixOS guests, the OS config (fleet.hostsRegistry.<name>). Editing
 # a host is a single-file change.
+#
+# Opt-in add-ons are enabled per host in its hostsRegistry config, e.g. with
+# mkFleet { addons.llm-agents = inputs.llm-agents; } in your flake:
+#   infra.addons.llmAgents = {
+#     enable = true;
+#     packages = [ "opencode" "codegraph" ];
+#     # unfree.enable = true;   # needed for unfree tools such as claude-code
+#   };
 
 {
   config.fleet.compute.example = {

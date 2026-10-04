@@ -77,6 +77,19 @@ input and describe their fleet as data.
   their URLs come from that fleet's `fleet.settings.observability.*`. The
   `infra.integrations.mcp` module lets a fleet declare in-fleet MCP servers per host.
 
+## Add-ons
+
+`add-ons/<name>/` holds optional, opt-in integrations with niche external Nix
+tooling (`options.nix` declares `infra.addons.<name>.*`, `default.nix` is the
+NixOS module, `checks.nix` is its acceptance gate). Source is never vendored: the
+consumer owns the flake input and hands it to `mkFleet { addons.<name> = inputs.<name>; }`,
+so a fleet that does not use an add-on locks and fetches nothing for it. Each
+add-on is off until a host sets `infra.addons.<name>.enable`. Current add-ons:
+`llm-agents` (numtide/llm-agents.nix; package selection, an `unfree.enable`
+policy gate, MCP server declarations). Adding one: create the directory, list it
+in `add-ons/default.nix` and `add-ons/checks.nix`, register it in
+`nix/components/registry.nix`, run `nix/components/update-schema.sh`.
+
 ## Contribution shape
 
 Small, verified steps: change → `nix flake check` → conventional commit.

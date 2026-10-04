@@ -1,0 +1,35 @@
+{
+  "infra.addons.inputs": {
+    "type": "attribute set of raw value"
+  },
+  "infra.addons.llmAgents.enable": {
+    "type": "boolean"
+  },
+  "infra.addons.llmAgents.mcp.rendered": {
+    "type": "attribute set of anything"
+  },
+  "infra.addons.llmAgents.mcp.servers": {
+    "type": "attribute set of (submodule)"
+  },
+  "infra.addons.llmAgents.mcp.servers.<name>.args": {
+    "type": "list of string"
+  },
+  "infra.addons.llmAgents.mcp.servers.<name>.command": {
+    "type": "null or string"
+  },
+  "infra.addons.llmAgents.mcp.servers.<name>.environment": {
+    "type": "attribute set of string"
+  },
+  "infra.addons.llmAgents.mcp.servers.<name>.package": {
+    "type": "null or string"
+  },
+  "infra.addons.llmAgents.mcp.writeFiles": {
+    "type": "boolean"
+  },
+  "infra.addons.llmAgents.packages": {
+    "type": "list of string"
+  },
+  "infra.addons.llmAgents.unfree.enable": {
+    "type": "boolean"
+  }
+}

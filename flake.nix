@@ -58,6 +58,7 @@
     #                                            # (app flakes, _module.args, ...)
     #   hostExtraModules   = { host = [ ... ]; };# flake-input modules for one host
     #   colmenaOverlays    = [ ... ];            # nixpkgs overlays for colmena meta
+    #   addons             = { llm-agents = inputs.llm-agents; };  # opt-in add-on inputs
     #   system             = "x86_64-linux";
     #   sopsAgeKeyCommand  = [ ... ];            # colmena sops key lookup
     # }
@@ -93,6 +94,12 @@
       # (_module.args is config-stage only; it cannot feed imports.)
       specialArgs ? {},
       colmenaOverlays ? [],
+      # Flake inputs for opt-in add-ons ({ llm-agents = inputs.llm-agents; }),
+      # keyed by add-on name (see ./add-ons). The consumer owns the input — its
+      # version and its lock entry — so fleetkit locks nothing for add-ons a
+      # fleet does not use. An add-on is still off until a host enables it
+      # (`infra.addons.<name>.enable`).
+      addons ? {},
       system ? "x86_64-linux",
       sopsAgeKeyCommand ? [ "sh" "-c" "cat \"$HOME/.ssh/sops-age.key\"" ],
       # Path to the consumer's SOPS store (scaffold it with `fleet
@@ -176,6 +183,7 @@
         # dashboards, PVE notes, …) without vendoring a copy or path-importing
         # into this flake's store path. See nix/lib/module-args.nix.
         { _module.args.fleetLib = fleetLib; }
+        { infra.addons.inputs = addons; }
       ] ++ nixpkgs.lib.optional (secretsFile != null)
         { sops.defaultSopsFile = secretsFile; }
       ++ modules ++ globalModules;
@@ -472,6 +480,10 @@
       # keyspace disjoint from the checks above (ADR: component model).
       // (import ./nix/components/checks.nix {
         inherit nixpkgs sops-nix disko nixos-generators;
+      })
+      # Add-on acceptance gates (./add-ons/*/checks.nix).
+      // (import ./add-ons/checks.nix {
+        inherit nixpkgs mkFleet;
       });
   };
 }
