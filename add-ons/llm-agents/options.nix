@@ -32,6 +32,19 @@ in
       '';
     };
 
+    catalog = mkOption {
+      type = types.attrsOf types.anything;
+      readOnly = true;
+      description = ''
+        The packages this add-on actually installs on this host, keyed by
+        package name, for other modules to consume (a `tools` listing, a login
+        banner). Each entry has `command` (the main program, or null),
+        `description`, `version`, `license` (names) and `unfree`, all taken from
+        the package's own metadata. Read-only; empty unless the add-on is
+        enabled.
+      '';
+    };
+
     mcp = {
       servers = mkOption {
         default = { };
