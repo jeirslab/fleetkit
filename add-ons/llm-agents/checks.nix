@@ -104,6 +104,11 @@ let
     unresolvedMcpRefused = fails fleet "addon-mcp-unresolved";
     missingInputRefused = fails fleetNoInput "addon-ok";
     offInstallsNothing = !(hasPkg "addon-off" "fake-agent");
+    catalogListsInstalled = (ok.infra.addons.llmAgents.catalog ? fake-agent)
+      && ok.infra.addons.llmAgents.catalog.fake-agent.command == "fake-agent"
+      && !(ok.infra.addons.llmAgents.catalog ? fake-unfree);
+    catalogMarksUnfree = (cfgOf fleet "addon-unfree-ok").infra.addons.llmAgents.catalog.fake-unfree.unfree;
+    catalogEmptyWhenOff = (cfgOf fleet "addon-off").infra.addons.llmAgents.catalog == { };
     renderedHasServer = ok.infra.addons.llmAgents.mcp.rendered.claudeCode.mcpServers ? fake;
   };
 in

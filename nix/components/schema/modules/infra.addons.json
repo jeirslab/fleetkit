@@ -2,6 +2,9 @@
   "infra.addons.inputs": {
     "type": "attribute set of raw value"
   },
+  "infra.addons.llmAgents.catalog": {
+    "type": "attribute set of anything"
+  },
   "infra.addons.llmAgents.enable": {
     "type": "boolean"
   },

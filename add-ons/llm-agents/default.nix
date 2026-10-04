@@ -35,6 +35,16 @@ let
   usable = lib.filterAttrs (_: resolvable) servers;
   unresolved = lib.attrNames (lib.filterAttrs (_: s: !(resolvable s)) servers);
 
+  catalogEntry = n:
+    let p = upstream.${n}; in {
+      command = if p.meta ? mainProgram then p.meta.mainProgram else null;
+      description = p.meta.description or "";
+      version = p.version or "";
+      license = map (l: l.fullName or l.shortName or "unknown") (lib.toList (p.meta.license or [ ]));
+      unfree = isUnfree p;
+    };
+  catalog = lib.genAttrs installable catalogEntry;
+
   rendered = {
     # .mcp.json shape (Claude Code project/user scope).
     claudeCode.mcpServers = lib.mapAttrs
@@ -49,7 +59,10 @@ in
 {
   config = lib.mkMerge [
     # Always defined (a read-only option takes exactly one definition); empty when off.
-    { infra.addons.llmAgents.mcp.rendered = if cfg.enable then rendered else { }; }
+    {
+      infra.addons.llmAgents.mcp.rendered = if cfg.enable then rendered else { };
+      infra.addons.llmAgents.catalog = if cfg.enable then catalog else { };
+    }
 
     (mkIf cfg.enable {
     assertions = [
