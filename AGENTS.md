@@ -86,7 +86,9 @@ consumer owns the flake input and hands it to `mkFleet { addons.<name> = inputs.
 so a fleet that does not use an add-on locks and fetches nothing for it. Each
 add-on is off until a host sets `infra.addons.<name>.enable`. Current add-ons:
 `llm-agents` (numtide/llm-agents.nix; package selection, an `unfree.enable`
-policy gate, MCP server declarations). Adding one: create the directory, list it
+policy gate, MCP server declarations) and `llm-serving` (a Hugging Face
+pull-through model cold store on Olah, built from pinned sources by its own
+`overlays.nix`, with an `llm-prefetch` tool). Adding one: create the directory, list it
 in `add-ons/default.nix` and `add-ons/checks.nix`, register it in
 `nix/components/registry.nix`, run `nix/components/update-schema.sh`.
 

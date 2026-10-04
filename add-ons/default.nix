@@ -22,6 +22,8 @@
   imports = [
     ./llm-agents/options.nix
     ./llm-agents/default.nix
+    ./llm-serving/options.nix
+    ./llm-serving/default.nix
   ];
 
   options.infra.addons.inputs = lib.mkOption {

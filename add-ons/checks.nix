@@ -3,3 +3,4 @@
 # (fleetkit hand-lists modules and gates, there is no directory scan).
 { nixpkgs, mkFleet }:
 (import ./llm-agents/checks.nix { inherit nixpkgs mkFleet; })
+// (import ./llm-serving/checks.nix { inherit nixpkgs mkFleet; })
