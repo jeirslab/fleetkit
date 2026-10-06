@@ -13,7 +13,7 @@ estate repo.
 | ------ | ------------------- |
 | `terraform.required_providers` | `integrations/github` 6.13.0, plus `carlpett/sops` when a secret is read |
 | `provider.github` | `owner` is `git.org`; authentication from `git.auth`. `kind = "app"` renders an `app_auth` block (`id`, `installation_id`, `pem_file`), `kind = "token"` renders `token`. Every value is a `${data.sops_file...}` reference resolved from the estate's secret refs, with the same ref form and nested-key rule as `mkTerraform`; never a literal credential |
-| `resource.github_repository.<key>` | each `fleet.repos.<estate>.<key>`: `name` (the repo's `name`, else its key), `visibility`, `description`, `has_issues` / `has_wiki` / `has_projects` from `features`, merge settings from `merge`, `archived`. `archive_on_destroy = true` and `lifecycle.prevent_destroy = true`, always: the model's `archiveOnDestroy` defaults to false, so the renderer cannot tell a deliberate opt-out from the default and does not offer one |
+| `resource.github_repository.<key>` | each `fleet.repos.<estate>.<key>`: `name` (the repo's `name`, else its key), `visibility`, `description`, `has_issues` / `has_wiki` / `has_projects` from `features`, merge settings from `merge`, `archived`. `archive_on_destroy` (true unless the repository sets `archiveOnDestroy = false`) and `lifecycle.prevent_destroy = true` |
 | `resource.github_branch_default.<key>` | repositories that set `defaultBranch` |
 | `resource.github_repository_environment.<key>_<environment>` | each environment of a repository (its `branches` are not rendered, see below) |
 | `github_organization_settings` | `git.organization`, when `git.kind == "org"` |
