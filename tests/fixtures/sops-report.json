@@ -1,0 +1,47 @@
+{
+  "anchors": {
+    "host_app_1": {
+      "kind": "host",
+      "id": "app-1",
+      "ssh": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "age": "age1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
+    },
+    "web": {
+      "kind": "host",
+      "id": "web-1",
+      "ssh": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "age": null
+    },
+    "admin": {
+      "kind": "operator",
+      "id": null,
+      "ssh": null,
+      "age": "age1zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+    }
+  },
+  "rules": [
+    {
+      "path": "secrets/web.yaml",
+      "anchors": [
+        "web",
+        "admin"
+      ]
+    },
+    {
+      "path": "secrets/app.yaml",
+      "anchors": [
+        "host_app_1",
+        "admin"
+      ]
+    },
+    {
+      "path": "secrets/shared.yaml",
+      "anchors": [
+        "web",
+        "host_app_1",
+        "admin"
+      ]
+    }
+  ],
+  "missingKeys": []
+}

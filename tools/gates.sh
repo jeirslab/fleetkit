@@ -47,7 +47,7 @@ if ! nix shell "$NIXPKGS#statix" "$NIXPKGS#deadnix" -c bash -c '
 ' lint "${NIXFILES[@]}"; then
   lint=fail
 fi
-for t in tests/loose_blocks.sh "tools/hooks/secrets-scan.sh --all" tests/secrets_scan_selftest.sh; do
+for t in tests/loose_blocks.sh tests/sops_config.sh "tools/hooks/secrets-scan.sh --all" tests/secrets_scan_selftest.sh; do
   # shellcheck disable=SC2086
   if ! bash $t >&2; then
     lint=fail

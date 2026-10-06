@@ -15,6 +15,12 @@ let
 
   estateGuestIds = estate: h.idsOf (topConfig.fleet.guests.${estate} or { });
 
+  # Public age recipient: age1 + 58 bech32 characters.
+  ageRecipient = types.strMatching "age1[02-9ac-hj-np-z]{58}";
+
+  # Operator anchors of an estate (read lazily by the file defaults below).
+  estateOperatorNames = estate: lib.attrNames topConfig.fleet.estates.${estate}.secrets.operators;
+
   anchorsType =
     estate:
     types.submodule (
@@ -87,6 +93,17 @@ let
             type = types.listOf types.str;
             description = "Key names declared in the file (names only, never values).";
           };
+          readers = mkOption {
+            type = types.listOf types.str;
+            default = [ ];
+            description = "Guest or node ids that decrypt this file (their hostKeys.ed25519 becomes a recipient).";
+          };
+          operators = mkOption {
+            type = types.listOf types.str;
+            default = estateOperatorNames estate;
+            defaultText = lib.literalExpression "attrNames fleet.estates.<estate>.secrets.operators";
+            description = "Operator anchor names (secrets.operators) that can decrypt this file. Default: all of the estate's operators.";
+          };
           ref = mkOption {
             type = types.lazyAttrsOf types.str;
             readOnly = true;
@@ -116,6 +133,18 @@ let
           type = types.listOf types.str;
           default = [ ];
           description = "Recipient names (age key aliases).";
+        };
+        operators = mkOption {
+          type = types.attrsOf (
+            types.submodule {
+              options.age = mkOption {
+                type = ageRecipient;
+                description = "Public age recipient (age1...) of an operator anchor that is not a host.";
+              };
+            }
+          );
+          default = { };
+          description = "Operator anchors that are not hosts: name -> public age recipient.";
         };
         files = mkOption {
           type = types.lazyAttrsOf (fileType estate);
@@ -203,6 +232,20 @@ in
         assertion = lib.elem id a.rendered;
         message = "${w}.aliases: \"${id}\" is not a host of this estate's anchors";
       }) (lib.attrNames a.aliases)
+      ++ lib.concatLists (
+        lib.mapAttrsToList (
+          fname: f:
+          h.refAssertions {
+            where = "fleet.estates.${ename}.secrets.files.${fname}.readers";
+            kind = "host";
+            ids = ids.guest ++ ids.node;
+          } f.readers
+          ++ map (o: {
+            assertion = e.secrets.operators ? ${o};
+            message = "fleet.estates.${ename}.secrets.files.${fname}.operators: \"${o}\" is not declared in fleet.estates.${ename}.secrets.operators";
+          }) f.operators
+        ) e.secrets.files
+      )
       ++ h.refAssertions {
         where = "fleet.estates.${ename}.secrets.recipients";
         kind = "anchor";
@@ -211,33 +254,119 @@ in
     ) config.fleet.estates
   );
 
-  options.fleet.report.anchorDrift = mkOption {
-    type = types.attrsOf (
-      types.submodule {
-        options = {
-          guestsWithoutAnchor = mkOption { type = types.listOf types.str; };
-          extrasWithoutHost = mkOption { type = types.listOf types.str; };
-          crossEstateHosts = mkOption { type = types.listOf types.str; };
-        };
-      }
-    );
-    readOnly = true;
-    default = lib.mapAttrs (
-      ename: e:
-      let
-        a = e.secrets.anchors;
-        guestIds = estateGuestIds ename;
-        otherGuestIds = lib.concatLists (
-          lib.mapAttrsToList (n: _: estateGuestIds n) (lib.removeAttrs config.fleet.guests [ ename ])
-        );
-        re = lib.concatStringsSep ".+" (map lib.escapeRegex (lib.splitString "{name}" a.pattern));
-      in
-      {
-        guestsWithoutAnchor = lib.filter (id: !lib.elem id a.rendered) guestIds;
-        extrasWithoutHost = lib.filter (x: builtins.match re x != null) a.extra;
-        crossEstateHosts = lib.filter (id: lib.elem id otherGuestIds) a.hosts;
-      }
-    ) config.fleet.estates;
-    description = "Anchor drift per estate (data only, never an assertion): estate guests without an anchor, extras that look like hosts, hosts of other estates.";
+  options.fleet.report = {
+    anchorDrift = mkOption {
+      type = types.attrsOf (
+        types.submodule {
+          options = {
+            guestsWithoutAnchor = mkOption { type = types.listOf types.str; };
+            extrasWithoutHost = mkOption { type = types.listOf types.str; };
+            crossEstateHosts = mkOption { type = types.listOf types.str; };
+          };
+        }
+      );
+      readOnly = true;
+      default = lib.mapAttrs (
+        ename: e:
+        let
+          a = e.secrets.anchors;
+          guestIds = estateGuestIds ename;
+          otherGuestIds = lib.concatLists (
+            lib.mapAttrsToList (n: _: estateGuestIds n) (lib.removeAttrs config.fleet.guests [ ename ])
+          );
+          re = lib.concatStringsSep ".+" (map lib.escapeRegex (lib.splitString "{name}" a.pattern));
+        in
+        {
+          guestsWithoutAnchor = lib.filter (id: !lib.elem id a.rendered) guestIds;
+          extrasWithoutHost = lib.filter (x: builtins.match re x != null) a.extra;
+          crossEstateHosts = lib.filter (id: lib.elem id otherGuestIds) a.hosts;
+        }
+      ) config.fleet.estates;
+      description = "Anchor drift per estate (data only, never an assertion): estate guests without an anchor, extras that look like hosts, hosts of other estates.";
+    };
+
+    sops = mkOption {
+      type = types.attrsOf (
+        types.submodule {
+          options = {
+            anchors = mkOption {
+              type = types.attrsOf (
+                types.submodule {
+                  options = {
+                    kind = mkOption {
+                      type = types.enum [
+                        "host"
+                        "operator"
+                      ];
+                    };
+                    ssh = mkOption { type = types.nullOr types.str; };
+                    age = mkOption { type = types.nullOr types.str; };
+                    id = mkOption { type = types.nullOr types.str; };
+                  };
+                }
+              );
+            };
+            rules = mkOption {
+              type = types.listOf (
+                types.submodule {
+                  options = {
+                    path = mkOption { type = types.str; };
+                    anchors = mkOption { type = types.listOf types.str; };
+                  };
+                }
+              );
+            };
+            missingKeys = mkOption { type = types.listOf types.str; };
+          };
+        }
+      );
+      readOnly = true;
+      default = lib.mapAttrs (
+        _: e:
+        let
+          a = e.secrets.anchors;
+          nodes = lib.concatMap (s: lib.attrValues s.nodes) (lib.attrValues config.fleet.sites);
+          guests = lib.concatMap lib.attrValues (lib.attrValues config.fleet.guests);
+          # id -> ssh host key (or null) for every guest and node.
+          keyOf = lib.listToAttrs (
+            map (x: {
+              name = x.id;
+              value = x.hostKeys.ed25519;
+            }) (guests ++ nodes)
+          );
+          anchorName =
+            id:
+            a.aliases.${id} or "host_${lib.replaceStrings [ "-" ] [ "_" ] (lib.last (lib.splitString "/" id))}";
+          files = lib.attrValues e.secrets.files;
+          readerIds = lib.unique (lib.concatMap (f: f.readers) files);
+          hostAnchors = lib.listToAttrs (
+            map (id: {
+              name = anchorName id;
+              value = {
+                kind = "host";
+                ssh = keyOf.${id} or null;
+                age = null;
+                inherit id;
+              };
+            }) readerIds
+          );
+          operatorAnchors = lib.mapAttrs (_: o: {
+            kind = "operator";
+            ssh = null;
+            inherit (o) age;
+            id = null;
+          }) e.secrets.operators;
+        in
+        {
+          anchors = hostAnchors // operatorAnchors;
+          rules = map (f: {
+            inherit (f) path;
+            anchors = lib.sort lib.lessThan (lib.unique (map anchorName f.readers ++ f.operators));
+          }) files;
+          missingKeys = lib.filter (id: (keyOf.${id} or null) == null) readerIds;
+        }
+      ) config.fleet.estates;
+      description = "Derived, read-only: per estate, the sops recipient anchors (hosts that read a file, operators), one creation rule per secrets file and the readers that lack a hostKeys.ed25519.";
+    };
   };
 }
