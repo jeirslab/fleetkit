@@ -77,7 +77,10 @@ Look at: git -C ${worktree} log --oneline origin/stable..origin/unstable ; the i
 
 stable is a record of a known-good state. Promote when what is on unstable is a coherent, finished set: the gates are green (they are: ${conv.gatesLine || 'see converge'}), no landed change is half of something whose other half is still open, and there is enough to be worth a record. Do not promote a single trivial change by itself, and do not hold back a finished set waiting for unrelated work.
 
-If you decide to promote: gh workflow run promote.yml --repo ${A.repo} -f reason="<one sentence>"   (the Action opens the unstable->stable pull request as the GitHub App, merges it and notifies the owner). Set dispatched true only if that command succeeded. Do nothing else to stable.
+If you decide to promote, start the promote Action (it opens the unstable->stable pull request as the GitHub App, merges it and notifies the owner). Read .github/workflows/promote.yml in ${worktree} to see how it is triggered:
+- workflow_dispatch: gh workflow run promote.yml --repo ${A.repo} -f reason="<one sentence>"
+- a pushed tag promote/*: git -C ${worktree} tag -a promote/<UTC date-time, e.g. 2026-10-06-1530> -m "<one sentence>" origin/unstable && git -C ${worktree} push origin promote/<same>
+Set dispatched true only if that command succeeded. Do nothing else to stable.
 If not: say what would make it ready.`,
   { label: 'promote?', phase: 'Promote', model: 'opus', schema: JUDGE }
 )
