@@ -26,6 +26,9 @@ outputs = { fleetkit, xgcs, ... }: {
 - `providers/` pinned provider schemas the guest model is checked against.
 - `docs/` the model's decisions: `guest-model.md`, `guest-provider-map.md`,
   `deploy.md`, `tenants.md`, `schema-todo.md` (the inventory of untyped blocks).
+- `docs/secrets.md` host keys, operators and readers in the model, the
+  rendered and checked `.sops.yaml`, and the re-key recipe. The kit never
+  decrypts.
 - `tools/gates.sh` parse, eval, lint and provider fidelity. Checks that need
   real data (negative cases, parity) run in the estate repo.
 
