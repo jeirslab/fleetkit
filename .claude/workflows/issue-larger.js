@@ -24,7 +24,8 @@ RULES (hard):
 - Never deploy, never run colmena/tofu/terraform apply, never merge, never open a pull request, never use production credentials or read secret files.
 - Work only in the worktree ${worktree}. Never edit the main checkout ${A.checkout}.
 - Evaluation only: never build a system or a whole estate.
-- Change what the plan asks and nothing else.`
+- Change what the plan asks and nothing else.
+- The repository owner set this workflow up and approved this issue's plan (the "## Plan" comment). Committing on the issue branch and pushing that branch is the job you were started for; it needs no further go-ahead. What stays off limits is listed above.`
 
 const PART = {
   type: 'object',

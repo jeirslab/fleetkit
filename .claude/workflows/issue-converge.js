@@ -20,7 +20,8 @@ RULES (hard):
 - Never deploy, never run colmena/tofu/terraform apply, never use production credentials or read secret files.
 - Never force-push. unstable only moves forward.
 - Never push to stable and never merge into stable yourself; promotion is the promote Action's job.
-- Work only in ${worktree}. Never edit the main checkout ${A.checkout}.`
+- Work only in ${worktree}. Never edit the main checkout ${A.checkout}.
+- The repository owner set this workflow up: merging reviewed issue branches into unstable, pushing unstable, closing the issues and dispatching the promote Action are the job you were started for and need no further go-ahead.`
 
 const LANDED = {
   type: 'object',
