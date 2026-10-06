@@ -26,3 +26,12 @@ outputs = { fleetkit, xgcs, ... }: {
   `tenants.md`, `schema-todo.md` (the inventory of untyped blocks).
 - `tools/gates.sh` parse, eval, lint and provider fidelity. Checks that need
   real data (negative cases, parity) run in the estate repo.
+
+## Working on issues
+
+Work lands on `unstable` without a pull request. `/issue-plan <n>` posts a
+plan on an issue; the templates in `.claude/workflows/` run it in an outside
+worktree (`~/worktrees/fleetkit/issue-<n>`), each ending with a review;
+`issue-converge` lands the approved branches and closes the issues. No
+workflow deploys or uses production credentials. An estate repo that
+consumes the kit picks a change up with `nix flake update fleetkit`.
