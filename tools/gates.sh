@@ -29,12 +29,18 @@ for f in "${NIXFILES[@]}"; do
 done
 log "parse: $parse (${#NIXFILES[@]} files)"
 
-# The schema with no data must evaluate and describe itself.
+# The schema with no data must evaluate and describe itself, and the
+# deploy entry points must work on the fixture.
 eval_=pass
 if ! nix eval --json .#fleet.report >/dev/null 2>"$WF/eval.err"; then
   eval_=fail
   log "eval: FAIL"
   tail -n 40 "$WF/eval.err" >&2
+fi
+# mkHive and mkSystems on the hive-mini fixture (evaluation only).
+if ! bash tests/hive.sh >&2; then
+  eval_=fail
+  log "eval: tests/hive.sh FAIL"
 fi
 log "eval: $eval_"
 
