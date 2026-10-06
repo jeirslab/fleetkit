@@ -50,8 +50,9 @@ let
             }
           );
           archiveOnDestroy = mkOption {
-            type = types.bool;
-            default = false;
+            type = types.nullOr types.bool;
+            default = null;
+            description = "github_repository.archive_on_destroy: archive the repository instead of deleting it when it leaves the configuration. null = true, the safe choice; say false to allow deletion.";
           };
           fork = mkOption {
             type = types.bool;

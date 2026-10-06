@@ -26,6 +26,9 @@
         mkHive = import ./lib/hive.nix;
         # { fleet; estate; } -> an attrset for builtins.toJSON into main.tf.json.
         mkTerraform = args: import ./lib/terraform.nix ({ inherit (nixpkgs) lib; } // args);
+        # { fleet; estate; } -> the estate's GitHub repositories and organisation
+        # as an attrset for builtins.toJSON into main.tf.json.
+        mkGithubTerraform = args: import ./lib/github.nix ({ inherit (nixpkgs) lib; } // args);
       };
 
       # The schema's own description of itself, from a model with no data

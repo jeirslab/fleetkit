@@ -25,6 +25,9 @@ outputs = { fleetkit, xgcs, ... }: {
   GitHub management plane only; nothing is cloned or vendored from it.
 - `lib.mkTerraform` renders an estate's managed guests and pools as a
   `main.tf.json` attrset; see `docs/terraform.md`. The kit never runs tofu.
+- `lib.mkGithubTerraform` renders an estate's organisation and repositories as
+  a `main.tf.json` attrset for the GitHub provider; see `docs/github.md`. The
+  kit never runs tofu.
 - `providers/` pinned provider schemas the guest model is checked against.
 - `docs/` the model's decisions: `guest-model.md`, `guest-provider-map.md`,
   `deploy.md`, `tenants.md`, `schema-todo.md` (the inventory of untyped blocks).
