@@ -1,0 +1,198 @@
+# proxmox_virtual_environment_vm (registry.opentofu.org/bpg/proxmox 0.115.0)
+  acpi  [optional] bool
+  bios  [optional] string
+  boot_order  [optional] ["list","string"]
+  delete_unreferenced_disks_on_destroy  [optional] bool
+  description  [optional] string
+  hook_script_file_id  [optional] string
+  hotplug  [optional] string
+  id  [optional] string
+  ipv4_addresses  [computed] ["list",["list","string"]]
+  ipv6_addresses  [computed] ["list",["list","string"]]
+  keyboard_layout  [optional] string
+  kvm_arguments  [optional] string
+  mac_addresses  [optional] ["list","string"]
+  machine  [optional] string
+  migrate  [optional] bool
+  name  [optional] string
+  network_device  [optional] ["list",["object",{"bridge":"string","disconnected
+  network_interface_names  [computed] ["list","string"]
+  node_name  [required] string
+  on_boot  [optional] bool
+  pool_id  [optional] string
+  protection  [optional] bool
+  purge_on_destroy  [optional] bool
+  reboot  [optional] bool
+  reboot_after_update  [optional] bool
+  scsi_hardware  [optional] string
+  started  [optional] bool
+  stop_on_destroy  [optional] bool
+  tablet_device  [optional] bool
+  tags  [optional] ["list","string"]
+  template  [optional] bool
+  timeout_clone  [optional] number
+  timeout_create  [optional] number
+  timeout_migrate  [optional] number
+  timeout_move_disk  [optional] number
+  timeout_reboot  [optional] number
+  timeout_shutdown_vm  [optional] number
+  timeout_start_vm  [optional] number
+  timeout_stop_vm  [optional] number
+  vm_id  [optional] number
+  agent{}  [list] min=0 max=1
+    enabled  [optional] bool
+    timeout  [optional] string
+    trim  [optional] bool
+    type  [optional] string
+    wait_for_ip{}  [list] min=0 max=1
+      disabled  [optional] bool
+      ipv4  [optional] bool
+      ipv6  [optional] bool
+  amd_sev{}  [list] min=0 max=1
+    allow_smt  [optional] bool
+    kernel_hashes  [optional] bool
+    no_debug  [optional] bool
+    no_key_sharing  [optional] bool
+    type  [optional] string
+  audio_device{}  [list] min=0 max=1
+    device  [optional] string
+    driver  [optional] string
+    enabled  [optional] bool
+  cdrom{}  [list] min=0 max=1
+    enabled  [optional] bool
+    file_id  [optional] string
+    interface  [optional] string
+  clone{}  [list] min=0 max=1
+    datastore_id  [optional] string
+    full  [optional] bool
+    node_name  [optional] string
+    retries  [optional] number
+    vm_id  [required] number
+  cpu{}  [list] min=0 max=1
+    affinity  [optional] string
+    architecture  [optional] string
+    cores  [optional] number
+    flags  [optional] ["list","string"]
+    hotplugged  [optional] number
+    limit  [optional] number
+    numa  [optional] bool
+    sockets  [optional] number
+    type  [optional] string
+    units  [optional] number
+  disk{}  [list] min=0 max=31
+    aio  [optional] string
+    backup  [optional] bool
+    cache  [optional] string
+    datastore_id  [optional] string
+    discard  [optional] string
+    file_format  [optional] string
+    file_id  [optional] string
+    import_from  [optional] string
+    interface  [required] string
+    iothread  [optional] bool
+    path_in_datastore  [optional] string
+    queues  [optional] number
+    replicate  [optional] bool
+    serial  [optional] string
+    size  [optional] number
+    ssd  [optional] bool
+    speed{}  [list] min=0 max=1
+      iops_read  [optional] number
+      iops_read_burstable  [optional] number
+      iops_write  [optional] number
+      iops_write_burstable  [optional] number
+      read  [optional] number
+      read_burstable  [optional] number
+      write  [optional] number
+      write_burstable  [optional] number
+  efi_disk{}  [list] min=0 max=1
+    datastore_id  [optional] string
+    file_format  [optional] string
+    pre_enrolled_keys  [optional] bool
+    type  [optional] string
+  hostpci{}  [list] min=0 max=16
+    device  [required] string
+    id  [optional] string
+    mapping  [optional] string
+    mdev  [optional] string
+    pcie  [optional] bool
+    rom_file  [optional] string
+    rombar  [optional] bool
+    xvga  [optional] bool
+  initialization{}  [list] min=0 max=1
+    datastore_id  [optional] string
+    file_format  [optional] string
+    interface  [optional] string
+    meta_data_file_id  [optional] string
+    network_data_file_id  [optional] string
+    type  [optional] string
+    upgrade  [optional] bool
+    user_data_file_id  [optional] string
+    vendor_data_file_id  [optional] string
+    dns{}  [list] min=0 max=1
+      domain  [optional] string
+      servers  [optional] ["list","string"]
+    ip_config{}  [list] min=0 max=32
+      ipv4{}  [list] min=0 max=1
+        address  [optional] string
+        gateway  [optional] string
+      ipv6{}  [list] min=0 max=1
+        address  [optional] string
+        gateway  [optional] string
+    user_account{}  [list] min=0 max=1
+      keys  [optional] ["list","string"]
+      password  [optional] string
+      username  [optional] string
+  memory{}  [list] min=0 max=1
+    dedicated  [optional] number
+    floating  [optional] number
+    hugepages  [optional] string
+    keep_hugepages  [optional] bool
+    shared  [optional] number
+  numa{}  [list] min=0 max=-
+    cpus  [required] string
+    device  [required] string
+    hostnodes  [optional] string
+    memory  [required] number
+    policy  [optional] string
+  operating_system{}  [list] min=0 max=1
+    type  [optional] string
+  rng{}  [list] min=0 max=-
+    max_bytes  [optional] number
+    period  [optional] number
+    source  [required] string
+  serial_device{}  [list] min=0 max=4
+    device  [optional] string
+  smbios{}  [list] min=0 max=1
+    family  [optional] string
+    manufacturer  [optional] string
+    product  [optional] string
+    serial  [optional] string
+    sku  [optional] string
+    uuid  [optional] string
+    version  [optional] string
+  startup{}  [list] min=0 max=1
+    down_delay  [optional] number
+    order  [optional] number
+    up_delay  [optional] number
+  tpm_state{}  [list] min=0 max=1
+    datastore_id  [optional] string
+    version  [optional] string
+  usb{}  [list] min=0 max=-
+    host  [optional] string
+    mapping  [optional] string
+    usb3  [optional] bool
+  vga{}  [list] min=0 max=1
+    clipboard  [optional] string
+    memory  [optional] number
+    type  [optional] string
+  virtiofs{}  [list] min=0 max=8
+    cache  [optional] string
+    direct_io  [optional] bool
+    expose_acl  [optional] bool
+    expose_xattr  [optional] bool
+    mapping  [required] string
+  watchdog{}  [list] min=0 max=1
+    action  [optional] string
+    enabled  [optional] bool
+    model  [optional] string

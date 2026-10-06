@@ -1,0 +1,114 @@
+# proxmox_virtual_environment_container (registry.opentofu.org/bpg/proxmox 0.115.0)
+  delete_unreferenced_disks_on_destroy  [optional] bool
+  description  [optional] string
+  environment_variables  [optional] ["map","string"]
+  hook_script_file_id  [optional] string
+  id  [optional] string
+  ipv4  [computed] ["map","string"]
+  ipv6  [computed] ["map","string"]
+  node_name  [required] string
+  pool_id  [optional] string
+  protection  [optional] bool
+  purge_on_destroy  [optional] bool
+  start_on_boot  [optional] bool
+  started  [optional] bool
+  tags  [optional] ["list","string"]
+  template  [optional] bool
+  timeout_clone  [optional] number
+  timeout_create  [optional] number
+  timeout_delete  [optional] number
+  timeout_start  [optional] number
+  timeout_update  [optional] number
+  unprivileged  [optional] bool
+  vm_id  [optional] number
+  clone{}  [list] min=0 max=1
+    datastore_id  [optional] string
+    full  [optional] bool
+    node_name  [optional] string
+    vm_id  [required] number
+  console{}  [list] min=0 max=1
+    enabled  [optional] bool
+    tty_count  [optional] number
+    type  [optional] string
+  cpu{}  [list] min=0 max=1
+    architecture  [optional] string
+    cores  [optional] number
+    limit  [optional] number
+    units  [optional] number
+  device_passthrough{}  [list] min=0 max=128
+    deny_write  [optional] bool
+    gid  [optional] number
+    mode  [optional] string
+    path  [required] string
+    uid  [optional] number
+  disk{}  [list] min=0 max=1
+    acl  [optional] bool
+    datastore_id  [optional] string
+    mount_options  [optional] ["list","string"]
+    path_in_datastore  [computed] string
+    quota  [optional] bool
+    replicate  [optional] bool
+    size  [optional] number
+  features{}  [list] min=0 max=1
+    fuse  [optional] bool
+    keyctl  [optional] bool
+    mknod  [optional] bool
+    mount  [optional] ["list","string"]
+    nesting  [optional] bool
+  idmap{}  [list] min=0 max=-
+    container_id  [required] number
+    host_id  [required] number
+    size  [required] number
+    type  [required] string
+  initialization{}  [list] min=0 max=1
+    entrypoint  [optional] string
+    hostname  [optional] string
+    dns{}  [list] min=0 max=1
+      domain  [optional] string
+      server  [optional] string
+      servers  [optional] ["list","string"]
+    ip_config{}  [list] min=0 max=10
+      ipv4{}  [list] min=0 max=1
+        address  [optional] string
+        gateway  [optional] string
+      ipv6{}  [list] min=0 max=1
+        address  [optional] string
+        gateway  [optional] string
+    user_account{}  [list] min=0 max=1
+      keys  [optional] ["list","string"]
+      password  [optional] string
+  memory{}  [list] min=0 max=1
+    dedicated  [optional] number
+    swap  [optional] number
+  mount_point{}  [list] min=0 max=256
+    acl  [optional] bool
+    backup  [optional] bool
+    mount_options  [optional] ["list","string"]
+    path  [required] string
+    path_in_datastore  [computed] string
+    quota  [optional] bool
+    read_only  [optional] bool
+    replicate  [optional] bool
+    shared  [optional] bool
+    size  [optional] string
+    volume  [required] string
+  network_interface{}  [list] min=0 max=10
+    bridge  [optional] string
+    enabled  [optional] bool
+    firewall  [optional] bool
+    host_managed  [optional] bool
+    mac_address  [optional] string
+    mtu  [optional] number
+    name  [required] string
+    rate_limit  [optional] number
+    vlan_id  [optional] number
+  operating_system{}  [list] min=0 max=1
+    template_file_id  [required] string
+    type  [optional] string
+  startup{}  [list] min=0 max=1
+    down_delay  [optional] number
+    order  [optional] number
+    up_delay  [optional] number
+  wait_for_ip{}  [list] min=0 max=1
+    ipv4  [optional] bool
+    ipv6  [optional] bool

@@ -1,0 +1,5 @@
+# proxmox_virtual_environment_pool (registry.opentofu.org/bpg/proxmox 0.115.0)
+  comment  [optional] string
+  id  [optional] string
+  members  [computed] ["list",["object",{"datastore_id":"string","id":"s
+  pool_id  [required] string
