@@ -37,6 +37,7 @@ SOPS_REF = re.compile(r'^\$\{data\.sops_file\.([A-Za-z0-9_-]+)\.data\["(.+)"\]\}
 # provider's tokenRef is sops:mini/tf#site-token, in mini's secrets. tenant and
 # bare have no placement.tokenRef, so they render the provider's, and since
 # the file is mini's the data.sops_file is keyed mini_tf, not tf.
+EP = "https://192.0.2.10:8006/"  # site s1, where every estate's guests are
 ESTATES = {
     "mini": dict(
         managed={LXC: "box", VM: "machine"},
@@ -45,6 +46,7 @@ ESTATES = {
         companion="tuned",
         file="tf",
         key="pve-token",
+        endpoint=EP,
     ),
     "tenant": dict(
         managed={LXC: "tbox"},
@@ -53,6 +55,7 @@ ESTATES = {
         companion=None,
         file="mini_tf",
         key="site-token",
+        endpoint=EP,
     ),
     "bare": dict(
         managed={LXC: "bbox"},
@@ -61,6 +64,7 @@ ESTATES = {
         companion=None,
         file="mini_tf",
         key="site-token",
+        endpoint=EP,
     ),
 }
 TOKEN_PATH = "secrets/tf.json"
@@ -170,6 +174,10 @@ def check(doc, schemas, x):
             )
     elif companions:
         problems.append(f"unexpected locals.fleet_unrendered_companions {companions}")
+
+    endpoint = doc.get("provider", {}).get("proxmox", {}).get("endpoint")
+    if endpoint != x["endpoint"]:
+        problems.append(f"provider.proxmox.endpoint is '{endpoint}', not the expected '{x['endpoint']}'")
 
     sops_files = doc.get("data", {}).get("sops_file", {})
     tokens = 0

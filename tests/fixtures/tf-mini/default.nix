@@ -3,7 +3,7 @@
 # guest with an lxc_extra_conf companion and one adopted guest, and its own
 # placement.tokenRef. Two more estates share the site's provider: "tenant"
 # (placement without a tokenRef, a pool and a guest) and "bare" (no placement,
-# one guest). "split" has guests on two sites and must not render. Generic
+# one guest). "split" has guests on two sites and must not render; "offsite" has a placement on s1 and a guest on s2, and must not render. Generic
 # names only; nothing here is a real address.
 _: {
   fleet = {
@@ -143,6 +143,17 @@ _: {
         guestDefaults.defaultDatastore = "s1/local";
       };
 
+      offsite = {
+        owner = "Offsite";
+        placement = {
+          provider = "s1/proxmox";
+          pool = "offsite/proxmox/near";
+        };
+        pools.proxmox.near.provider = "s1/proxmox";
+        pools.proxmox.far.provider = "s2/proxmox";
+        guestDefaults.defaultDatastore = "s1/local";
+      };
+
       split = {
         owner = "Split";
         guestDefaults.defaultDatastore = "s1/local";
@@ -182,6 +193,26 @@ _: {
           {
             role = "root";
             size = 8;
+          }
+        ];
+      };
+
+      offsite.far = {
+        vmid = 9401;
+        pool = "offsite/proxmox/far";
+        kind = "lxc";
+        on = "s2/n1";
+        networkInterfaces = [
+          {
+            network = "lan";
+            address = "198.51.100.61";
+          }
+        ];
+        disks = [
+          {
+            role = "root";
+            size = 8;
+            datastore = "s2/local";
           }
         ];
       };

@@ -111,7 +111,8 @@ let
     let
       v = views.${name};
     in
-    v.args // lib.optionalAttrs (v.lifecycle != { }) { inherit (v) lifecycle; };
+    v.args
+    // lib.optionalAttrs (v.lifecycle != { }) { inherit (v) lifecycle; };
 
   byType = lib.foldl' (
     acc: name:

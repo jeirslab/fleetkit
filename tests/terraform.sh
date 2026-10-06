@@ -26,13 +26,24 @@ for estate in mini tenant bare; do
   fi
 done
 
-# Guests on two sites: one provider cannot serve them; the message names both.
+# Guests on two sites and no placement: one provider cannot serve them; the
+# message names both sites.
 if render split; then
   echo "FAIL split: rendered guests on two sites" >&2
   status=fail
-elif ! { grep -q 's1' "$TMP/split.err" && grep -q 's2' "$TMP/split.err"; }; then
-  echo "FAIL split: error does not name both sites" >&2
+elif ! grep -Eq 'fleet\.estates\.split: no placement, and its guests and pools are on more than one site \((s1, s2|s2, s1)\)' "$TMP/split.err"; then
+  echo "FAIL split: error is not the two-site message naming both sites" >&2
   tail -n 20 "$TMP/split.err" >&2
+  status=fail
+fi
+
+# A placement on one site and a guest on another: still one provider, one site.
+if render offsite; then
+  echo "FAIL offsite: rendered a guest on another site than the placement" >&2
+  status=fail
+elif ! grep -q 'fleet\.estates\.offsite: guest far is on site "s2" but the provider is on site "s1"; one provider serves one site' "$TMP/offsite.err"; then
+  echo "FAIL offsite: error is not the one-provider-one-site message" >&2
+  tail -n 20 "$TMP/offsite.err" >&2
   status=fail
 fi
 

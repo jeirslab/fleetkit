@@ -168,7 +168,7 @@ let
                 tokenRef = mkOption {
                   type = types.nullOr types.str;
                   default = null;
-                  description = "Optional override: sops ref of the API credential to render for this estate. null = the provider's (the cluster's) tokenRef.";
+                  description = "Optional override: sops ref, in this estate's own secrets, of the API credential to render for this estate. null = the provider's (the cluster's) tokenRef.";
                 };
               };
             }
