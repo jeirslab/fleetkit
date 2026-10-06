@@ -59,6 +59,46 @@ shared base (`nixos/base.nix`) declares a loose `deployment` option only
 outside a hive (`mkSystems`), so modules that set `deployment.*` evaluate in
 both. It is never declared twice.
 
+## Node systems (bare-metal machines)
+
+A node of a site is a NixOS machine when it names a `nixos.module`
+(`fleet.sites.<site>.nodes.<node>.nixos.module`, default null). A node with no
+module is not built. Pass `site` instead of `estate`; passing both, or
+neither, throws.
+
+- `lib.mkSystems { fleet; site; nixpkgs; ... }` returns `{ <node> = <nixosSystem>; }`
+  for the site's nodes that name a module.
+- `lib.mkHive { fleet; site; nixpkgs; ... }` returns a hive with the same
+  nodes. `deployment.targetHost` is the node's `address`, `targetUser`
+  defaults to `root`, and `deployment.tags` is `[ "machine" <site> ]`.
+
+What the base (`nixos/base.nix`) supplies for a machine: the host name (the
+node's name), sshd, operator accounts and root keys, the `fleet.*` facts
+(`fleet.compute` is the site's nodes, name to `internal_ip`; the internal
+domain is null unless the site's network names one), grants by the site's
+region and grants with `where = null`, the loose `deployment` option outside a
+hive, and the inert `proxmoxLXC` option.
+
+What it does not supply: no platform profile (neither the proxmox-lxc profile
+nor the qemu guest profile), and no default root file system or boot loader.
+The node's own module brings its hardware configuration, file systems and
+boot loader. Hardware modules, disk layout and installers are not part of the
+kit.
+
+```nix
+{
+  outputs = { self, nixpkgs, fleetkit, ... }:
+    let
+      fleet = fleetkit.lib.fleet { modules = [ ./config.nix ]; };
+      args = { inherit fleet nixpkgs; site = "example"; };
+    in
+    {
+      nixosConfigurations = fleetkit.lib.mkSystems args;
+      colmenaHive = fleetkit.lib.mkHive args;
+    };
+}
+```
+
 ## What the kit does not do
 
 Nothing here runs Colmena, builds an estate, holds secrets or reaches a host.

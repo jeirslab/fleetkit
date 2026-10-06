@@ -20,6 +20,8 @@ outputs = { fleetkit, xgcs, ... }: {
   the model plus the module the guest names (`lib.mkSystems`).
 - `lib.mkHive` builds a Colmena hive from the same guests (target host, user
   and tags from the model); see `docs/deploy.md`. Nothing in the kit deploys.
+  Both also take a `site` instead of an `estate` to build a site's bare-metal
+  nodes that name a `nixos.module`.
 - Repositories: an estate declares its GitHub organisation and repositories
   in the model (`fleet.estates.<e>.git`, `fleet.repos.<e>`). That is the
   GitHub management plane only; nothing is cloned or vendored from it.

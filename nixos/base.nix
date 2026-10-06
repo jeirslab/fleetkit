@@ -1,7 +1,9 @@
 # The lab's part of a guest's NixOS system: what follows from the model, so a
 # tenant's module only has to say what runs in the guest.
 #
-#   platform   lxc -> nixpkgs' proxmox-lxc profile, vm -> the qemu guest profile
+#   platform   lxc -> nixpkgs' proxmox-lxc profile, vm -> the qemu guest profile,
+#              machine (a site node, bare metal) -> no profile and no file
+#              system or boot loader defaults
 #   names      the guest's name is its host name
 #   operators  sshd with keys only; one account per role granted on this guest
 #              (fleet.operators grants), holding the keys of the granted
@@ -29,15 +31,18 @@
 { lib, modulesPath, ... }:
 let
   isLxc = guest.kind == "lxc";
+  isMachine = guest.kind == "machine";
   loose = lib.mkOption {
     type = lib.types.attrsOf lib.types.anything;
     default = { };
   };
 in
 {
-  imports = [
-    (modulesPath + (if isLxc then "/virtualisation/proxmox-lxc.nix" else "/profiles/qemu-guest.nix"))
-  ];
+  # A machine (bare metal) gets no platform profile: its own module brings
+  # the hardware configuration.
+  imports = lib.optional (!isMachine) (
+    modulesPath + (if isLxc then "/virtualisation/proxmox-lxc.nix" else "/profiles/qemu-guest.nix")
+  );
 
   options = {
     fleet = loose;
@@ -76,7 +81,7 @@ in
       security.sudo.wheelNeedsPassword = lib.mkDefault false;
     }
     (lib.mkIf isLxc { proxmoxLXC.manageHostName = true; })
-    (lib.mkIf (!isLxc) {
+    (lib.mkIf (!isLxc && !isMachine) {
       fileSystems."/" = lib.mkDefault {
         device = "/dev/vda1";
         fsType = "ext4";
