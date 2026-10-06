@@ -7,8 +7,12 @@ against the pinned integrations/github schema.
 Fails (exit 1, problems on stderr) when:
   - a resource type is not in the schema, or an argument / nested block name
     (recursively) is not an attribute or block of it (the provider block too);
+  - a resource or data name is not a legal Terraform name
+    (^[A-Za-z_][A-Za-z0-9_-]*$);
   - the three repositories, the default branch, the team, the memberships and
     the Actions secret are not present;
+  - an environment's branches are rendered (deployment policy), or are not
+    listed in locals.fleet_unrendered;
   - the ruleset is rendered, or is not listed in locals.fleet_skipped_rulesets;
   - a credential or secret value (app_auth fields, token, plaintext_value) is
     not a ${data.sops_file...} reference, or names a data.sops_file that is not
@@ -30,10 +34,12 @@ SCHEMA = f"{ROOT}/providers/schemas/integrations-github-6.13.0.schema.json"
 PROVIDER = "registry.opentofu.org/integrations/github"
 META = {"lifecycle", "depends_on", "count", "for_each", "provider", "provisioner"}
 SOPS_REF = re.compile(r'^\$\{data\.sops_file\.([A-Za-z0-9_-]+)\.data\["(.+)"\]\}$')
+TF_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 CREDENTIAL_KEYS = {"id", "installation_id", "pem_file", "token", "plaintext_value"}
 
 REPOS = {"app": "app", "site": "site-public", "mirror": "mirror"}
 LOGINS = {"alice-example": "admin", "bob-example": "member", "carol-example": "member"}
+ENV_BRANCHES = ["main", "release/1.x"]
 SECRET_FILE = "secrets/gh.json"
 
 
@@ -46,6 +52,12 @@ def check(doc, schema):
     schemas = schema["resource_schemas"]
     resources = doc.get("resource", {})
     locs = doc.get("locals", {})
+
+    for kind in ("resource", "data"):
+        for rtype, instances in doc.get(kind, {}).items():
+            for name in instances:
+                if not TF_NAME.match(name):
+                    problems.append(f"{kind}.{rtype}.{name}: not a legal Terraform name")
 
     for rtype, instances in resources.items():
         res = schemas.get(rtype)
@@ -94,8 +106,18 @@ def check(doc, schema):
         problems.append("missing github_branch_default.app")
     elif resources["github_branch_default"]["app"].get("branch") != "main":
         problems.append("github_branch_default.app: branch is not 'main'")
-    if len(resources.get("github_repository_environment", {})) != 1:
-        problems.append("expected exactly one github_repository_environment")
+    envs = resources.get("github_repository_environment", {})
+    if set(envs) != {"app_prod"}:
+        problems.append(f"github_repository_environment is {sorted(envs)}, not ['app_prod']")
+    elif "deployment_branch_policy" in envs["app_prod"]:
+        problems.append("github_repository_environment.app_prod: deployment_branch_policy is rendered")
+    # An environment's branches are listed, not rendered.
+    if "github_repository_environment_deployment_policy" in resources:
+        problems.append("github_repository_environment_deployment_policy is rendered")
+    unrendered = locs.get("fleet_unrendered") or []
+    for b in ENV_BRANCHES:
+        if f"environment_branch:app.prod:{b}" not in unrendered:
+            problems.append(f"locals.fleet_unrendered does not list environment_branch:app.prod:{b}")
 
     # Organisation level.
     if len(resources.get("github_organization_settings", {})) != 1:
@@ -106,11 +128,15 @@ def check(doc, schema):
     if memberships != LOGINS:
         problems.append(f"github_membership is {memberships}, not {LOGINS}")
     teams = resources.get("github_team", {})
-    if "devs" not in teams:
-        problems.append("missing github_team.devs")
-    for rtype in ("github_team_members", "github_team_repository"):
-        if not resources.get(rtype):
-            problems.append(f"missing {rtype}")
+    # The team key "core.devs" is not a legal name; the address is sanitised.
+    if teams.get("core_devs", {}).get("name") != "core.devs":
+        problems.append("missing github_team.core_devs with name 'core.devs'")
+    for rtype, name in (("github_team_members", "core_devs"), ("github_team_repository", "core_devs_app")):
+        r = resources.get(rtype, {}).get(name)
+        if r is None:
+            problems.append(f"missing {rtype}.{name}")
+        elif r.get("team_id") != "${github_team.core_devs.id}":
+            problems.append(f"{rtype}.{name}: team_id is not a reference to github_team.core_devs")
     if not resources.get("github_actions_organization_permissions"):
         problems.append("missing github_actions_organization_permissions")
     secrets = resources.get("github_actions_organization_secret", {})

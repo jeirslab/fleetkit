@@ -1,5 +1,6 @@
 # Minimal fleet data for tests/github.sh: one estate "gh" with a git block
-# (organisation on the free plan, app auth, three members, one team, Actions
+# (organisation on the free plan, app auth, three members, one team whose key
+# is not a legal resource name, Actions
 # settings with one secret, and one ruleset that needs the team plan), three
 # repositories (private with a default branch and an environment, public,
 # archived fork) and principals with github logins. Generic names only;
@@ -60,7 +61,8 @@ _: {
             "carol"
           ];
         };
-        teams.devs = {
+        # The dot is not legal in a resource name: rendered as core_devs.
+        teams."core.devs" = {
           privacy = "closed";
           members = [ "bob" ];
           repos = [
@@ -107,7 +109,10 @@ _: {
         };
         environments.prod = {
           estateEnvironment = "gh/prod";
-          branches = [ "main" ];
+          branches = [
+            "main"
+            "release/1.x"
+          ];
         };
       };
       site = {

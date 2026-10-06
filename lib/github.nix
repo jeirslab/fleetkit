@@ -11,6 +11,8 @@
 # (a loose block). Resource address: <resource type>.<repo key> for a
 # repository and what hangs off it; <type>.<team key> for teams;
 # <type>.<principal id> for memberships; <type>.<ruleset key> for rulesets.
+# Every such name goes through tfName (a character outside [A-Za-z0-9_-]
+# becomes "_"); two keys that end up with the same name are an error.
 #
 # Credentials are never literals: the provider's app_auth / token and every
 # Actions secret value read the estate's secret refs (sops:<estate>/<file>#<key>)
@@ -19,7 +21,8 @@
 # Repositories are never destroyed by removal: archive_on_destroy = true and
 # lifecycle.prevent_destroy = true. A fork is rendered like any repository
 # (the provider cannot create a fork relationship); the keys are listed in
-# locals.fleet_forks. What the model holds but cannot be rendered is listed in
+# locals.fleet_forks. What the model holds but is not rendered (deploy keys,
+# an environment's branches, outside collaborators) is listed in
 # locals.fleet_unrendered; rulesets above git.plan in
 # locals.fleet_skipped_rulesets.
 {
@@ -52,17 +55,67 @@ let
 
   ref = a: "\${${a}}";
 
+  # A Terraform resource name: letters, digits, "_" and "-", not starting
+  # with a digit or "-". Model keys are free text (a repo key "foo.bar"), so
+  # every generated name goes through this.
+  tfName =
+    s:
+    let
+      clean = lib.concatMapStrings (c: if builtins.match "[A-Za-z0-9_-]" c != null then c else "_") (
+        lib.stringToCharacters s
+      );
+    in
+    if builtins.match "[A-Za-z_].*" clean != null then clean else "_${clean}";
+  # [ { raw; value; } ] -> { <tfName raw> = value; }; two entries that render
+  # the same name are an error, never a silent overwrite.
+  named =
+    what: pairs:
+    let
+      byName = lib.groupBy (p: tfName p.raw) pairs;
+      clashes = lib.filterAttrs (_: ps: builtins.length ps > 1) byName;
+    in
+    if clashes != { } then
+      throw "${where}: ${what}: ${
+        lib.concatStringsSep "; " (
+          lib.mapAttrsToList (
+            n: ps: "${lib.concatMapStringsSep ", " (p: "\"${p.raw}\"") ps} all render the resource name \"${n}\""
+          ) clashes
+        )
+      }"
+    else
+      lib.mapAttrs (_: ps: (builtins.head ps).value) byName;
+  namedAttrs =
+    what: f: attrs:
+    named what (
+      lib.mapAttrsToList (n: v: {
+        raw = n;
+        value = f n v;
+      }) attrs
+    );
+
   # Repository ids are <estate>/<key>; the key is the address, the GitHub name
-  # is the repo's name or its key.
-  repoKey = id: lib.removePrefix "${estate}/" id;
+  # is the repo's name or its key. The model only checks that a referenced
+  # repository is declared, not that it is this estate's.
+  repoKey =
+    id:
+    let
+      k = lib.removePrefix "${estate}/" id;
+    in
+    if lib.hasPrefix "${estate}/" id && repos ? ${k} then
+      k
+    else
+      throw "${where}: repository \"${id}\" is not a repository of estate \"${estate}\"";
   nameOf = k: repos.${k}.name or null;
   ghName = k: if nameOf k != null then nameOf k else k;
-  repoRef = id: ref "github_repository.${repoKey id}.name";
-  repoId = id: ref "github_repository.${repoKey id}.repo_id";
+  repoAddr = k: "github_repository.${tfName k}";
+  repoRef = id: ref "${repoAddr (repoKey id)}.name";
+  repoId = id: ref "${repoAddr (repoKey id)}.repo_id";
 
   # ---- secrets -----------------------------------------------------------
   auth = g.auth or null;
-  secrets = g.actions.secrets or { };
+  # Actions secrets are organisation resources: without an organisation none
+  # is rendered, so its value is not read either.
+  secrets = lib.optionalAttrs isOrg (g.actions.secrets or { });
   usedRefs =
     lib.optionals (auth != null) (
       if auth.kind == "app" then
@@ -125,8 +178,8 @@ let
     };
 
   withDefaultBranch = lib.filterAttrs (_: r: r.defaultBranch != null) repos;
-  branchDefaults = lib.mapAttrs (k: r: {
-    repository = ref "github_repository.${k}.name";
+  branchDefaults = namedAttrs "default branches" (k: r: {
+    repository = ref "${repoAddr k}.name";
     branch = r.defaultBranch;
   }) withDefaultBranch;
 
@@ -135,37 +188,19 @@ let
       k: r: lib.mapAttrsToList (env: e: { inherit k env e; }) r.environments
     ) repos
   );
-  envKey = x: "${x.k}_${x.env}";
-  environments = lib.listToAttrs (
-    map (
-      x:
-      lib.nameValuePair (envKey x) (
-        {
-          repository = ref "github_repository.${x.k}.name";
-          environment = x.env;
-        }
-        // lib.optionalAttrs (x.e.branches != [ ]) {
-          deployment_branch_policy = {
-            protected_branches = false;
-            custom_branch_policies = true;
-          };
-        }
-      )
-    ) envList
+  environments = named "repository environments" (
+    map (x: {
+      raw = "${x.k}_${x.env}";
+      value = {
+        repository = ref "${repoAddr x.k}.name";
+        environment = x.env;
+      };
+    }) envList
   );
-  envPolicies = lib.listToAttrs (
-    lib.concatMap (
-      x:
-      map (
-        b:
-        lib.nameValuePair "${envKey x}_${builtins.replaceStrings [ "/" "*" ] [ "_" "_" ] b}" {
-          repository = ref "github_repository.${x.k}.name";
-          environment = ref "github_repository_environment.${envKey x}.environment";
-          branch_pattern = b;
-        }
-      ) x.e.branches
-    ) envList
-  );
+  # An environment's deployment branches are not rendered.
+  envBranches = lib.concatMap (
+    x: map (b: "environment_branch:${x.k}.${x.env}:${b}") x.e.branches
+  ) envList;
 
   # The model has no public key for a deploy key, so none is rendered.
   deployKeys = lib.concatLists (
@@ -184,38 +219,38 @@ let
   members = g.members or { };
   memberRole =
     lib.genAttrs (members.member or [ ]) (_: "member") // lib.genAttrs (members.admin or [ ]) (_: "admin");
-  memberships = lib.mapAttrs (p: role: {
+  memberships = namedAttrs "members" (p: role: {
     username = loginOf p;
     inherit role;
   }) memberRole;
 
   teams = g.teams or { };
-  teamResources = lib.mapAttrs (
+  teamResources = namedAttrs "teams" (
     t: team:
     {
       name = t;
     }
     // lib.optionalAttrs (team ? privacy) { inherit (team) privacy; }
   ) teams;
-  teamMembers = lib.mapAttrs (t: team: {
-    team_id = ref "github_team.${t}.id";
+  teamMembers = namedAttrs "teams" (t: team: {
+    team_id = ref "github_team.${tfName t}.id";
     members = map (p: {
       username = loginOf p;
       role = "member";
     }) (team.members or [ ]);
   }) teams;
-  teamRepos = lib.listToAttrs (
+  teamRepos = named "team repositories" (
     lib.concatLists (
       lib.mapAttrsToList (
         t: team:
-        map (
-          r:
-          lib.nameValuePair "${t}_${repoKey r.repo}" {
-            team_id = ref "github_team.${t}.id";
+        map (r: {
+          raw = "${t}_${repoKey r.repo}";
+          value = {
+            team_id = ref "github_team.${tfName t}.id";
             repository = repoRef r.repo;
             inherit (r) permission;
-          }
-        ) (team.repos or [ ])
+          };
+        }) (team.repos or [ ])
       ) teams
     )
   );
@@ -232,7 +267,7 @@ let
       };
     }
   );
-  actionsSecrets = lib.mapAttrs (n: s: {
+  actionsSecrets = namedAttrs "Actions secrets" (n: s: {
     secret_name = n;
     plaintext_value = (sopsRef s.sourceRef).expr;
     visibility = "selected";
@@ -288,7 +323,7 @@ let
   }
   // lib.optionalAttrs (secrets != { }) { github_actions_organization_secret = actionsSecrets; }
   // lib.optionalAttrs (allowed != { }) {
-    github_organization_ruleset = lib.mapAttrs renderRuleset allowed;
+    github_organization_ruleset = namedAttrs "rulesets" renderRuleset allowed;
   };
 
   nonEmpty = lib.filterAttrs (_: v: v != { });
@@ -313,10 +348,9 @@ in
 
   resource = nonEmpty (
     {
-      github_repository = lib.mapAttrs renderRepo repos;
+      github_repository = namedAttrs "repositories" renderRepo repos;
       github_branch_default = branchDefaults;
       github_repository_environment = environments;
-      github_repository_environment_deployment_policy = envPolicies;
     }
     // lib.optionalAttrs isOrg orgResources
   );
@@ -328,6 +362,7 @@ in
     ) skipped;
     fleet_unrendered =
       deployKeys
+      ++ envBranches
       ++ map (p: "outside_collaborator:${p}") (lib.optionals isOrg (members.outside or [ ]))
       ++ lib.optionals isOrg (
         map (k: "actions.${k}") (
