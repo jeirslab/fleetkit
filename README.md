@@ -18,11 +18,27 @@ outputs = { fleetkit, xgcs, ... }: {
   zones, repos, backends); `lib/` the entry points and the tenant boundary.
 - `nixos/base.nix` and `lib/systems.nix` assemble a guest's NixOS system from
   the model plus the module the guest names (`lib.mkSystems`).
+- `lib.mkHive` builds a Colmena hive from the same guests (target host, user
+  and tags from the model); see `docs/deploy.md`. Nothing in the kit deploys.
 - Repositories: an estate declares its GitHub organisation and repositories
   in the model (`fleet.estates.<e>.git`, `fleet.repos.<e>`). That is the
   GitHub management plane only; nothing is cloned or vendored from it.
+- `lib.mkTerraform` renders an estate's managed guests and pools as a
+  `main.tf.json` attrset; see `docs/terraform.md`. The kit never runs tofu.
 - `providers/` pinned provider schemas the guest model is checked against.
 - `docs/` the model's decisions: `guest-model.md`, `guest-provider-map.md`,
-  `tenants.md`, `schema-todo.md` (the inventory of untyped blocks).
+  `deploy.md`, `tenants.md`, `schema-todo.md` (the inventory of untyped blocks).
+- `docs/secrets.md` host keys, operators and readers in the model, the
+  rendered and checked `.sops.yaml`, and the re-key recipe. The kit never
+  decrypts.
 - `tools/gates.sh` parse, eval, lint and provider fidelity. Checks that need
   real data (negative cases, parity) run in the estate repo.
+
+## Working on issues
+
+Work lands on `unstable` without a pull request. `/issue-plan <n>` posts a
+plan on an issue; the templates in `.claude/workflows/` run it in an outside
+worktree (`~/worktrees/fleetkit/issue-<n>`), each ending with a review;
+`issue-converge` lands the approved branches and closes the issues. No
+workflow deploys or uses production credentials. An estate repo that
+consumes the kit picks a change up with `nix flake update fleetkit`.

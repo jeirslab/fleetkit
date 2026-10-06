@@ -29,12 +29,18 @@ for f in "${NIXFILES[@]}"; do
 done
 log "parse: $parse (${#NIXFILES[@]} files)"
 
-# The schema with no data must evaluate and describe itself.
+# The schema with no data must evaluate and describe itself, and the
+# deploy entry points must work on the fixture.
 eval_=pass
 if ! nix eval --json .#fleet.report >/dev/null 2>"$WF/eval.err"; then
   eval_=fail
   log "eval: FAIL"
   tail -n 40 "$WF/eval.err" >&2
+fi
+# mkHive and mkSystems on the hive-mini fixture (evaluation only).
+if ! bash tests/hive.sh >&2; then
+  eval_=fail
+  log "eval: tests/hive.sh FAIL"
 fi
 log "eval: $eval_"
 
@@ -47,7 +53,7 @@ if ! nix shell "$NIXPKGS#statix" "$NIXPKGS#deadnix" -c bash -c '
 ' lint "${NIXFILES[@]}"; then
   lint=fail
 fi
-for t in tests/loose_blocks.sh "tools/hooks/secrets-scan.sh --all" tests/secrets_scan_selftest.sh; do
+for t in tests/loose_blocks.sh tests/sops_config.sh "tools/hooks/secrets-scan.sh --all" tests/secrets_scan_selftest.sh; do
   # shellcheck disable=SC2086
   if ! bash $t >&2; then
     lint=fail
@@ -57,9 +63,11 @@ done
 log "lint: $lint"
 
 # Every guest option path is mapped to a provider argument that exists in the
-# pinned bpg/proxmox schema (docs/guest-provider-map.md).
+# pinned bpg/proxmox schema (docs/guest-provider-map.md), and so is the
+# terraform rendered from the fixture (tests/terraform.sh).
 fidelity=pass
 python3 tests/guest_fidelity.py --gate >&2 || fidelity=fail
+bash tests/terraform.sh >&2 || fidelity=fail
 log "fidelity: $fidelity"
 
 ok=false

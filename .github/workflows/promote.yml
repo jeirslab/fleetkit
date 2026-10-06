@@ -1,0 +1,87 @@
+name: promote
+# Promote unstable to stable: one pull request for everything landed since the last promotion,
+# opened and merged by the GitHub App, then a notification. Started by the converge workflow when
+# it judges the batch worth a record, or by hand.
+#
+# Needs, in this repository's settings:
+#   variable  FLEET_APP_ID            the GitHub App's id
+#   secret    FLEET_APP_PRIVATE_KEY   the App's private key (the App is installed on this repo with
+#                                     contents and pull requests read/write)
+#   secret    NTFY_URL                the notify topic URL (https://<ntfy host>/<topic>); optional
+#   secret    NTFY_TOKEN              its access token; optional
+#
+# This repository's default branch is still the previous kit (main), and a manual dispatch needs
+# the workflow on the default branch. So the trigger here is a pushed tag: `promote/<anything>`
+# on the unstable commit, with the reason as the tag's message:
+#   git tag -a promote/2026-10-06 -m "why" origin/unstable && git push origin promote/2026-10-06
+on:
+  push:
+    tags: ['promote/*']
+permissions:
+  contents: read
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v1
+        id: app
+        with:
+          app-id: ${{ vars.FLEET_APP_ID }}
+          private-key: ${{ secrets.FLEET_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+      - name: open and merge the promotion pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git fetch -q origin stable unstable
+          REASON=$(git tag -l --format='%(contents:subject)' "$TAG")
+          echo "reason=$REASON" >> "$GITHUB_OUTPUT"
+          count=$(git rev-list --count origin/stable..origin/unstable)
+          if [ "$count" = 0 ]; then
+            echo "stable already has everything on unstable"; echo "url=" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          {
+            echo "$REASON"
+            echo
+            echo "## Issues closed on unstable since the last promotion"
+            git log --format=%B origin/stable..origin/unstable \
+              | grep -oiE '(closes|fixes|resolves) #[0-9]+' | grep -oE '#[0-9]+' | sort -u \
+              | while read -r n; do echo "- $n $(gh issue view "${n#\#}" --json title -q .title)"; done
+            echo
+            echo "## Commits"
+            git log --format='- %h %s' --first-parent origin/stable..origin/unstable
+          } > body.md
+          url=$(gh pr list --base stable --head unstable --state open --json url -q '.[0].url')
+          if [ -z "$url" ]; then
+            url=$(gh pr create --base stable --head unstable --title "Promote unstable to stable ($(date -u +%F))" --body-file body.md)
+          else
+            gh pr edit "$url" --body-file body.md
+          fi
+          gh pr merge "$url" --merge
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+      - name: notify
+        if: always()
+        env:
+          NTFY_URL: ${{ secrets.NTFY_URL }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          URL: ${{ steps.pr.outputs.url }}
+          COUNT: ${{ steps.pr.outputs.count }}
+          STATUS: ${{ job.status }}
+          REASON: ${{ steps.pr.outputs.reason }}
+        run: |
+          [ -n "${NTFY_URL:-}" ] || { echo "no NTFY_URL set; skipping"; exit 0; }
+          if [ "$STATUS" = success ] && [ -n "$URL" ]; then
+            msg="fleetkit: promoted $COUNT commit(s) to stable. $REASON $URL"
+          elif [ "$STATUS" = success ]; then
+            msg="fleetkit: nothing to promote."
+          else
+            msg="fleetkit: promotion FAILED. $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          fi
+          curl -fsS ${NTFY_TOKEN:+-H "Authorization: Bearer $NTFY_TOKEN"} -H "Title: fleetkit promotion" -d "$msg" "$NTFY_URL"

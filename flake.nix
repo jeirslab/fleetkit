@@ -21,6 +21,11 @@
         # { fleet; estate; nixpkgs; modules; specialArgs; adminPrincipals; }
         # -> one NixOS system per guest that names a nixos.module.
         mkSystems = import ./lib/systems.nix;
+        # { fleet; estate; nixpkgs; modules; specialArgs; network; system; }
+        # -> a Colmena hive: meta plus one node per guest that names a nixos.module.
+        mkHive = import ./lib/hive.nix;
+        # { fleet; estate; } -> an attrset for builtins.toJSON into main.tf.json.
+        mkTerraform = args: import ./lib/terraform.nix ({ inherit (nixpkgs) lib; } // args);
       };
 
       # The schema's own description of itself, from a model with no data
