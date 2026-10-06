@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check a rendered main.tf.json against the pinned bpg/proxmox schema.
 
-  terraform.py RENDERED.json [--schema FILE]
+  terraform.py RENDERED.json [--estate mini|tenant|bare] [--schema FILE]
 
 Fails (exit 1, problems on stderr) when:
   - a resource type is not in the schema, or an argument / nested block name
@@ -10,7 +10,9 @@ Fails (exit 1, problems on stderr) when:
     addresses, or the adopted guest is rendered / not in locals.fleet_unmanaged;
   - any api_token is a literal instead of a ${data.sops_file...} reference,
     the data.sops_file it references is not rendered, or it is not the
-    estate's placement.tokenRef (file alias, path and key);
+    expected one for the estate (file alias, path and key): mini its own
+    placement.tokenRef, tenant and bare the provider's tokenRef, resolved
+    through the secrets of the estate that owns it (mini);
   - the guest with an lxc_extra_conf companion is not listed in
     locals.fleet_unrendered_companions.
 Evaluation only; no network.
@@ -30,15 +32,41 @@ POOL = "proxmox_virtual_environment_pool"
 META = {"lifecycle", "depends_on", "count", "for_each", "provider", "provisioner"}
 SOPS_REF = re.compile(r'^\$\{data\.sops_file\.([A-Za-z0-9_-]+)\.data\["(.+)"\]\}$')
 
-# The fixture (tests/fixtures/tf-mini): expected addresses.
-MANAGED = {LXC: "box", VM: "machine"}
-POOL_NAME = "main"
-ADOPTED = "legacy"
-COMPANION = "tuned"
-# placement.tokenRef is sops:mini/tf#pve-token; the site provider's own
-# tokenRef names another key, which must not be the one rendered.
-TOKEN_FILE = "tf"
-TOKEN_KEY = "pve-token"
+# The fixture (tests/fixtures/tf-mini): per estate, the expected addresses and
+# credential. mini's placement.tokenRef is sops:mini/tf#pve-token; the site
+# provider's tokenRef is sops:mini/tf#site-token, in mini's secrets. tenant and
+# bare have no placement.tokenRef, so they render the provider's, and since
+# the file is mini's the data.sops_file is keyed mini_tf, not tf.
+EP = "https://192.0.2.10:8006/"  # site s1, where every estate's guests are
+ESTATES = {
+    "mini": dict(
+        managed={LXC: "box", VM: "machine"},
+        pool="main",
+        adopted="legacy",
+        companion="tuned",
+        file="tf",
+        key="pve-token",
+        endpoint=EP,
+    ),
+    "tenant": dict(
+        managed={LXC: "tbox"},
+        pool="tpool",
+        adopted=None,
+        companion=None,
+        file="mini_tf",
+        key="site-token",
+        endpoint=EP,
+    ),
+    "bare": dict(
+        managed={LXC: "bbox"},
+        pool=None,
+        adopted=None,
+        companion=None,
+        file="mini_tf",
+        key="site-token",
+        endpoint=EP,
+    ),
+}
 TOKEN_PATH = "secrets/tf.json"
 
 
@@ -97,7 +125,7 @@ def walk_strings(node, path=""):
         yield path, node
 
 
-def check(doc, schemas):
+def check(doc, schemas, x):
     problems = []
     resources = doc.get("resource", {})
 
@@ -114,28 +142,42 @@ def check(doc, schemas):
             if lc is not None and (not isinstance(lc, dict) or not lc):
                 problems.append(f"{where}: empty or malformed lifecycle must be dropped")
 
-    for rtype, name in MANAGED.items():
+    for rtype, name in x["managed"].items():
         if name not in resources.get(rtype, {}):
             problems.append(f"missing managed guest at {rtype}.{name}")
-    if POOL_NAME not in resources.get(POOL, {}):
-        problems.append(f"missing pool at {POOL}.{POOL_NAME}")
-    elif resources[POOL][POOL_NAME].get("pool_id") != POOL_NAME:
-        problems.append(f"{POOL}.{POOL_NAME}: pool_id must be '{POOL_NAME}'")
+    pool = x["pool"]
+    if pool is None:
+        if POOL in resources:
+            problems.append(f"unexpected {POOL} rendered")
+    elif pool not in resources.get(POOL, {}):
+        problems.append(f"missing pool at {POOL}.{pool}")
+    elif resources[POOL][pool].get("pool_id") != pool:
+        problems.append(f"{POOL}.{pool}: pool_id must be '{pool}'")
 
-    for rtype, instances in resources.items():
-        if ADOPTED in instances:
-            problems.append(f"adopted guest rendered at {rtype}.{ADOPTED}")
-    unmanaged = doc.get("locals", {}).get("fleet_unmanaged")
-    if not isinstance(unmanaged, (list, dict)) or not any(
-        ADOPTED in str(u) for u in (unmanaged if isinstance(unmanaged, list) else list(unmanaged))
-    ):
-        problems.append(f"locals.fleet_unmanaged does not list the adopted guest '{ADOPTED}'")
+    adopted = x["adopted"]
+    if adopted:
+        for rtype, instances in resources.items():
+            if adopted in instances:
+                problems.append(f"adopted guest rendered at {rtype}.{adopted}")
+        unmanaged = doc.get("locals", {}).get("fleet_unmanaged")
+        if not isinstance(unmanaged, (list, dict)) or not any(
+            adopted in str(u)
+            for u in (unmanaged if isinstance(unmanaged, list) else list(unmanaged))
+        ):
+            problems.append(f"locals.fleet_unmanaged does not list the adopted guest '{adopted}'")
 
     companions = doc.get("locals", {}).get("fleet_unrendered_companions")
-    if not isinstance(companions, list) or COMPANION not in companions:
-        problems.append(
-            f"locals.fleet_unrendered_companions does not list the guest '{COMPANION}'"
-        )
+    if x["companion"]:
+        if not isinstance(companions, list) or x["companion"] not in companions:
+            problems.append(
+                f"locals.fleet_unrendered_companions does not list the guest '{x['companion']}'"
+            )
+    elif companions:
+        problems.append(f"unexpected locals.fleet_unrendered_companions {companions}")
+
+    endpoint = doc.get("provider", {}).get("proxmox", {}).get("endpoint")
+    if endpoint != x["endpoint"]:
+        problems.append(f"provider.proxmox.endpoint is '{endpoint}', not the expected '{x['endpoint']}'")
 
     sops_files = doc.get("data", {}).get("sops_file", {})
     tokens = 0
@@ -151,14 +193,14 @@ def check(doc, schemas):
                 problems.append(f"{path}: data.sops_file.{name} is not rendered")
             elif sops_files[name].get("source_file") != TOKEN_PATH:
                 problems.append(
-                    f"data.sops_file.{name}: source_file is not the placement file '{TOKEN_PATH}'"
+                    f"data.sops_file.{name}: source_file is not the owning estate's file '{TOKEN_PATH}'"
                 )
-            if name != TOKEN_FILE:
+            if name != x['file']:
                 problems.append(
-                    f"{path}: references data.sops_file.{name}, not the file alias '{TOKEN_FILE}'"
+                    f"{path}: references data.sops_file.{name}, not the expected '{x['file']}'"
                 )
-            if key != TOKEN_KEY:
-                problems.append(f"{path}: key '{key}' is not the placement key '{TOKEN_KEY}'")
+            if key != x['key']:
+                problems.append(f"{path}: key '{key}' is not the expected key '{x['key']}'")
     if tokens == 0:
         problems.append("no provider api_token rendered")
     return problems
@@ -167,13 +209,14 @@ def check(doc, schemas):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("rendered")
+    ap.add_argument("--estate", default="mini", choices=sorted(ESTATES))
     ap.add_argument("--schema", default=SCHEMA)
     a = ap.parse_args()
     with open(a.schema, encoding="utf-8") as f:
         schemas = json.load(f)[PROVIDER]["resource_schemas"]
     with open(a.rendered, encoding="utf-8") as f:
         doc = json.load(f)
-    problems = check(doc, schemas)
+    problems = check(doc, schemas, ESTATES[a.estate])
     for p in problems:
         print(f"FAIL {p}", file=sys.stderr)
     sys.exit(1 if problems else 0)

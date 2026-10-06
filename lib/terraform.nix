@@ -8,10 +8,12 @@
 #
 # Resource address: <resource type>.<guest name>. Only `managed` guests are
 # rendered; the rest are listed under locals.fleet_unmanaged. Credentials are
-# never literals: api_token reads the estate's placement.tokenRef through
-# data.sops_file.<file alias of the ref>. Companions (lxc_extra_conf) are not
-# rendered yet; the guests that have any are listed under
-# locals.fleet_unrendered_companions.
+# never literals: api_token reads placement.tokenRef, or the provider's
+# tokenRef when that is null, through data.sops_file.<file alias of the ref>
+# (<estate>_<alias> when the file is another estate's). The provider is
+# placement.provider, or the one site's provider the guests are on.
+# Companions (lxc_extra_conf) are not rendered yet; the guests that have any
+# are listed under locals.fleet_unrendered_companions.
 {
   lib,
   fleet,
@@ -31,51 +33,68 @@ let
 
   provOf = site: fleet.sites.${site}.providers.proxmox;
 
-  # The credential is the estate's own placement.tokenRef and nothing else:
-  # sops:<estate>/<file alias>#<key>, resolved through this estate's
-  # secrets.files only. There is no fallback to a site provider's tokenRef,
-  # which may name another estate's secrets.
   where = "mkTerraform: fleet.estates.${estate}";
+
+  # One provider. With a placement it is placement.provider; without one it is
+  # the proxmox provider of the one site the managed guests and pools are on.
+  usedSites = lib.unique (lib.mapAttrsToList (_: g: siteOf g.on) managed ++ lib.attrValues poolSites);
+  p = e.placement or null;
+  providerSite =
+    if p != null then
+      siteOf p.provider
+    else if usedSites == [ ] then
+      throw "${where}: no placement, and no managed guest or pool to tell which site's provider to use"
+    else if lib.length usedSites > 1 then
+      throw "${where}: no placement, and its guests and pools are on more than one site (${lib.concatStringsSep ", " usedSites}); one provider can serve one site"
+    else
+      lib.head usedSites;
+
+  # The credential: placement.tokenRef when set, otherwise the provider's own
+  # tokenRef (the cluster's credential; whoever owns the cluster renders for
+  # every estate on it). The ref sops:<estate>/<file alias>#<key> is resolved
+  # through the secrets of the estate it NAMES, whichever estate is rendered.
   token =
     let
-      p = e.placement or null;
+      own = (provOf providerSite).tokenRef or null;
       ref =
-        if p == null then
-          throw "${where}.placement is null; it must name the provider and the tokenRef this estate uses"
-        else if p.tokenRef == null then
-          throw "${where}.placement.tokenRef is null; the estate's own API credential is required"
+        if p != null && p.tokenRef != null then
+          p.tokenRef
+        else if own == null then
+          throw "${where}: placement.tokenRef is null and so is the provider's tokenRef; one of them must name the API credential"
         else
-          p.tokenRef;
+          own;
       m = builtins.match "sops:([^/#]+)/([^#]+)#(.+)" ref;
+      owner = builtins.elemAt m 0;
       file = builtins.elemAt m 1;
-      files = e.secrets.files or { };
+      files = fleet.estates.${owner}.secrets.files or { };
     in
     if m == null then
-      throw "${where}.placement.tokenRef \"${ref}\" is not sops:<estate>/<file>#<key>"
-    else if builtins.elemAt m 0 != estate then
-      throw "${where}.placement.tokenRef \"${ref}\" names estate \"${builtins.elemAt m 0}\"; it must be in this estate's own secrets"
+      throw "${where}: tokenRef \"${ref}\" is not sops:<estate>/<file>#<key>"
+    else if !(fleet.estates ? ${owner}) then
+      throw "${where}: tokenRef \"${ref}\" names estate \"${owner}\", which is not declared"
     else if !(files ? ${file}) then
-      throw "${where}.placement.tokenRef \"${ref}\": secrets.files has no \"${file}\""
+      throw "${where}: tokenRef \"${ref}\": fleet.estates.${owner}.secrets.files has no \"${file}\""
     else
       {
-        inherit file;
+        # data.sops_file is keyed by the alias; by <estate>_<alias> when the
+        # file belongs to another estate, so the two cannot collide.
+        name = if owner == estate then file else "${owner}_${file}";
         inherit (files.${file}) path;
         key = builtins.elemAt m 2;
-        site = siteOf p.provider;
+        site = providerSite;
       };
 
-  # One provider: the estate's placement provider, with the estate's token.
-  # Everything rendered must be on its site; a guest or a pool elsewhere would
-  # need a credential this estate was not given.
-  onPlacementSite =
+  # Still exactly one provider: every managed guest and pool must be on its
+  # site.
+  onProviderSite =
     what: site:
     if site != token.site then
-      throw "${where}: ${what} is on site \"${site}\" but placement.provider is on site \"${token.site}\"; placement.tokenRef is only valid there"
+      throw "${where}: ${what} is on site \"${site}\" but the provider is on site \"${token.site}\"; one provider serves one site"
     else
       true;
   checked =
-    lib.all (n: onPlacementSite "guest ${n}" (siteOf managed.${n}.on)) (lib.attrNames managed)
-    && lib.all (n: onPlacementSite "pool ${n}" poolSites.${n}) (lib.attrNames pools);
+    lib.all (n: onProviderSite "guest ${n}" (siteOf managed.${n}.on)) (lib.attrNames managed)
+    && lib.all (n: onProviderSite "pool ${n}" poolSites.${n}) (lib.attrNames pools);
 
   provider =
     let
@@ -84,7 +103,7 @@ let
     {
       endpoint = pr.api;
       insecure = pr.insecureTls;
-      api_token = "\${data.sops_file.${token.file}.data[\"${token.key}\"]}";
+      api_token = "\${data.sops_file.${token.name}.data[\"${token.key}\"]}";
     };
 
   renderGuest =
@@ -128,7 +147,7 @@ in
 
   provider.proxmox = builtins.seq checked provider;
 
-  data.sops_file.${token.file}.source_file = token.path;
+  data.sops_file.${token.name}.source_file = token.path;
 
   resource =
     byType
