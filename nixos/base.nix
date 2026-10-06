@@ -10,8 +10,10 @@
 #   fleet.*    read-only facts for tenant modules: fleet.compute.<guest>.internal_ip,
 #              fleet.settings.adminSshKeys, fleet.settings.domain.internal
 #
-# `deployment` is declared so modules can state deploy preferences
-# (buildOnTarget); the deploy layer reads it, nothing here acts on it.
+# `deployment` is declared (loosely) so modules can state deploy preferences
+# (buildOnTarget); the deploy layer reads it, nothing here acts on it. Inside a
+# Colmena hive Colmena declares it itself, so it is declared only when
+# `declareDeployment` is true.
 #
 # Only what every guest needs to be reachable and managed. Monitoring agents,
 # caches, mail and the like are the estate's own modules.
@@ -22,6 +24,7 @@
   accounts,
   rootKeys,
   internalDomain,
+  declareDeployment,
 }:
 { lib, modulesPath, ... }:
 let
@@ -37,9 +40,9 @@ in
   ];
 
   options = {
-    deployment = loose;
     fleet = loose;
   }
+  // lib.optionalAttrs declareDeployment { deployment = loose; }
   # Tenant modules shared by both kinds set proxmoxLXC.*; on a vm it is inert.
   // lib.optionalAttrs (!isLxc) { proxmoxLXC = loose; };
 
