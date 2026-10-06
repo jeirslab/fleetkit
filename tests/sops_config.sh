@@ -20,6 +20,7 @@ chmod +x "$TMP/fake-ssh-to-age"
 cat >"$TMP/expected" <<'YAML'
 keys:
   - &admin age1zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+  - &db age1wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
   - &host_app_1 age1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
   - &web age1pppppppppppppppppppppppppppppppppppppppppppppppppppppppppp
 creation_rules:
@@ -28,6 +29,11 @@ creation_rules:
       - age:
           - *admin
           - *host_app_1
+  - path_regex: ^secrets/db\.yaml$
+    key_groups:
+      - age:
+          - *admin
+          - *db
   - path_regex: ^secrets/shared\.yaml$
     key_groups:
       - age:

@@ -18,6 +18,11 @@ the kit does not wire it.
 - Host keys: `hostKeys.ed25519` on a guest or a site node, an
   `ssh-ed25519 AAAA...` public key (or `null` while unknown). A trailing
   comment such as `root@host` is accepted; the report drops it.
+- `hostKeys.age` (same places): an `age1...` public recipient, or `null`. Either
+  key is enough for a reader. Use the age recipient when adopting an existing
+  `.sops.yaml`, so the recipient already in it is recorded as is. Use the ssh
+  key for a new host, so there is one fact to record and the recipient is
+  derived from it. When both are set the age recipient is used.
 - Operators: `fleet.estates.<e>.secrets.operators.<name> = { age = "age1..."; }`
   for people or machines that are not hosts but must be able to decrypt and
   re-key.
@@ -35,7 +40,7 @@ identity in the model.
 - `anchors`: one entry per recipient, `kind` `host` or `operator`, with its
   `ssh` key, `age` recipient and guest or node `id` where they apply.
 - `rules`: one entry per secret file, `path` and the `anchors` that may read it.
-- `missingKeys`: ids of readers that have no `hostKeys.ed25519` yet. This is
+- `missingKeys`: ids of readers that have neither `hostKeys.age` nor `hostKeys.ed25519` yet. This is
   reported, not an error.
 
 A host anchor is named by its alias in `secrets.anchors.aliases` if it has one,
@@ -55,7 +60,7 @@ nix eval --json .#fleet.report.sops.<estate> | tools/sops-config.py --report - -
 ```
 
 The renderer prints a `keys:` list of YAML anchors and one `creation_rules`
-entry per rule, in a stable order. A host with only an ssh key is converted
+entry per rule, in a stable order. A host anchor with an `age` recipient uses it as is. A host with only an ssh key is converted
 with `ssh-to-age` (override with `--ssh-to-age <command>`); if the command is
 missing the tool fails and says so. `--check` compares the parsed structure,
 not the text, and exits 1 naming the anchors or rules that differ.
