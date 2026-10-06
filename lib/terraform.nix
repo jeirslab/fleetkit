@@ -34,6 +34,7 @@ let
   provOf = site: fleet.sites.${site}.providers.proxmox;
 
   where = "mkTerraform: fleet.estates.${estate}";
+  sopsRef = import ./sops-ref.nix { inherit fleet estate where; };
 
   # One provider. With a placement it is placement.provider; without one it is
   # the proxmox provider of the one site the managed guests and pools are on.
@@ -63,29 +64,9 @@ let
           throw "${where}: placement.tokenRef is null and so is the provider's tokenRef; one of them must name the API credential"
         else
           own;
-      m = builtins.match "sops:([^/#]+)/([^#]+)#(.+)" ref;
-      owner = builtins.elemAt m 0;
-      file = builtins.elemAt m 1;
-      files = fleet.estates.${owner}.secrets.files or { };
+      r = sopsRef ref;
     in
-    if m == null then
-      throw "${where}: tokenRef \"${ref}\" is not sops:<estate>/<file>#<key>"
-    else if !(fleet.estates ? ${owner}) then
-      throw "${where}: tokenRef \"${ref}\" names estate \"${owner}\", which is not declared"
-    else if !(files ? ${file}) then
-      throw "${where}: tokenRef \"${ref}\": fleet.estates.${owner}.secrets.files has no \"${file}\""
-    else
-      {
-        # data.sops_file is keyed by the alias; by <estate>_<alias> when the
-        # file belongs to another estate, so the two cannot collide.
-        name = if owner == estate then file else "${owner}_${file}";
-        inherit (files.${file}) path;
-        # The ref names the key as a path into a nested document, slash
-        # separated; carlpett/sops flattens nested keys with "." (sops/flatten.go
-        # v1.4.1), so data.sops_file.<alias>.data is indexed in that form.
-        key = builtins.replaceStrings [ "/" ] [ "." ] (builtins.elemAt m 2);
-        site = providerSite;
-      };
+    r // { site = providerSite; };
 
   # Still exactly one provider: every managed guest and pool must be on its
   # site.
@@ -106,7 +87,7 @@ let
     {
       endpoint = pr.api;
       insecure = pr.insecureTls;
-      api_token = "\${data.sops_file.${token.name}.data[\"${token.key}\"]}";
+      api_token = token.expr;
     };
 
   renderGuest =
