@@ -16,7 +16,8 @@ the kit does not wire it.
 ## What the model declares
 
 - Host keys: `hostKeys.ed25519` on a guest or a site node, an
-  `ssh-ed25519 AAAA...` public key (or `null` while unknown).
+  `ssh-ed25519 AAAA...` public key (or `null` while unknown). A trailing
+  comment such as `root@host` is accepted; the report drops it.
 - Operators: `fleet.estates.<e>.secrets.operators.<name> = { age = "age1..."; }`
   for people or machines that are not hosts but must be able to decrypt and
   re-key.
@@ -38,7 +39,11 @@ identity in the model.
   reported, not an error.
 
 A host anchor is named by its alias in `secrets.anchors.aliases` if it has one,
-otherwise `host_<guest name>` with `-` replaced by `_`.
+otherwise `host_<guest name>` with `-` replaced by `_`, where the guest name
+is the last segment of the id. Two readers of one estate with the same last
+segment (`s1/web` and `s2/web`), or a reader whose anchor name is also an
+operator name, fail evaluation: list one of them in `secrets.anchors.hosts`
+and give it a distinct name in `secrets.anchors.aliases`.
 
 ## Rendering and checking `.sops.yaml`
 

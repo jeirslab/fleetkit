@@ -155,6 +155,15 @@ let
 
   dups = keys: lib.filter (k: lib.count (x: x == k) keys > 1) (lib.unique keys);
 
+  # Name of a reader's anchor in fleet.report.sops: its alias, else
+  # host_<last id segment>. Two ids can share a last segment, and an operator
+  # can carry such a name; both are refused by an assertion below, because the
+  # report keys its anchors by this name.
+  sopsAnchorName =
+    a: id:
+    a.aliases.${id} or "host_${lib.replaceStrings [ "-" ] [ "_" ] (lib.last (lib.splitString "/" id))}";
+  sopsReaderIds = e: lib.unique (lib.concatMap (f: f.readers) (lib.attrValues e.secrets.files));
+
   fileAssertions =
     ename: fname: f:
     let
@@ -212,6 +221,11 @@ in
         a = e.secrets.anchors;
         w = "fleet.estates.${ename}.secrets.anchors";
         ids = config.fleet.report.ids;
+        readerIds = sopsReaderIds e;
+        readersByAnchor = lib.groupBy (sopsAnchorName a) readerIds;
+        sharedAnchors = lib.filterAttrs (_: rs: lib.length rs > 1) readersByAnchor;
+        operatorClashes = lib.filterAttrs (n: _: e.secrets.operators ? ${n}) readersByAnchor;
+        hint = "list the reader in ${w}.hosts and give it a distinct name in ${w}.aliases";
       in
       [
         {
@@ -246,6 +260,26 @@ in
           }) f.operators
         ) e.secrets.files
       )
+      # The report keys anchors by name: a shared name would encrypt a file to
+      # the wrong recipient without any other sign.
+      ++ [
+        {
+          assertion = sharedAnchors == { };
+          message = "fleet.estates.${ename}.secrets.files: readers share a sops anchor name: ${
+            lib.concatStringsSep "; " (
+              lib.mapAttrsToList (n: rs: "${n} <- ${lib.concatStringsSep ", " rs}") sharedAnchors
+            )
+          }; ${hint}";
+        }
+        {
+          assertion = operatorClashes == { };
+          message = "fleet.estates.${ename}.secrets.files: a reader's sops anchor name is also an operator in fleet.estates.${ename}.secrets.operators: ${
+            lib.concatStringsSep "; " (
+              lib.mapAttrsToList (n: rs: "${n} <- ${lib.concatStringsSep ", " rs}") operatorClashes
+            )
+          }; ${hint}";
+        }
+      ]
       ++ h.refAssertions {
         where = "fleet.estates.${ename}.secrets.recipients";
         kind = "anchor";
@@ -334,17 +368,18 @@ in
               value = x.hostKeys.ed25519;
             }) (guests ++ nodes)
           );
-          anchorName =
-            id:
-            a.aliases.${id} or "host_${lib.replaceStrings [ "-" ] [ "_" ] (lib.last (lib.splitString "/" id))}";
+          anchorName = sopsAnchorName a;
           files = lib.attrValues e.secrets.files;
-          readerIds = lib.unique (lib.concatMap (f: f.readers) files);
+          readerIds = sopsReaderIds e;
+          # The key may carry a trailing comment (root@host); only the type
+          # and the key are passed on.
+          bare = k: if k == null then null else lib.concatStringsSep " " (lib.take 2 (lib.splitString " " k));
           hostAnchors = lib.listToAttrs (
             map (id: {
               name = anchorName id;
               value = {
                 kind = "host";
-                ssh = keyOf.${id} or null;
+                ssh = bare (keyOf.${id} or null);
                 age = null;
                 inherit id;
               };

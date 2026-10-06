@@ -342,7 +342,7 @@ let
             type = types.str;
             description = "Node id (<site>/<node>) -> node_name (the node name). Its site's proxmox provider supplies the defaults.";
           };
-          hostKeys.ed25519 = nullable (types.strMatching "ssh-ed25519 AAAA[A-Za-z0-9+/]+={0,2}") "Public ssh ed25519 host key (ssh-ed25519 AAAA...). Becomes the guest's sops recipient when it is a reader of a secrets file; never feeds a provider argument.";
+          hostKeys.ed25519 = nullable (types.strMatching "ssh-ed25519 AAAA[A-Za-z0-9+/]+={0,2}( [^\n]*)?") "Public ssh ed25519 host key (ssh-ed25519 AAAA..., a trailing comment is accepted and dropped). Becomes the guest's sops recipient when it is a reader of a secrets file; never feeds a provider argument.";
           nixos.module = mkOption {
             type = types.nullOr types.path;
             default = null;

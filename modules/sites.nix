@@ -138,7 +138,7 @@ let
             "nixos"
           ]);
           address = req ipv4;
-          hostKeys.ed25519 = nullable (types.strMatching "ssh-ed25519 AAAA[A-Za-z0-9+/]+={0,2}");
+          hostKeys.ed25519 = nullable (types.strMatching "ssh-ed25519 AAAA[A-Za-z0-9+/]+={0,2}( [^\n]*)?");
           pcie = opt (types.attrsOf (pcieType id)) { };
         };
       }
