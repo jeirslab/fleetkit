@@ -17,6 +17,12 @@
       "id": null,
       "ssh": null,
       "age": "age1zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+    },
+    "db": {
+      "kind": "host",
+      "id": "db-1",
+      "ssh": null,
+      "age": "age1wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"
     }
   },
   "rules": [
@@ -39,6 +45,13 @@
       "anchors": [
         "web",
         "host_app_1",
+        "admin"
+      ]
+    },
+    {
+      "path": "secrets/db.yaml",
+      "anchors": [
+        "db",
         "admin"
       ]
     }

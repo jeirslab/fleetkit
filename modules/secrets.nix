@@ -96,7 +96,7 @@ let
           readers = mkOption {
             type = types.listOf types.str;
             default = [ ];
-            description = "Guest or node ids that decrypt this file (their hostKeys.ed25519 becomes a recipient).";
+            description = "Guest or node ids that decrypt this file (their hostKeys.age or hostKeys.ed25519 becomes a recipient).";
           };
           operators = mkOption {
             type = types.listOf types.str;
@@ -362,6 +362,12 @@ in
           nodes = lib.concatMap (s: lib.attrValues s.nodes) (lib.attrValues config.fleet.sites);
           guests = lib.concatMap lib.attrValues (lib.attrValues config.fleet.guests);
           # id -> ssh host key (or null) for every guest and node.
+          ageOf = lib.listToAttrs (
+            map (x: {
+              name = x.id;
+              value = x.hostKeys.age;
+            }) (guests ++ nodes)
+          );
           keyOf = lib.listToAttrs (
             map (x: {
               name = x.id;
@@ -380,7 +386,7 @@ in
               value = {
                 kind = "host";
                 ssh = bare (keyOf.${id} or null);
-                age = null;
+                age = ageOf.${id} or null;
                 inherit id;
               };
             }) readerIds
@@ -398,10 +404,10 @@ in
             inherit (f) path;
             anchors = lib.sort lib.lessThan (lib.unique (map anchorName f.readers ++ f.operators));
           }) files;
-          missingKeys = lib.filter (id: (keyOf.${id} or null) == null) readerIds;
+          missingKeys = lib.filter (id: (keyOf.${id} or null) == null && (ageOf.${id} or null) == null) readerIds;
         }
       ) config.fleet.estates;
-      description = "Derived, read-only: per estate, the sops recipient anchors (hosts that read a file, operators), one creation rule per secrets file and the readers that lack a hostKeys.ed25519.";
+      description = "Derived, read-only: per estate, the sops recipient anchors (hosts that read a file, operators), one creation rule per secrets file and the readers that have neither a hostKeys.age nor a hostKeys.ed25519.";
     };
   };
 }

@@ -37,6 +37,7 @@ name.
 ```text
 both: vmid => vm_id
 both: on => node_name
+none: hostKeys.age => the guest's age recipient (age1...); feeds the estate's sops recipients (fleet.report.sops) and wins over the ssh key, not a provider argument
 none: hostKeys.ed25519 => the guest's ssh host public key; feeds the estate's sops recipients (fleet.report.sops), not a provider argument
 none: kind => selects the resource type: lxc = proxmox_virtual_environment_container, vm = proxmox_virtual_environment_vm
 none: id => model identity "<estate>/<name>", read-only

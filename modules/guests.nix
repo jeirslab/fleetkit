@@ -342,6 +342,7 @@ let
             type = types.str;
             description = "Node id (<site>/<node>) -> node_name (the node name). Its site's proxmox provider supplies the defaults.";
           };
+          hostKeys.age = nullable (types.strMatching "age1[02-9ac-hj-np-z]{58}") "Public age recipient (age1...) of the guest. Becomes its sops recipient when it is a reader of a secrets file; use it when adopting an existing .sops.yaml. Takes precedence over hostKeys.ed25519 for the recipient; never feeds a provider argument.";
           hostKeys.ed25519 = nullable (types.strMatching "ssh-ed25519 AAAA[A-Za-z0-9+/]+={0,2}( [^\n]*)?") "Public ssh ed25519 host key (ssh-ed25519 AAAA..., a trailing comment is accepted and dropped). Becomes the guest's sops recipient when it is a reader of a secrets file; never feeds a provider argument.";
           nixos.module = mkOption {
             type = types.nullOr types.path;
