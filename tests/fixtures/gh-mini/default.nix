@@ -61,6 +61,8 @@ _: {
             "carol"
           ];
         };
+        # A team nobody is in yet: the team is rendered, its member list is not.
+        teams.empty = { privacy = "closed"; };
         # The dot is not legal in a resource name: rendered as core_devs.
         teams."core.devs" = {
           privacy = "closed";

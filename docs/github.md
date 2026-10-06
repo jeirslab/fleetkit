@@ -95,3 +95,9 @@ pinned provider schema, that every resource name is a legal Terraform name,
 the expected addresses, the skipped ruleset, that no
 credential is a literal and that every repository has `archive_on_destroy`.
 It runs under the `fidelity` gate in `tools/gates.sh`.
+
+## Three rules the renderer keeps
+
+- `archive_on_destroy` is true unless a repository sets `archiveOnDestroy = false`: leaving the configuration archives a repository and never deletes it by default.
+- `github_team_members` is rendered only for a team that has members; the provider requires at least one.
+- `github_actions_organization_permissions` is rendered only when the estate declares `actions.enabledRepositories`. Declaring only secrets or variables must not set an organisation-wide policy.

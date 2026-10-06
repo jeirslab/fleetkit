@@ -161,7 +161,7 @@ let
       name = ghName k;
       inherit (r) visibility archived;
       # A repository removed from the model is archived, never deleted.
-      archive_on_destroy = true;
+      archive_on_destroy = if r.archiveOnDestroy == null then true else r.archiveOnDestroy;
       lifecycle.prevent_destroy = true;
     }
     // lib.optionalAttrs (r.description != null) { inherit (r) description; }
@@ -237,8 +237,8 @@ let
     members = map (p: {
       username = loginOf p;
       role = "member";
-    }) (team.members or [ ]);
-  }) teams;
+    }) team.members;
+  }) (lib.filterAttrs (_: team: (team.members or [ ]) != [ ]) teams);
   teamRepos = named "team repositories" (
     lib.concatLists (
       lib.mapAttrsToList (
@@ -257,9 +257,11 @@ let
 
   actions = g.actions or null;
   actionsPermissions = lib.mapAttrs' (n: v: lib.nameValuePair n v) (
-    lib.optionalAttrs (actions != null) {
+    # Only when the estate declares the policy: enabled_repositories is the
+    # one required argument, and inventing a value would change the org.
+    lib.optionalAttrs (actions != null && actions ? enabledRepositories) {
       org = {
-        enabled_repositories = actions.enabledRepositories or "all";
+        enabled_repositories = actions.enabledRepositories;
       }
       // lib.optionalAttrs (actions ? allowedActions) { allowed_actions = actions.allowedActions; }
       // lib.optionalAttrs (actions ? shaPinningRequired) {

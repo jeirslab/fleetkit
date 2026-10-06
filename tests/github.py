@@ -128,6 +128,10 @@ def check(doc, schema):
     if memberships != LOGINS:
         problems.append(f"github_membership is {memberships}, not {LOGINS}")
     teams = resources.get("github_team", {})
+    if "empty" not in teams:
+        problems.append("missing github_team.empty")
+    if "empty" in resources.get("github_team_members", {}):
+        problems.append("github_team_members.empty rendered for a team without members (members needs at least one)")
     # The team key "core.devs" is not a legal name; the address is sanitised.
     if teams.get("core_devs", {}).get("name") != "core.devs":
         problems.append("missing github_team.core_devs with name 'core.devs'")
