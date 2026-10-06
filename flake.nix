@@ -19,10 +19,12 @@
         mkFleet = withLib fleetLib.mkFleet;
         fleet = withLib fleetLib.fleet;
         # { fleet; estate; nixpkgs; modules; specialArgs; adminPrincipals; }
-        # -> one NixOS system per guest that names a nixos.module.
+        # -> one NixOS system per guest that names a nixos.module. With `site`
+        # instead of `estate`: one per node of that site that names one.
         mkSystems = import ./lib/systems.nix;
         # { fleet; estate; nixpkgs; modules; specialArgs; network; system; }
         # -> a Colmena hive: meta plus one node per guest that names a nixos.module.
+        # With `site` instead of `estate`: the site's nodes that name one.
         mkHive = import ./lib/hive.nix;
         # { fleet; estate; } -> an attrset for builtins.toJSON into main.tf.json.
         mkTerraform = args: import ./lib/terraform.nix ({ inherit (nixpkgs) lib; } // args);

@@ -1,5 +1,6 @@
 # hive-mini: the smallest fleet model that mkSystems and mkHive can use.
-# One site, one node, one network, one proxmox provider, one estate with
+# One site, one proxmox node plus two nixos machines (one names a module),
+# one network, one proxmox provider, one estate with
 # `colmena.targetUser`, one principal with a key and a grant, two lxc guests.
 # Public-safe: example names and 10.0.0.x addresses only.
 _: {
@@ -16,9 +17,22 @@ _: {
         dns = [ "10.0.0.1" ];
       };
       bridges.vmbr0.network = "site1/lan";
-      nodes.pve1 = {
-        osType = "debian-pve";
-        address = "10.0.0.10";
+      nodes = {
+        pve1 = {
+          osType = "debian-pve";
+          address = "10.0.0.10";
+        };
+        # A bare-metal NixOS machine that names its module, and one that does
+        # not (so mkSystems / mkHive with `site` must leave it out).
+        box1 = {
+          osType = "nixos";
+          address = "10.0.0.11";
+          nixos.module = ./node.nix;
+        };
+        box2 = {
+          osType = "nixos";
+          address = "10.0.0.12";
+        };
       };
       storage.local = {
         type = "dir";
