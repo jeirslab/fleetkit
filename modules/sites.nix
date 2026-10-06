@@ -140,6 +140,11 @@ let
           address = req ipv4;
           hostKeys.ed25519 = nullable (types.strMatching "ssh-ed25519 AAAA[A-Za-z0-9+/]+={0,2}( [^\n]*)?");
           pcie = opt (types.attrsOf (pcieType id)) { };
+          nixos.module = mkOption {
+            type = types.nullOr types.path;
+            default = null;
+            description = "The NixOS module that says what runs on the node (a file in the declaring repo). null = none declared. Not a provider argument.";
+          };
         };
       }
     );

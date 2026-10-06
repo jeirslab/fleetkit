@@ -3,14 +3,16 @@
 #
 #   mkSystems {
 #     fleet;                # the checked model (config.fleet)
-#     estate;               # estate name
+#     estate;               # estate name: that estate's guests
+#     site;                 # or a site name: that site's nodes (exactly one of the two)
 #     nixpkgs;              # the nixpkgs the estate's modules are written for
 #     modules ? [ ];        # modules every system gets (sops-nix, the tenant's globals, ...)
 #     specialArgs ? { };    # the tenant's app inputs
 #   } -> { <guest> = <nixosSystem>; }
 {
   fleet,
-  estate,
+  estate ? null,
+  site ? null,
   nixpkgs,
   modules ? [ ],
   specialArgs ? { },
@@ -21,6 +23,7 @@ let
     inherit
       fleet
       estate
+      site
       nixpkgs
       modules
       specialArgs
