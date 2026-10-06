@@ -29,10 +29,6 @@ let
   pools = e.pools.proxmox or { };
   poolSites = lib.mapAttrs (_: p: siteOf p.provider) pools;
 
-  # Sites whose proxmox provider this estate's rendered guests use (through
-  # each guest's node).
-  sites = lib.unique (lib.mapAttrsToList (_: g: siteOf g.on) managed);
-  multi = lib.length sites > 1;
   provOf = site: fleet.sites.${site}.providers.proxmox;
 
   # The credential is the estate's own placement.tokenRef and nothing else:
@@ -68,38 +64,35 @@ let
         site = siteOf p.provider;
       };
 
-  # The token is valid on the placement provider only.
-  tokenFor =
-    site:
+  # One provider: the estate's placement provider, with the estate's token.
+  # Everything rendered must be on its site; a guest or a pool elsewhere would
+  # need a credential this estate was not given.
+  onPlacementSite =
+    what: site:
     if site != token.site then
-      throw "${where}: a guest is on site \"${site}\" but placement.provider is on site \"${token.site}\"; placement.tokenRef is only valid there"
+      throw "${where}: ${what} is on site \"${site}\" but placement.provider is on site \"${token.site}\"; placement.tokenRef is only valid there"
     else
-      token;
+      true;
+  checked =
+    lib.all (n: onPlacementSite "guest ${n}" (siteOf managed.${n}.on)) (lib.attrNames managed)
+    && lib.all (n: onPlacementSite "pool ${n}" poolSites.${n}) (lib.attrNames pools);
 
-  alias = site: lib.replaceStrings [ "-" ] [ "_" ] site;
-  providerRef = site: "proxmox.${alias site}";
-  withProvider = site: lib.optionalAttrs multi { provider = providerRef site; };
-
-  providerFor =
-    site:
+  provider =
     let
-      pr = provOf site;
-      t = tokenFor site;
+      pr = provOf token.site;
     in
     {
       endpoint = pr.api;
       insecure = pr.insecureTls;
-      api_token = "\${data.sops_file.${t.file}.data[\"${t.key}\"]}";
-    }
-    // lib.optionalAttrs multi { alias = alias site; };
+      api_token = "\${data.sops_file.${token.file}.data[\"${token.key}\"]}";
+    };
 
   renderGuest =
-    name: g:
+    name:
     let
       v = views.${name};
     in
     v.args
-    // withProvider (siteOf g.on)
     // lib.optionalAttrs (v.lifecycle != { }) { inherit (v) lifecycle; };
 
   byType = lib.foldl' (
@@ -110,14 +103,12 @@ let
     acc
     // {
       ${v.resource} = (acc.${v.resource} or { }) // {
-        ${name} = renderGuest name guests.${name};
+        ${name} = renderGuest name;
       };
     }
   ) { } (lib.attrNames managed);
 
-  poolResources = lib.mapAttrs (
-    name: _: { pool_id = name; } // withProvider poolSites.${name}
-  ) pools;
+  poolResources = lib.mapAttrs (name: _: { pool_id = name; }) pools;
 
   withCompanions = lib.attrNames (
     lib.filterAttrs (n: _: (views.${n}.companions or { }) != { }) guests
@@ -135,21 +126,9 @@ in
     };
   };
 
-  provider.proxmox =
-    let
-      l = map providerFor sites;
-    in
-    if multi then l else lib.head (l ++ [ { } ]);
+  provider.proxmox = builtins.seq checked provider;
 
-  data.sops_file = lib.listToAttrs (
-    map (
-      s:
-      let
-        t = tokenFor s;
-      in
-      lib.nameValuePair t.file { source_file = t.path; }
-    ) sites
-  );
+  data.sops_file.${token.file}.source_file = token.path;
 
   resource =
     byType

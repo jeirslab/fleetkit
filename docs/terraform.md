@@ -10,7 +10,7 @@ apply stay in the estate repo.
 | Output | Source in the model |
 | ------ | ------------------- |
 | `terraform.required_providers` | `bpg/proxmox` 0.115.0 and `carlpett/sops` 1.4.1, the versions the schema in `providers/schemas/` is pinned to |
-| `provider.proxmox` | one entry per site provider the estate's managed guests use (found through each guest's node and `fleet.sites.<site>.providers.proxmox`); `endpoint` and `insecure` come from the provider declaration; list form with `alias` when there is more than one |
+| `provider.proxmox` | one provider: the estate's placement provider (`fleet.estates.<e>.placement.provider`, a `fleet.sites.<site>.providers.proxmox`); `endpoint` and `insecure` come from its declaration. Every managed guest and every pool of the estate must be on that site; evaluation fails, naming the guest or pool, if one is not, because the estate's token is only valid there |
 | `api_token` and `data.sops_file.<alias>` | the estate's `placement.tokenRef` only (`sops:<estate>/<alias>#<key>`), resolved through that estate's own `fleet.estates.<e>.secrets.files` to a file path and key; `<alias>` is the secrets-file alias of the ref. Evaluation fails if `placement` or its `tokenRef` is null, if the ref names another estate, or if a guest is on a site other than the placement provider's. The token is always a `${data.sops_file...}` reference, never a literal |
 | `resource.<type>.<guest>` | the guest's `providerView`: `providerView.resource` is the type, `providerView.args` the arguments, plus a `lifecycle` block from `prevent_destroy` and `ignore_changes` (omitted when empty) |
 | `resource.proxmox_virtual_environment_pool.<pool>` | each entry of `fleet.estates.<e>.pools.proxmox`, with `pool_id` set to the pool name |
