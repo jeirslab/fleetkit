@@ -31,10 +31,12 @@ let
 
   provOf = site: fleet.sites.${site}.providers.proxmox;
 
-  # The credential is the estate's own placement.tokenRef and nothing else:
-  # sops:<estate>/<file alias>#<key>, resolved through this estate's
-  # secrets.files only. There is no fallback to a site provider's tokenRef,
-  # which may name another estate's secrets.
+  # The credential is always in the estate's OWN secrets
+  # (sops:<estate>/<file alias>#<key>, resolved through this estate's
+  # secrets.files only): placement.tokenRef, or, when that is null, the
+  # provider's tokenRef. A provider is one per cluster and the estates on it
+  # share it, each with its own token; the provider's own token only resolves
+  # for the estate whose secrets hold it, so a tenant never renders it.
   where = "mkTerraform: fleet.estates.${estate}";
   token =
     let
@@ -42,10 +44,18 @@ let
       ref =
         if p == null then
           throw "${where}.placement is null; it must name the provider and the tokenRef this estate uses"
-        else if p.tokenRef == null then
-          throw "${where}.placement.tokenRef is null; the estate's own API credential is required"
+        else if p.tokenRef != null then
+          p.tokenRef
         else
-          p.tokenRef;
+          # The cluster's own token, for the estate that owns the cluster: the
+          # same-estate check below refuses it for anyone else.
+          let
+            own = (provOf (siteOf p.provider)).tokenRef or null;
+          in
+          if own == null then
+            throw "${where}.placement.tokenRef is null and so is the provider's tokenRef; one of them must name the API credential"
+          else
+            own;
       m = builtins.match "sops:([^/#]+)/([^#]+)#(.+)" ref;
       file = builtins.elemAt m 1;
       files = e.secrets.files or { };
@@ -53,7 +63,7 @@ let
     if m == null then
       throw "${where}.placement.tokenRef \"${ref}\" is not sops:<estate>/<file>#<key>"
     else if builtins.elemAt m 0 != estate then
-      throw "${where}.placement.tokenRef \"${ref}\" names estate \"${builtins.elemAt m 0}\"; it must be in this estate's own secrets"
+      throw "${where}.placement.tokenRef \"${ref}\" names estate \"${builtins.elemAt m 0}\"; the credential must be in this estate's own secrets (set placement.tokenRef)"
     else if !(files ? ${file}) then
       throw "${where}.placement.tokenRef \"${ref}\": secrets.files has no \"${file}\""
     else

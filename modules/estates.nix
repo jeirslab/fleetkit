@@ -168,7 +168,7 @@ let
                 tokenRef = mkOption {
                   type = types.nullOr types.str;
                   default = null;
-                  description = "sops ref (in this estate's own secrets) of the API credential this estate uses on the provider; null = the provider's tokenRef.";
+                  description = "sops ref (in this estate's own secrets) of the API credential this estate uses on the provider; null = the provider's tokenRef, which must then be in this estate's own secrets (the estate that owns the cluster).";
                 };
               };
             }
