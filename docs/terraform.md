@@ -10,12 +10,12 @@ apply stay in the estate repo.
 | Output | Source in the model |
 | ------ | ------------------- |
 | `terraform.required_providers` | `bpg/proxmox` 0.115.0 and `carlpett/sops` 1.4.1, the versions the schema in `providers/schemas/` is pinned to |
-| `provider.proxmox` | one entry per site provider the estate's managed guests and pools use (found through each guest's node, each pool's provider and `fleet.sites.<site>.providers.proxmox`); `endpoint` and `insecure` come from the provider declaration; list form with `alias` when there is more than one |
-| `api_token` and `data.sops_file.<alias>` | the estate's `placement.tokenRef` on the provider it is placed on, the provider's own `tokenRef` otherwise (`sops:<estate>/<file>#<key>`), resolved through `fleet.estates.<e>.secrets.files` to a file path and key. The token is always a `${data.sops_file...}` reference, never a literal |
+| `provider.proxmox` | one entry per site provider the estate's managed guests use (found through each guest's node and `fleet.sites.<site>.providers.proxmox`); `endpoint` and `insecure` come from the provider declaration; list form with `alias` when there is more than one |
+| `api_token` and `data.sops_file.<alias>` | the estate's `placement.tokenRef` only (`sops:<estate>/<alias>#<key>`), resolved through that estate's own `fleet.estates.<e>.secrets.files` to a file path and key; `<alias>` is the secrets-file alias of the ref. Evaluation fails if `placement` or its `tokenRef` is null, if the ref names another estate, or if a guest is on a site other than the placement provider's. The token is always a `${data.sops_file...}` reference, never a literal |
 | `resource.<type>.<guest>` | the guest's `providerView`: `providerView.resource` is the type, `providerView.args` the arguments, plus a `lifecycle` block from `prevent_destroy` and `ignore_changes` (omitted when empty) |
 | `resource.proxmox_virtual_environment_pool.<pool>` | each entry of `fleet.estates.<e>.pools.proxmox`, with `pool_id` set to the pool name |
 | `locals.fleet_unmanaged` | guests whose `mode` is not `managed` (for example `adopted`); they are not rendered |
-| `locals.fleet_unrendered_companions` | guests whose `providerView.companions` is non-empty |
+| `locals.fleet_unrendered_companions` | every guest (managed or not) whose `providerView.companions` is non-empty |
 
 See `guest-model.md` for the guest options and `guest-provider-map.md` for
 how each option maps to a provider argument.

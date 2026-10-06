@@ -8,9 +8,10 @@
 #
 # Resource address: <resource type>.<guest name>. Only `managed` guests are
 # rendered; the rest are listed under locals.fleet_unmanaged. Credentials are
-# never literals: api_token reads a key of a sops file through the sops
-# provider. Companions (lxc_extra_conf) are not rendered yet; the guests that
-# have any are listed under locals.fleet_unrendered_companions.
+# never literals: api_token reads the estate's placement.tokenRef through
+# data.sops_file.<file alias of the ref>. Companions (lxc_extra_conf) are not
+# rendered yet; the guests that have any are listed under
+# locals.fleet_unrendered_companions.
 {
   lib,
   fleet,
@@ -28,36 +29,52 @@ let
   pools = e.pools.proxmox or { };
   poolSites = lib.mapAttrs (_: p: siteOf p.provider) pools;
 
-  # Sites whose proxmox provider this estate uses (guest nodes and pools).
-  sites = lib.unique (
-    lib.mapAttrsToList (_: g: siteOf g.on) managed ++ lib.attrValues poolSites
-  );
+  # Sites whose proxmox provider this estate's rendered guests use (through
+  # each guest's node).
+  sites = lib.unique (lib.mapAttrsToList (_: g: siteOf g.on) managed);
   multi = lib.length sites > 1;
   provOf = site: fleet.sites.${site}.providers.proxmox;
 
-  # The estate's own tokenRef wins on the provider it is placed on.
-  tokenRefOf =
-    site:
+  # The credential is the estate's own placement.tokenRef and nothing else:
+  # sops:<estate>/<file alias>#<key>, resolved through this estate's
+  # secrets.files only. There is no fallback to a site provider's tokenRef,
+  # which may name another estate's secrets.
+  where = "mkTerraform: fleet.estates.${estate}";
+  token =
     let
       p = e.placement or null;
-    in
-    if p != null && p.tokenRef != null && siteOf p.provider == site then
-      p.tokenRef
-    else
-      (provOf site).tokenRef;
-
-  # sops:<estate>/<file>#<key> -> { path; key; }
-  resolve =
-    ref:
-    let
+      ref =
+        if p == null then
+          throw "${where}.placement is null; it must name the provider and the tokenRef this estate uses"
+        else if p.tokenRef == null then
+          throw "${where}.placement.tokenRef is null; the estate's own API credential is required"
+        else
+          p.tokenRef;
       m = builtins.match "sops:([^/#]+)/([^#]+)#(.+)" ref;
-      est = builtins.elemAt m 0;
       file = builtins.elemAt m 1;
+      files = e.secrets.files or { };
     in
-    {
-      path = fleet.estates.${est}.secrets.files.${file}.path;
-      key = builtins.elemAt m 2;
-    };
+    if m == null then
+      throw "${where}.placement.tokenRef \"${ref}\" is not sops:<estate>/<file>#<key>"
+    else if builtins.elemAt m 0 != estate then
+      throw "${where}.placement.tokenRef \"${ref}\" names estate \"${builtins.elemAt m 0}\"; it must be in this estate's own secrets"
+    else if !(files ? ${file}) then
+      throw "${where}.placement.tokenRef \"${ref}\": secrets.files has no \"${file}\""
+    else
+      {
+        inherit file;
+        inherit (files.${file}) path;
+        key = builtins.elemAt m 2;
+        site = siteOf p.provider;
+      };
+
+  # The token is valid on the placement provider only.
+  tokenFor =
+    site:
+    if site != token.site then
+      throw "${where}: a guest is on site \"${site}\" but placement.provider is on site \"${token.site}\"; placement.tokenRef is only valid there"
+    else
+      token;
 
   alias = site: lib.replaceStrings [ "-" ] [ "_" ] site;
   providerRef = site: "proxmox.${alias site}";
@@ -67,12 +84,12 @@ let
     site:
     let
       pr = provOf site;
-      t = resolve (tokenRefOf site);
+      t = tokenFor site;
     in
     {
       endpoint = pr.api;
       insecure = pr.insecureTls;
-      api_token = "\${data.sops_file.${alias site}.data[\"${t.key}\"]}";
+      api_token = "\${data.sops_file.${t.file}.data[\"${t.key}\"]}";
     }
     // lib.optionalAttrs multi { alias = alias site; };
 
@@ -103,7 +120,7 @@ let
   ) pools;
 
   withCompanions = lib.attrNames (
-    lib.filterAttrs (n: _: (views.${n}.companions or { }) != { }) managed
+    lib.filterAttrs (n: _: (views.${n}.companions or { }) != { }) guests
   );
 in
 {
@@ -126,7 +143,11 @@ in
 
   data.sops_file = lib.listToAttrs (
     map (
-      s: lib.nameValuePair (alias s) { source_file = (resolve (tokenRefOf s)).path; }
+      s:
+      let
+        t = tokenFor s;
+      in
+      lib.nameValuePair t.file { source_file = t.path; }
     ) sites
   );
 

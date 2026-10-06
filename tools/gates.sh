@@ -61,7 +61,6 @@ log "lint: $lint"
 # terraform rendered from the fixture (tests/terraform.sh).
 fidelity=pass
 python3 tests/guest_fidelity.py --gate >&2 || fidelity=fail
-# The rendered terraform of the fixture matches the same schema.
 bash tests/terraform.sh >&2 || fidelity=fail
 log "fidelity: $fidelity"
 

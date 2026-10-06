@@ -1,5 +1,6 @@
 # Minimal fleet data for tests/terraform.sh: one site, one node, one estate
-# with a pool, two managed guests (lxc, vm) and one adopted guest. Generic
+# with a pool, two managed guests (lxc, vm), one managed lxc guest with an
+# lxc_extra_conf companion and one adopted guest. Generic
 # names only; nothing here is a real address.
 _: {
   fleet = {
@@ -28,7 +29,9 @@ _: {
       };
       providers.proxmox = {
         api = "https://192.0.2.10:8006/";
-        tokenRef = "sops:mini/tf#pve-token";
+        # Deliberately not the estate's placement.tokenRef: the render must
+        # use the placement one.
+        tokenRef = "sops:mini/tf#site-token";
         insecureTls = true;
         ssh = {
           agent = true;
@@ -57,7 +60,10 @@ _: {
         backend = "sops";
         files.tf = {
           path = "secrets/tf.json";
-          keys = [ "pve-token" ];
+          keys = [
+            "pve-token"
+            "site-token"
+          ];
         };
       };
       placement = {
@@ -105,6 +111,24 @@ _: {
             interface = "scsi0";
           }
         ];
+      };
+      tuned = {
+        vmid = 9004;
+        kind = "lxc";
+        on = "s1/n1";
+        networkInterfaces = [
+          {
+            network = "lan";
+            address = "192.0.2.24";
+          }
+        ];
+        disks = [
+          {
+            role = "root";
+            size = 8;
+          }
+        ];
+        lxcExtraConf = [ "lxc.apparmor.profile: unconfined" ];
       };
       legacy = {
         vmid = 9003;
