@@ -21,6 +21,8 @@ outputs = { fleetkit, xgcs, ... }: {
 - Repositories: an estate declares its GitHub organisation and repositories
   in the model (`fleet.estates.<e>.git`, `fleet.repos.<e>`). That is the
   GitHub management plane only; nothing is cloned or vendored from it.
+- `lib.mkTerraform` renders an estate's managed guests and pools as a
+  `main.tf.json` attrset; see `docs/terraform.md`. The kit never runs tofu.
 - `providers/` pinned provider schemas the guest model is checked against.
 - `docs/` the model's decisions: `guest-model.md`, `guest-provider-map.md`,
   `tenants.md`, `schema-todo.md` (the inventory of untyped blocks).
