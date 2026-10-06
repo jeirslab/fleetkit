@@ -114,7 +114,7 @@ _: {
           files.tf = {
             path = "secrets/tf.json";
             keys = [
-              "pve-token"
+              "integrations/proxmox/main/api_token"
               "site-token"
             ];
           };
@@ -122,7 +122,7 @@ _: {
         placement = {
           provider = "s1/proxmox";
           pool = "mini/proxmox/main";
-          tokenRef = "sops:mini/tf#pve-token";
+          tokenRef = "sops:mini/tf#integrations/proxmox/main/api_token";
         };
         pools.proxmox.main.provider = "s1/proxmox";
         guestDefaults.defaultDatastore = "s1/local";

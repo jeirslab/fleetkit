@@ -80,7 +80,10 @@ let
         # file belongs to another estate, so the two cannot collide.
         name = if owner == estate then file else "${owner}_${file}";
         inherit (files.${file}) path;
-        key = builtins.elemAt m 2;
+        # The ref names the key as a path into a nested document, slash
+        # separated; carlpett/sops flattens nested keys with "." (sops/flatten.go
+        # v1.4.1), so data.sops_file.<alias>.data is indexed in that form.
+        key = builtins.replaceStrings [ "/" ] [ "." ] (builtins.elemAt m 2);
         site = providerSite;
       };
 

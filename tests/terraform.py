@@ -33,7 +33,7 @@ META = {"lifecycle", "depends_on", "count", "for_each", "provider", "provisioner
 SOPS_REF = re.compile(r'^\$\{data\.sops_file\.([A-Za-z0-9_-]+)\.data\["(.+)"\]\}$')
 
 # The fixture (tests/fixtures/tf-mini): per estate, the expected addresses and
-# credential. mini's placement.tokenRef is sops:mini/tf#pve-token; the site
+# credential. mini's placement.tokenRef is sops:mini/tf#integrations/proxmox/main/api_token; the site
 # provider's tokenRef is sops:mini/tf#site-token, in mini's secrets. tenant and
 # bare have no placement.tokenRef, so they render the provider's, and since
 # the file is mini's the data.sops_file is keyed mini_tf, not tf.
@@ -45,7 +45,7 @@ ESTATES = {
         adopted="legacy",
         companion="tuned",
         file="tf",
-        key="pve-token",
+        key="integrations.proxmox.main.api_token",
         endpoint=EP,
     ),
     "tenant": dict(
