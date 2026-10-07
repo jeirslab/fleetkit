@@ -34,14 +34,27 @@ in
     };
     branch = mkOption {
       type = types.str;
-      default = "main";
-      description = "The branch that is the desired state.";
+      default = "stable";
+      description = ''
+        The deploy branch: the only branch whose commits deploy (previews may be
+        of any commit). It stands in for branch protection, which GitHub's free
+        plan lacks on private repos.
+      '';
+    };
+    previewBranches = mkOption {
+      type = types.listOf types.str;
+      default = [ "unstable" ];
+      description = "Pull requests into these branches are previewed too (webhook path).";
     };
     deployOnPush = mkOption {
       type = types.listOf types.str;
       default = [ ];
       example = [ "homelab" ];
-      description = "Estates deployed (or previewed, see pushMode) when the branch moves.";
+      description = ''
+        Estates the server deploys (or previews, see pushMode) on its own when
+        the branch moves (webhook or poll). Empty when GitHub Actions drives it
+        (actions/deploy): the workflow names the estates.
+      '';
     };
     pushMode = mkOption {
       type = types.enum [
@@ -72,13 +85,23 @@ in
     };
     poll = mkOption {
       type = types.ints.unsigned;
-      default = 300;
+      default = 0;
       description = "Seconds between fetches of the branch; 0 relies on the webhook alone.";
     };
     listen = mkOption {
       type = types.str;
       default = "127.0.0.1:8740";
       description = "host:port of the API (put a TLS proxy in front for anything but loopback).";
+    };
+    firewallInterface = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "tailscale0";
+      description = ''
+        Open the API port on this interface only (with listen on 0.0.0.0 or the
+        interface's address): a server reached over the tailnet, by people and by
+        CI runners that join it (actions/deploy, tailscale-authkey).
+      '';
     };
     workers = mkOption {
       type = types.ints.positive;
@@ -113,6 +136,10 @@ in
     # Evaluating and building the estate's systems goes through the daemon.
     nix.settings.trusted-users = [ "fleetkit" ];
 
+    networking.firewall.interfaces = lib.mkIf (cfg.firewallInterface != null) {
+      ${cfg.firewallInterface}.allowedTCPPorts = [ (lib.toInt (lib.last (lib.splitString ":" cfg.listen))) ];
+    };
+
     systemd.services.fleetkit = {
       description = "fleetkit deploy server";
       wantedBy = [ "multi-user.target" ];
@@ -130,6 +157,7 @@ in
         FLEETKIT_PUSH_MODE = cfg.pushMode;
         FLEETKIT_POLL = toString cfg.poll;
         FLEETKIT_TRIGGER = cfg.trigger;
+        FLEETKIT_PREVIEW_BRANCHES = lib.concatStringsSep "," cfg.previewBranches;
         FLEETKIT_STATE_DIR = cfg.stateDir;
         PULUMI_HOME = "${cfg.stateDir}/pulumi-home";
       }

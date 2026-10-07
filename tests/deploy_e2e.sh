@@ -17,6 +17,9 @@
 #      signed webhook plans that commit; a bad signature is 401; a pull request
 #      (refs/pull/1/head) is previewed at its head and reported to a stand-in
 #      GitHub API: statuses and a comment with the real plan;
+#      then the GitHub Action's client (actions/deploy) on the same server: a PR
+#      preview with its summary and comment, a deploy of a commit not on the
+#      branch refused, one on it run, a fork's PR skipped;
 #   4. real colmena evaluates the runner's hive file.
 #
 # Not a gate: it needs the network (Pulumi plugins, provider binaries). No host
@@ -230,6 +233,40 @@ tools jq -e -s --arg r "$three" 'map(select(.path == "/repos/example/estate/stat
 tools jq -e -s 'map(select(.path == "/repos/example/estate/issues/1/comments"))[0].body
   | test("fleetkit:mini") and test("\\| `mini-guests` \\| 6 \\| 0 \\| 0 \\| 0 \\| 0 \\|") and test("\\| `mini-extra` \\| 3 ")' \
   "$TMP/gh.jsonl" >/dev/null || { cat "$TMP/gh.jsonl" >&2; fail "pull request comment"; }
+
+# The GitHub Action's client (actions/deploy) against the same server.
+act() { # out-prefix event-name event-json [VAR=value ...] -> exit status
+  local out="$1" name="$2" evjson="$3"; shift 3
+  printf '%s' "$evjson" >"$TMP/$out.event.json"
+  env FLEETKIT_API_URL="$API" FLEETKIT_API_TOKEN=e2e-token FLEETKIT_ESTATES=mini FLEETKIT_MODE=auto \
+    FLEETKIT_HIVE=example GITHUB_EVENT_NAME="$name" GITHUB_EVENT_PATH="$TMP/$out.event.json" \
+    GITHUB_REPOSITORY=example/estate GITHUB_TOKEN=gh-e2e GITHUB_API_URL=http://127.0.0.1:18742 \
+    GITHUB_STEP_SUMMARY="$TMP/$out.summary" GITHUB_OUTPUT="$TMP/$out.output" "$@" \
+    python3 "$ROOT/actions/deploy/fleetkit_remote.py" >"$TMP/$out.log" 2>&1
+}
+pr2="{\"pull_request\":{\"number\":2,\"head\":{\"sha\":\"$three\",\"repo\":{\"full_name\":\"example/estate\"}}}}"
+if act a pull_request "$pr2"; then
+  grep -q '✅ fleetkit preview: `mini`' "$TMP/a.summary" || fail "action: preview summary"
+  grep -q '"/repos/example/estate/issues/2/comments"' "$TMP/gh.jsonl" || fail "action: no PR comment"
+else
+  cat "$TMP/a.log" >&2; fail "action: PR preview"
+fi
+# A deploy of a commit that is not on the deploy branch is refused by the server.
+if act b push '{}' FLEETKIT_INFRA=false GITHUB_SHA="$three"; then
+  fail "action: deployed a commit that is not on main"
+fi
+grep -q 'is not on main' "$TMP/b.summary" || { cat "$TMP/b.log" >&2; fail "action: refusal not reported"; }
+# A commit on main deploys (the Colmena stage only here, with the stand-in).
+if act c push '{}' FLEETKIT_INFRA=false GITHUB_SHA="$two"; then
+  grep -q "^apply switch -f $TMP/gstate/work/_hives/example.nix --impure$" "$TMP/colmena.calls" \
+    || fail "action: colmena apply not run"
+else
+  cat "$TMP/c.log" >&2; fail "action: deploy of a commit on main"
+fi
+# A fork's PR has no secrets: skipped, not failed.
+fork="{\"pull_request\":{\"number\":3,\"head\":{\"sha\":\"$three\",\"repo\":{\"full_name\":\"someone/fork\"}}}}"
+act d pull_request "$fork" FLEETKIT_API_TOKEN= || fail "action: fork PR failed instead of skipping"
+grep -q '^skipped$' "$TMP/d.output" || fail "action: fork PR not reported skipped"
 
 # 4.
 if nix shell nixpkgs#colmena --command colmena eval -f "$TMP/state/work/_hives/example.nix" --impure \

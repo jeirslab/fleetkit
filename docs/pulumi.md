@@ -158,12 +158,58 @@ The branch is the desired state, and the server deploys it on itself:
 - `FLEETKIT_PUSH_MODE=preview` plans every push (pulumi preview, colmena build)
   and leaves applying to a person: `POST /v1/deploys {"estate", "rev"}`.
 
-### Pull requests
+### The deploy branch is the gate
 
-The same webhook takes `pull_request` events (subscribe the hook to pushes and
+GitHub's free plan has no branch protection on private repos, so "merging is
+deploying" cannot lean on it. The server holds the line itself: a job that
+deploys (not a preview) must be at a commit on its deploy branch
+(`FLEETKIT_BRANCH`, the module's `branch`, default `stable`), or it fails with
+`<sha> is not on stable`. Previews may be of any commit. With fleetkit's branch
+convention (work lands on `unstable` by PR; `stable` is promoted from it), a
+token that leaks through a workflow can preview anything and deploy only what
+is already on `stable`.
+
+### From GitHub Actions (`actions/deploy`)
+
+The recommended trigger: CI calls the server, so the server needs no inbound
+webhook, no GitHub token and no public address. `actions/deploy` is a
+composite action (stdlib Python, nothing to install on the runner):
+
+1. with `tailscale-authkey`, it joins the tailnet the server is on: installs
+   Tailscale and runs `tailscale up` with `--login-server` (Headscale) and any
+   `tailscale-args` (`--accept-dns=false`, `--advertise-tags=tag:ci`, ...),
+   and logs out at the end. Use an ephemeral, pre-authorised key;
+2. per estate, `POST /v1/deploys` at the commit (a PR's head, or the pushed
+   commit), waiting while the estate is busy; follows the job's events into the
+   log; writes the step summary (the plan per stack, the program's store path,
+   NixOS, the error); on a PR, comments the same, one comment per estate edited
+   in place (the workflow's own `GITHUB_TOKEN`, `pull-requests: write`);
+3. fails the step if any estate's job did not succeed.
+
+`examples/github/fleetkit.yml` is the estate repo's workflow: PRs into
+`unstable` or `stable` preview, a push to `stable` deploys, and
+`workflow_dispatch` runs either by hand. Secrets: `FLEETKIT_API_URL`,
+`FLEETKIT_API_TOKEN`, `TAILSCALE_AUTHKEY`; variables `TAILSCALE_LOGIN_SERVER`,
+`TAILSCALE_ARGS`. GitHub gives no secrets to PRs from forks, so those are
+skipped with a notice: the trust boundary comes from GitHub's secret model.
+A push made with the default `GITHUB_TOKEN` starts no workflow; a promotion
+merged by a GitHub App (fleetkit's `promote.yml`) or by a person does.
+
+On the server's side (`nixosModules.fleetkit-server`): `branch = "stable"`,
+`deployOnPush = [ ]` (the workflow names the estates), `poll = 0`, and
+`listen = "0.0.0.0:8740"` with `firewallInterface = "tailscale0"` so the API is
+open on the tailnet only. The host joins the tailnet as usual
+(`services.tailscale`, with `extraUpFlags = [ "--login-server=..." ]` for
+Headscale).
+
+### Pull requests through the webhook
+
+The alternative to `actions/deploy`, for a server GitHub can reach. The same
+webhook takes `pull_request` events (subscribe the hook to pushes and
 pull requests). Opening, pushing to, reopening or marking ready a PR into the
 branch previews each estate at the PR's head commit (the mirror fetches
-`refs/pull/<n>/head`), and the result goes back to the PR
+`refs/pull/<n>/head`; PRs into the deploy branch and into
+`FLEETKIT_PREVIEW_BRANCHES`), and the result goes back to the PR
 (`FLEETKIT_GITHUB_TOKEN`: statuses and issue comments, write):
 
 - a commit status per estate, context `fleetkit/<estate>`: pending while the
@@ -185,11 +231,13 @@ is previewed. A preview runs the PR's own program with the estate's decrypted
 credentials, and a program can point a provider at any endpoint (the Proxmox
 token would go wherever `endpoint` says), so a fork or an outside author gets
 an `error` status ("not previewed: from a fork") and nothing runs. Keep branch
-protection on the branch: merging is deploying.
+protection on the branch if your plan has it: merging is deploying (the deploy
+branch gate above holds either way).
 
 `nixosModules.fleetkit-server` runs it as a hardened systemd service
-(`services.fleetkit = { enable; repo; branch; deployOnPush; trigger; pushMode;
-poll; publicUrl; listen; environmentFile; }`; `trigger` defaults to `pr`). The host holds
+(`services.fleetkit = { enable; repo; branch; previewBranches; deployOnPush;
+trigger; pushMode; poll; publicUrl; listen; firewallInterface; environmentFile;
+}`). The host holds
 what deploying needs (the age key, Colmena's SSH key, a read-only deploy key,
 the Pulumi passphrase, the API token and webhook secret), all from
 `environmentFile`, none in the store: treat it like an operator's machine, and
@@ -214,7 +262,11 @@ put a TLS proxy in front of anything but loopback.
   then the server in GitOps mode: a sync plans the head, a signed webhook plans
   the next commit, a bad signature is 401, a pull request is previewed at its
   head and reported (statuses, and a comment with the real plan) to a
-  stand-in GitHub API; real colmena evaluates the hive file.
+  stand-in GitHub API; then the action's client (`actions/deploy`) on the same
+  server: a PR preview with its summary and comment, a deploy of a commit not
+  on the branch refused, one on it run, a fork's PR skipped; real colmena
+  evaluates the hive file. The action's tailnet step is checked by shellcheck
+  and the example workflow by actionlint; neither ran on GitHub.
 
 Not tested: `pulumi up` or `colmena apply` against real hosts, a linode bucket,
 and the estate repo's own data.

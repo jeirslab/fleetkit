@@ -82,6 +82,12 @@ class Repo:
         except GitError:
             raise GitError(f"no commit {rev!r} in {self.g.url}")
 
+    def on_branch(self, sha: str) -> bool:
+        """Whether `sha` is on the deploy branch (an ancestor of its head)."""
+        p = subprocess.run(["git", "--git-dir", str(self.mirror), "merge-base", "--is-ancestor", sha,
+                            f"refs/heads/{self.g.branch}"], capture_output=True)
+        return p.returncode == 0
+
     def checkout(self, sha: str) -> Path:
         with self.lock:
             d = self.checkouts / sha
@@ -100,6 +106,27 @@ class Repo:
                       key=lambda p: p.stat().st_mtime, reverse=True)
         for p in olds[self.g.keep - 1:]:
             shutil.rmtree(p, ignore_errors=True)
+
+
+def make_runner(s: Settings, repo: Repo, run: Any = None) -> Any:
+    """The job runner of a server with a repo: each job at its commit.
+
+    The deploy branch is the gate (it stands in for branch protection, which
+    GitHub's free plan does not have on private repos): only a commit on it
+    deploys; a preview may be of any commit (a PR's head)."""
+    from . import pipeline
+
+    run = run or pipeline.run
+
+    def runner(req: DeployRequest, ev: Any) -> dict[str, Any]:
+        sha = repo.resolve(req.rev)
+        if not req.preview and not repo.on_branch(sha):
+            raise PermissionError(f"{sha[:12]} is not on {repo.g.branch}: only commits on the deploy "
+                                  f"branch deploy (previews may be of any commit)")
+        ev.emit("git", "checkout", rev=sha, branch=repo.g.branch)
+        return {"rev": sha, **run(s.at(repo.checkout(sha)), req, ev)}
+
+    return runner
 
 
 class GitOps:
@@ -167,11 +194,14 @@ class GitOps:
         pr = payload.get("pull_request") or {}
         repo = (payload.get("repository") or {}).get("full_name", "")
         number = pr.get("number")
-        if (pr.get("base") or {}).get("ref") != self.g.branch:
-            return {"ignored": f"base {(pr.get('base') or {}).get('ref')}"}
+        base = (pr.get("base") or {}).get("ref")
+        if base != self.g.branch and base not in self.g.preview_branches:
+            return {"ignored": f"base {base}"}
         merged = action == "closed" and pr.get("merged")
         if action not in PREVIEW_ACTIONS and not merged:
             return {"ignored": f"action {action}"}
+        if merged and base != self.g.branch:
+            return {"ignored": f"merged into {base}, not the deploy branch"}
         if merged and self.g.trigger != "pr":
             return {"ignored": "merged: FLEETKIT_TRIGGER=push deploys the push"}
         if not merged and pr.get("draft"):

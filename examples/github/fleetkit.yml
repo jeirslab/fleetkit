@@ -1,0 +1,58 @@
+# An estate repo's deploy workflow: copy to .github/workflows/fleetkit.yml.
+#
+# Branches (fleetkit's convention): unstable is the default branch where work
+# lands by pull request; stable is what is deployed. So:
+#   pull request into unstable or stable  -> preview each estate at the PR's head,
+#                                           comment the plan on the PR
+#   push to stable (the promotion merge)  -> deploy each estate at that commit
+# The deploy server enforces the same rule on its side: it deploys only commits
+# on its deploy branch (FLEETKIT_BRANCH=stable), so a token that leaks through a
+# workflow can preview anything but deploy only what is on stable.
+#
+# A push made with the default GITHUB_TOKEN starts no workflow; a promotion
+# merged by a GitHub App (promote.yml) or by a person does.
+#
+# Needs, in the repository's settings:
+#   secret    FLEETKIT_API_URL         the server, e.g. http://deploy.tailnet.example.com:8740
+#   secret    FLEETKIT_API_TOKEN       its bearer token
+#   secret    TAILSCALE_AUTHKEY        to reach a server on a tailnet (ephemeral, pre-authorised); optional
+#   variable  TAILSCALE_LOGIN_SERVER   a Headscale URL; empty for Tailscale's own; optional
+#   variable  TAILSCALE_ARGS           extra tailscale up flags, e.g. --advertise-tags=tag:ci; optional
+# Pull requests from forks get no secrets, so they are not previewed (a notice says so).
+name: fleetkit
+on:
+  pull_request:
+    branches: [unstable, stable]
+  push:
+    branches: [stable]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: preview or deploy (deploy needs the commit to be on stable)
+        default: preview
+        type: choice
+        options: [preview, deploy]
+      estates:
+        description: Estates, comma-separated
+        default: homelab
+permissions:
+  contents: read
+  pull-requests: write
+# One run per pull request or branch at a time; a newer push to a PR replaces its
+# running preview, a deploy is never cancelled half way.
+concurrency:
+  group: fleetkit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  fleetkit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: jeirslab/fleetkit/actions/deploy@unstable
+        with:
+          api-url: ${{ secrets.FLEETKIT_API_URL }}
+          api-token: ${{ secrets.FLEETKIT_API_TOKEN }}
+          estates: ${{ inputs.estates || 'homelab' }}
+          mode: ${{ inputs.mode || 'auto' }}
+          tailscale-authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          tailscale-login-server: ${{ vars.TAILSCALE_LOGIN_SERVER }}
+          tailscale-args: ${{ vars.TAILSCALE_ARGS }}

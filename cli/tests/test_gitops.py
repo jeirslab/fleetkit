@@ -123,3 +123,24 @@ def test_redaction():
     ev.secret(url)
     ev.emit("infra", "log", line=f"cannot open {url}: refused")
     assert out[0]["line"] == "cannot open [secret]: refused"
+
+
+def test_only_commits_on_the_branch_deploy(tmp_path):
+    from fleetkit_cli.gitops import make_runner
+    from fleetkit_cli.pipeline import DeployRequest
+
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    git("init", "-q", "-b", "stable", cwd=origin)
+    on = commit(origin, "on stable")
+    git("checkout", "-q", "-b", "unstable", cwd=origin)
+    off = commit(origin, "only on unstable")
+    s = Settings(flake=None, state_dir=tmp_path / "state", passphrase="p",
+                 git=GitSettings(url=str(origin), branch="stable"))
+    repo = Repo(s)
+    runner = make_runner(s, repo, run=lambda s2, req, ev: {"at": (s2.flake / "flake.nix").read_text().splitlines()[0]})
+    ev = Emitter(lambda e: None)
+    assert runner(DeployRequest(estate="e", rev=on), ev) == {"rev": on, "at": "# on stable"}
+    assert runner(DeployRequest(estate="e", rev=off, preview=True), ev)["rev"] == off
+    with pytest.raises(PermissionError, match="is not on stable"):
+        runner(DeployRequest(estate="e", rev=off), ev)

@@ -167,15 +167,11 @@ def serve(ctx: click.Context, repo: str | None, listen: str, token_file: str | N
             return pipeline.run(s, req, ev)
         manager = JobManager(s.state_dir, runner, workers)
     else:
-        from .gitops import GitOps, Repo
+        from .gitops import GitOps, Repo, make_runner
 
         git = Repo(s)
 
-        def runner(req, ev):
-            sha = git.resolve(req.rev)
-            ev.emit("git", "checkout", rev=sha, branch=s.git.branch)
-            result = pipeline.run(s.at(git.checkout(sha)), req, ev)
-            return {"rev": sha, **result}
+        runner = make_runner(s, git)
 
         manager = JobManager(s.state_dir, runner, workers)
         gitops = GitOps(s, git, manager)

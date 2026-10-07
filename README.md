@@ -37,7 +37,9 @@ outputs = { fleetkit, xgcs, ... }: {
 - `packages.fleetkit` (`cli/`) deploys an estate: `pulumi up` on its programs,
   then `colmena apply` on its hive, from the command line or an HTTP API
   (`fleetkit serve`), or as a GitOps server that deploys the estate repo's
-  branch (`fleetkit serve --repo`, `nixosModules.fleetkit-server`).
+  branch (`fleetkit serve --repo`, `nixosModules.fleetkit-server`), driven by
+  GitHub Actions through `actions/deploy` (which can join a Tailscale or
+  Headscale tailnet first; `examples/github/fleetkit.yml`).
   Experimental; see `docs/pulumi.md`.
 - `providers/` pinned provider schemas the guest model is checked against.
 - `docs/` the model's decisions: `guest-model.md`, `guest-provider-map.md`,

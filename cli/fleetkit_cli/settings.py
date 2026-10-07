@@ -35,6 +35,9 @@ class GitSettings:
     github_token: str | None = None  # statuses and comments on pull requests
     github_api: str = "https://api.github.com"
     public_url: str | None = None  # links from GitHub back to jobs
+    # PRs into these branches are previewed too (the deploy branch always is),
+    # e.g. unstable when stable is the deploy branch.
+    preview_branches: list[str] = field(default_factory=list)
     webhook_secret: str | None = None
     keep: int = 5  # checkouts kept
 
@@ -94,6 +97,7 @@ class Settings:
                 github_token=_read_secret("FLEETKIT_GITHUB_TOKEN"),
                 github_api=os.environ.get("FLEETKIT_GITHUB_API", "https://api.github.com"),
                 public_url=os.environ.get("FLEETKIT_PUBLIC_URL") or None,
+                preview_branches=[b for b in os.environ.get("FLEETKIT_PREVIEW_BRANCHES", "").split(",") if b],
             )
             if git.trigger not in ("push", "pr"):
                 raise SettingsError(f"FLEETKIT_TRIGGER is {git.trigger!r}; push or pr")
