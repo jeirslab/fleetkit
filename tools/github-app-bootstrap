@@ -1,0 +1,546 @@
+#!/usr/bin/env python3
+"""Register a GitHub App from a manifest file and store its credentials in a
+sops file, without printing the secrets; or record the App's installation.
+
+  tools/github-app-bootstrap --org ORG --manifest app.json \
+      --sops-file secrets/github.yaml --key-prefix github.app
+  tools/github-app-bootstrap --org ORG --sops-file secrets/github.yaml \
+      --key-prefix github.app --record-installation
+
+Create flow (GitHub "Registering a GitHub App from a manifest"):
+  1. A local page on 127.0.0.1 POSTs the manifest to
+     https://github.com/organizations/ORG/settings/apps/new?state=... (or
+     https://github.com/settings/apps/new with --user). The operator confirms
+     (and may rename) the App in the browser.
+  2. GitHub redirects to http://127.0.0.1:PORT/callback?code=...&state=...
+     The state must match; the code is valid for one hour.
+  3. The code is exchanged at POST /app-manifests/{code}/conversions (no
+     authentication). Everything in that response is shown only once, so all of
+     app_id, app_slug, app_pem, client_id, client_secret and webhook_secret
+     are stored under --key-prefix.
+  4. One `sops set --value-stdin FILE '["a"]["b"]["key"]'` per key: the value
+     goes on stdin only, never in argv or the environment. Every key is
+     attempted even if one fails.
+  5. Prints the App's slug, id, html_url and install URL. Never the pem,
+     client_secret or webhook_secret.
+
+Not losing the one-time credentials:
+  - Before the local page is served (so before anything reaches GitHub) the
+    tool runs `sops decrypt FILE` with the output discarded. That proves the
+    file is a sops file and the caller's key opens it, which is what `sops
+    set` needs. It also checks the file and its directory are writable, and
+    encrypts a dummy value for the rescue path below; if that last check
+    fails it warns (a failed store would then lose the credentials) and goes
+    on. If any other check fails it exits there.
+  - If something still fails after the code was exchanged (a `sops set`
+    fails or times out, Ctrl-C, the response is cut short or unusable), the
+    response is piped on stdin to
+      sops encrypt --filename-override DIR/NAME.rescue-TIME.yaml \
+          --input-type json --output-type yaml /dev/stdin
+    and the ciphertext is written to that path (new file, mode 0600), DIR
+    and NAME being the sops file's directory and its name without the
+    extension. The override makes the `.sops.yaml` creation rules pick the
+    recipients, so that path must match a rule. Nothing is ever written in
+    plaintext. The tool prints the rescue file's path, the key names in it,
+    which keys were and were not stored, and one import pipeline per missing
+    key, and exits non-zero (docs/github-app-bootstrap.md).
+  - If that encryption fails too, the credentials are lost: the tool says
+    so, prints the App's html_url so it can be deleted, and exits non-zero.
+
+--record-installation reads app_id and app_pem from the sops file, signs a
+short-lived RS256 JWT with `openssl dgst -sha256 -sign` (key on stdin), lists
+GET /app/installations and writes `installation_id` for the org/user.
+
+The sops file must already exist and be decryptable with the caller's key (the
+preflight above); the tool does not create one. --key-prefix is split on '.'
+or '/' into the sops path. The manifest is whatever JSON file the caller
+passes; docs/github-app-bootstrap.md gives the command that renders one from
+the kit. Stdlib only; needs `sops` and, for --record-installation, `openssl`.
+"""
+import argparse
+import html
+import http.client
+import http.server
+import json
+import os
+import re
+import secrets
+import shutil
+import subprocess
+import shlex
+import sys
+import tempfile
+import base64
+import time
+import threading
+import urllib.error
+import urllib.request
+import webbrowser
+
+ORG_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")
+# Stored key name -> (field of the exchange response, jq filter that turns
+# what `sops decrypt --extract` prints for it into the JSON string to store).
+# A string is printed raw, anything else as JSON followed by a newline.
+FIELDS = {"app_id": ("id", "tostring"), "app_slug": ("slug", "-Rs ."), "app_pem": ("pem", "-Rs ."),
+          "client_id": ("client_id", "-Rs ."), "client_secret": ("client_secret", "-Rs ."),
+          "webhook_secret": ("webhook_secret", "-Rs .")}
+PREFIX_RE = re.compile(r"^[A-Za-z0-9_-]+(?:[./][A-Za-z0-9_-]+)*$")
+CMD_TIMEOUT = 300  # seconds for one sops or openssl call (a key may need a passphrase or a touch)
+
+
+def die(msg, code=2):
+    print(f"github-app-bootstrap: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+class CmdError(Exception):
+    """A command could not be run at all, or did not finish."""
+
+
+def run_cmd(argv, stdin=None, stdout=subprocess.DEVNULL):
+    """Run a command; return (returncode, stdout bytes, stderr text). stdin is
+    bytes or None. Raises CmdError if it cannot be started or does not finish."""
+    try:
+        r = subprocess.run(argv, input=stdin, stdin=None if stdin is not None else subprocess.DEVNULL,
+                           stdout=stdout, stderr=subprocess.PIPE, timeout=CMD_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise CmdError(f"'{argv[0]}' did not finish within {CMD_TIMEOUT} s") from None
+    except OSError as e:
+        raise CmdError(f"cannot run '{argv[0]}': {e.strerror or e}") from None
+    return r.returncode, r.stdout or b"", (r.stderr or b"").decode("utf-8", "replace")
+
+
+def scrub(text, values=()):
+    """A command's stderr, shortened, with any of `values` removed from it:
+    each value whole and each piece of it between whitespace, quotes and
+    backslashes, so a value the command echoes re-escaped is caught too."""
+    parts = {part for v in values for part in [v] + re.split(r'[\s"\\]+', v) if len(part) >= 6}
+    for part in sorted(parts, key=len, reverse=True):
+        text = text.replace(part, "[redacted]")
+    return " ".join(text.split())[:400]
+
+
+def rescue_path(sops_file, tag):
+    """Where an encrypted rescue of the exchange response goes: next to the
+    sops file, named after it, so the same creation rule normally applies."""
+    d, base = os.path.split(os.path.abspath(sops_file))
+    return os.path.join(d, f"{os.path.splitext(base)[0]}.rescue-{tag}.yaml")
+
+
+def encrypt_cmd(sops, path):
+    # The plaintext is on stdin; --filename-override only names the path the
+    # creation rules in .sops.yaml are matched against.
+    return [sops, "encrypt", "--filename-override", path, "--input-type", "json", "--output-type", "yaml", "/dev/stdin"]
+
+
+def preflight(a, rescue=False):
+    """Prove, before anything reaches GitHub, that the sops file can be opened
+    with the caller's key and written. With `rescue`, also try the encrypted
+    rescue on a dummy value and warn if it would not work."""
+    if not os.path.isfile(a.sops_file):
+        die(f"sops file {a.sops_file} does not exist; create it with sops first (the tool does not create one)")
+    if not os.access(a.sops_file, os.R_OK | os.W_OK):
+        die(f"sops file {a.sops_file} is not readable and writable by you")
+    try:
+        rc, _, err = run_cmd([a.sops, "decrypt", a.sops_file])
+    except CmdError as e:
+        die(f"preflight: {e}; nothing was sent to GitHub")
+    if rc != 0:
+        die(f"preflight: `sops decrypt {a.sops_file}` failed (exit {rc}): {scrub(err)}\n"
+            "  The file must be a sops-encrypted file that your key can decrypt, or the App's "
+            "credentials could not be stored.\n  Nothing was sent to GitHub.")
+    if not rescue:
+        return
+    d = os.path.dirname(os.path.abspath(a.sops_file))
+    if not os.access(d, os.W_OK | os.X_OK):
+        die(f"directory {d} of the sops file is not writable by you; nothing was sent to GitHub")
+    path = rescue_path(a.sops_file, "preflight")
+    try:
+        rc, _, err = run_cmd(encrypt_cmd(a.sops, path), stdin=b'{"preflight": "dummy"}')
+        why = f"exit {rc}: {scrub(err)}" if rc != 0 else None
+    except CmdError as e:
+        why = str(e)
+    if why:
+        print(f"github-app-bootstrap: warning: sops cannot encrypt a file named like {path} ({why}).\n"
+              "  If storing the credentials fails later there will be no rescue and they will be lost.\n"
+              "  Give that path a creation rule in .sops.yaml, or stop now (Ctrl-C): nothing was sent to GitHub yet.",
+              file=sys.stderr)
+
+
+def strings_in(x):
+    if isinstance(x, str):
+        return [x]
+    if isinstance(x, dict):
+        x = list(x.values())
+    return [s for v in x for s in strings_in(v)] if isinstance(x, list) else []
+
+
+def encrypt_rescue(sops, sops_file, doc):
+    """Encrypt `doc` with sops (plaintext on stdin only) and write the
+    ciphertext to a new 0600 file next to the sops file. Returns (path, None)
+    or (None, reason); the reason never holds a value."""
+    plain = json.dumps(doc).encode()
+    tag = time.strftime("%Y%m%dT%H%M%S")
+    reason = "no attempt was made"
+    for tag in (tag, f"{tag}-{secrets.token_hex(3)}"):
+        path = rescue_path(sops_file, tag)
+        try:
+            rc, out, err = run_cmd(encrypt_cmd(sops, path), stdin=plain, stdout=subprocess.PIPE)
+        except CmdError as e:
+            return None, str(e)
+        except KeyboardInterrupt:
+            return None, "sops encrypt was interrupted"
+        if rc != 0 or not out.strip():
+            return None, f"sops encrypt exit {rc}: {scrub(err, strings_in(doc))}"
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        except FileExistsError:
+            reason = f"{path} already exists"
+            continue  # same second as an earlier rescue: once more under another name
+        except OSError as e:
+            return None, f"cannot create {path}: {e.strerror or e}"
+        try:
+            with os.fdopen(fd, "wb") as f:
+                os.fchmod(f.fileno(), 0o600)
+                f.write(out)
+                f.flush()
+                os.fsync(f.fileno())
+            return path, None
+        except OSError as e:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            return None, f"cannot write {path}: {e.strerror or e}"
+    return None, reason
+
+
+def die_with_rescue(a, owner, raw, body, what, stored=(), failed=None):
+    """Exit non-zero after the exchange. What GitHub returned is kept as a
+    sops-encrypted file, or declared lost; it is never written or printed in
+    plaintext. `body` is the parsed response, or None if `raw` is not a JSON
+    object. `failed` maps the names that were not stored to the reason."""
+    failed = dict(failed if failed is not None else {k: "not attempted" for k in FIELDS})
+    doc = body if isinstance(body, dict) else {"raw_response": raw.decode("utf-8", "replace")}
+    lines = [what, f"  stored under {a.key_prefix} in {a.sops_file}: {', '.join(stored) or 'none'}", "  NOT stored:"]
+    lines += [f"    {k}: {why}" for k, why in failed.items()]
+    path, reason = encrypt_rescue(a.sops, a.sops_file, doc)
+    if path:
+        q = shlex.quote
+        lines += [f"  What GitHub returned was saved, sops-encrypted, as {path} (mode 0600).",
+                  f"  Keys in it: {', '.join(sorted(doc))}",
+                  "  GitHub will not show the credentials again. Do not run the create step again."]
+        todo = [(k, *FIELDS[k]) for k in failed if k in FIELDS and FIELDS[k][0] in doc]
+        if todo:
+            lines.append("  Fix what made sops fail, then import each missing key (the value stays in the pipe):")
+            lines += [f"    {q(a.sops)} decrypt --extract {q(f'["{field}"]')} {q(path)} | jq {flt if flt[0] == '-' else q(flt)}"
+                      f" | {q(a.sops)} set --value-stdin {q(a.sops_file)} {q(sops_path(a.key_prefix, k))}"
+                      for k, field, flt in todo]
+            lines.append(f"  Then delete {path} (docs/github-app-bootstrap.md, \"If storing fails\").")
+        else:
+            lines.append("  It holds none of the missing keys in a usable form; see docs/github-app-bootstrap.md, \"If storing fails\".")
+        die("\n".join(lines), 1)
+    url = body.get("html_url") if isinstance(body, dict) else None
+    if not (isinstance(url, str) and re.fullmatch(r"https://[\x21-\x7e]+", url)):
+        url = f"{a.github}/settings/apps" if a.user else f"{a.github}/organizations/{owner}/settings/apps"
+    lines += [f"  The encrypted rescue failed as well ({reason}).",
+              "  Nothing was written to disk in plaintext, so the credentials that were not stored are LOST:",
+              "  GitHub does not show them again.",
+              f"  The App exists on GitHub with no installation. Delete it: {url}",
+              "  (Advanced, Delete GitHub App), fix what made sops fail, and run this again."]
+    die("\n".join(lines), 1)
+
+
+def load_manifest(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            m = json.load(f)
+    except (OSError, ValueError) as e:
+        die(f"cannot read manifest {path}: {e}")
+    if not isinstance(m, dict):
+        die("manifest must be a JSON object")
+    for field in ("name", "url", "default_permissions"):
+        if not m.get(field):
+            die(f"manifest lacks required field '{field}'")
+    if not isinstance(m["default_permissions"], dict):
+        die("manifest default_permissions must be an object")
+    for perm, level in m["default_permissions"].items():
+        if level not in ("read", "write", "admin"):
+            die(f"manifest permission '{perm}' has invalid level {level!r}")
+    return m
+
+
+def form_page(owner, is_user, manifest, state, github):
+    base = f"{github}/settings/apps/new" if is_user else f"{github}/organizations/{owner}/settings/apps/new"
+    action = f"{base}?state={state}"
+    return (
+        "<!doctype html><meta charset=utf-8><title>Register GitHub App</title>"
+        f"<form id=f method=post action=\"{html.escape(action, quote=True)}\">"
+        f"<input type=hidden name=manifest value=\"{html.escape(json.dumps(manifest), quote=True)}\">"
+        f"<p>Registering <b>{html.escape(manifest['name'])}</b> on "
+        f"<b>{html.escape(owner)}</b>.</p><button>Continue to GitHub</button></form>"
+        "<script>document.getElementById('f').submit()</script>"
+    ).encode()
+
+
+def convert(code, a, owner):
+    """Exchange the code. Returns (values, html_url, parsed response). Once
+    any part of a response body has arrived it is never just dropped: every
+    failure from then on goes through die_with_rescue."""
+    req = urllib.request.Request(
+        f"{a.api}/app-manifests/{code}/conversions", data=b"", method="POST",
+        headers={"Accept": "application/vnd.github+json",
+                 "X-GitHub-Api-Version": "2022-11-28",
+                 "User-Agent": "fleetkit-github-app-bootstrap"})
+    where = f"{a.github}/settings/apps" if a.user else f"{a.github}/organizations/{owner}/settings/apps"
+    unknown = (f"\n  No usable response arrived, so the code may or may not have been spent: the App may or may not exist.\n"
+               f"  Look at {where}. If the App is listed there its credentials can no longer be fetched:\n"
+               "  delete it (Advanced, Delete GitHub App) and run this again. If it is not listed, just run this again.")
+    raw = b""
+    try:
+        with urllib.request.urlopen(req, timeout=a.http_timeout) as r:
+            # read1 returns what has arrived, so a stall keeps the part we have.
+            while chunk := r.read1(65536):
+                raw += chunk
+    except urllib.error.HTTPError as e:
+        if e.code >= 500:
+            die(f"code exchange failed: HTTP {e.code}.{unknown}", 1)
+        die(f"code exchange refused: HTTP {e.code} (codes expire after one hour and work once); no App credentials were issued", 1)
+    except (OSError, http.client.HTTPException, KeyboardInterrupt) as e:
+        # URLError and TimeoutError are OSErrors.
+        reason = getattr(e, "reason", None) or e
+        if raw:
+            die_with_rescue(a, owner, raw, None, f"code exchange failed part way through the response ({type(e).__name__}); "
+                            "the code is spent and the response is incomplete.")
+        if isinstance(e, KeyboardInterrupt):
+            reason = "interrupted"
+        die(f"code exchange failed: {reason or type(e).__name__}.{unknown}", 1)
+    try:
+        body = json.loads(raw)
+        if not isinstance(body, dict):
+            raise ValueError
+    except ValueError:
+        if raw:
+            die_with_rescue(a, owner, raw, None, "code exchange returned something that is not a JSON object; the code is spent.")
+        die(f"code exchange returned an empty response.{unknown}", 1)
+    text = lambda k: body[k] if isinstance(body.get(k), str) else ""
+    out = {"app_id": str(body.get("id") or ""), "app_slug": text("slug"),
+           "app_pem": text("pem"), "client_id": text("client_id"),
+           "client_secret": text("client_secret"),
+           "webhook_secret": text("webhook_secret")}
+    if not out["app_id"] or not out["app_pem"] or not out["app_slug"]:
+        die_with_rescue(a, owner, raw, body, "code exchange response lacks id, slug or pem; the code is spent and nothing was stored.")
+    return out, text("html_url"), body
+
+
+def wait_for_code(owner, is_user, manifest, state, github, port, timeout):
+    """Serve the form and the callback on 127.0.0.1; return the code."""
+    result = {}
+    done = threading.Event()
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _send(self, status, body, ctype="text/html"):
+            self.send_response(status)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            from urllib.parse import urlparse, parse_qs
+            u = urlparse(self.path)
+            if u.path == "/":
+                m = dict(manifest, redirect_url=f"http://127.0.0.1:{self.server.server_port}/callback")
+                self._send(200, form_page(owner, is_user, m, state, github))
+            elif u.path == "/callback":
+                q = parse_qs(u.query)
+                if q.get("state", [""])[0] != state or not q.get("code"):
+                    self._send(400, b"state mismatch or missing code")
+                    return
+                result["code"] = q["code"][0]
+                self._send(200, b"Registered. You can close this tab.")
+                done.set()
+            else:
+                self._send(404, b"not found")
+
+    try:
+        srv = http.server.HTTPServer(("127.0.0.1", port), H)
+    except OSError as e:
+        die(f"cannot listen on 127.0.0.1:{port}: {e.strerror or e}; nothing was sent to GitHub")
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{srv.server_port}/"
+    result["url"] = url
+    return srv, done, result
+
+
+def sops_path(prefix, key):
+    return "".join(f'["{p}"]' for p in re.split(r"[./]", prefix) + [key])
+
+
+def store(sops, sops_file, prefix, values):
+    """`sops set` every key, whatever happens to the others. Returns
+    (names stored, {name not stored: reason}); reasons never hold a value."""
+    stored, failed = [], {}
+    secret_values = [v for v in values.values() if isinstance(v, str)]
+    interrupted = False
+    for key, value in values.items():
+        if interrupted:
+            failed[key] = "not attempted (interrupted)"
+            continue
+        try:
+            rc, _, err = run_cmd([sops, "set", "--value-stdin", sops_file, sops_path(prefix, key)],
+                                 stdin=json.dumps(value).encode())
+        except CmdError as e:
+            failed[key] = str(e)
+            continue
+        except KeyboardInterrupt:
+            interrupted = True
+            failed[key] = "interrupted"
+            continue
+        if rc == 0:
+            stored.append(key)
+        else:
+            failed[key] = f"sops set exit {rc}: {scrub(err, secret_values)}"
+    return stored, failed
+
+
+def read_key(sops, sops_file, prefix, key):
+    try:
+        rc, out, err = run_cmd([sops, "decrypt", "--extract", sops_path(prefix, key), sops_file],
+                               stdout=subprocess.PIPE)
+    except CmdError as e:
+        die(f"reading {key}: {e}", 1)
+    if rc != 0:
+        die(f"sops decrypt {key} failed ({rc}): {scrub(err)}", 1)
+    return out.decode("utf-8", "replace")
+
+
+def b64u(b):
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+
+def make_jwt(openssl, app_id, pem):
+    now = int(time.time())
+    head = b64u(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())
+    pay = b64u(json.dumps({"iat": now - 60, "exp": now + 540, "iss": app_id}).encode())
+    signing_input = f"{head}.{pay}"
+    # The key goes on stdin; the signing input is not secret.
+    try:
+        with tempfile.NamedTemporaryFile("w", prefix="ghapp-jwt-") as f:
+            f.write(signing_input)
+            f.flush()
+            rc, sig, _ = run_cmd([openssl, "dgst", "-sha256", "-sign", "/dev/stdin", f.name],
+                                 stdin=pem.encode(), stdout=subprocess.PIPE)
+    except CmdError as e:
+        die(f"signing the App JWT: {e}", 1)
+    except OSError as e:
+        die(f"signing the App JWT: cannot write the signing input: {e.strerror or e}", 1)
+    if rc != 0 or not sig:
+        die(f"openssl signing failed ({rc})", 1)
+    return f"{signing_input}.{b64u(sig)}"
+
+
+def record_installation(a, owner, prefix):
+    app_id = read_key(a.sops, a.sops_file, prefix, "app_id").strip()
+    pem = read_key(a.sops, a.sops_file, prefix, "app_pem")
+    jwt = make_jwt(a.openssl, app_id, pem)
+    found = None
+    page = 1
+    while found is None:
+        req = urllib.request.Request(
+            f"{a.api}/app/installations?per_page=100&page={page}",
+            headers={"Accept": "application/vnd.github+json", "Authorization": f"Bearer {jwt}",
+                     "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "fleetkit-github-app-bootstrap"})
+        try:
+            with urllib.request.urlopen(req, timeout=a.http_timeout) as r:
+                items = json.load(r)
+        except urllib.error.HTTPError as e:
+            die(f"listing installations failed: HTTP {e.code}", 1)
+        except (OSError, http.client.HTTPException, ValueError) as e:
+            # URLError and TimeoutError are OSErrors.
+            die(f"listing installations failed: {getattr(e, 'reason', None) or e or type(e).__name__}", 1)
+        if not isinstance(items, list):
+            die("listing installations failed: the response is not a list", 1)
+        if not items:
+            break
+        for it in items:
+            if isinstance(it, dict) and str((it.get("account") or {}).get("login", "")).lower() == owner.lower():
+                found = it
+                break
+        page += 1
+    if found is None:
+        die(f"the App is not installed on {owner}; install it first (docs/github-app-bootstrap.md)", 1)
+    _, failed = store(a.sops, a.sops_file, prefix, {"installation_id": str(found["id"])})
+    if failed:
+        # Not a secret, and it can be fetched again: no rescue.
+        die(f"installation_id {found['id']} for {owner} was found but not stored: {failed['installation_id']}", 1)
+    print(f"Recorded installation_id {found['id']} for {owner} under {prefix} in {a.sops_file}.")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    g = ap.add_mutually_exclusive_group(required=True)
+    g.add_argument("--org")
+    g.add_argument("--user", help="register on a personal account")
+    ap.add_argument("--manifest", help="App manifest JSON file (not needed with --record-installation)")
+    ap.add_argument("--sops-file", required=True, help="existing sops file to write; your key must decrypt it")
+    ap.add_argument("--key-prefix", required=True, help="dotted or slashed path the keys are written under")
+    ap.add_argument("--record-installation", action="store_true")
+    ap.add_argument("--sops", default="sops", help="sops command")
+    ap.add_argument("--openssl", default="openssl", help="openssl command")
+    ap.add_argument("--github", default="https://github.com", help=argparse.SUPPRESS)
+    ap.add_argument("--api", default="https://api.github.com", help=argparse.SUPPRESS)
+    ap.add_argument("--http-timeout", type=float, default=30, help=argparse.SUPPRESS)
+    ap.add_argument("--port", type=int, default=0)
+    ap.add_argument("--timeout", type=int, default=3000, help="seconds to wait for the callback")
+    ap.add_argument("--no-browser", action="store_true", help="print the local URL instead of opening it")
+    a = ap.parse_args()
+
+    owner = a.org or a.user
+    if not ORG_RE.match(owner):
+        die(f"invalid account name {owner!r}")
+    if not PREFIX_RE.match(a.key_prefix):
+        die(f"invalid key prefix {a.key_prefix!r}")
+    if shutil.which(a.sops) is None:
+        die(f"'{a.sops}' not found")
+    if a.record_installation:
+        if shutil.which(a.openssl) is None:
+            die(f"'{a.openssl}' not found (needed to sign the App JWT)")
+        preflight(a)
+        record_installation(a, owner, a.key_prefix)
+        return
+    if not a.manifest:
+        die("--manifest is required unless --record-installation")
+    manifest = load_manifest(a.manifest)
+    # Last point at which failing costs nothing: after this GitHub hands out
+    # credentials exactly once.
+    preflight(a, rescue=True)
+    state = secrets.token_urlsafe(24)
+
+    srv, done, res = wait_for_code(owner, bool(a.user), manifest, state, a.github, a.port, a.timeout)
+    print(f"Open {res['url']} and confirm the App on GitHub.", file=sys.stderr)
+    if not a.no_browser:
+        webbrowser.open(res["url"])
+    try:
+        if not done.wait(a.timeout):
+            die("timed out waiting for GitHub's redirect", 1)
+    finally:
+        srv.shutdown()
+    values, html_url, body = convert(res["code"], a, owner)
+    try:
+        stored, failed = store(a.sops, a.sops_file, a.key_prefix, values)
+    except KeyboardInterrupt:
+        stored, failed = [], {k: "unknown (interrupted)" for k in values}
+    if failed:
+        die_with_rescue(a, owner, b"", body,
+                        f"the App '{values['app_slug']}' (id {values['app_id']}) now exists on GitHub, but not all of its "
+                        "credentials were stored.", stored, failed)
+    print(f"slug: {values['app_slug']}\nid: {values['app_id']}\nhtml_url: {html_url}\n"
+          f"install: https://github.com/apps/{values['app_slug']}/installations/new")
+
+
+if __name__ == "__main__":
+    main()
