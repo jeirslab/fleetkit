@@ -454,7 +454,9 @@ let
 
   nonEmpty = lib.filterAttrs (_: v: v != { });
 in
-{
+# The plan is validated whatever the estate declares: forced here, not only
+# where an environment, organisation secret or ruleset happens to read it.
+builtins.seq planRank {
   terraform.required_providers = {
     github = {
       source = "integrations/github";

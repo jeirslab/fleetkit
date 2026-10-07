@@ -237,6 +237,51 @@
         "_: { fleet.repos.gh.app.actions.variables = { Foo = \"a\"; FOO = \"b\"; }; }"
       ],
       "noecho": false
+    },
+    {
+      "name": "plan-unknown",
+      "description": "an unknown git.plan on the organisation fixture",
+      "expect": "mkGithubTerraform: fleet\\.estates\\.gh\\.git: plan \"bogus\" is not one of free, pro, team, enterprise",
+      "module": [
+        "{ lib, ... }: { fleet.estates.gh.git.plan = lib.mkForce \"bogus\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "plan-unknown-nothing-plan-dependent",
+      "description": "an unknown git.plan on a personal account with no environment, organisation secret or ruleset: still refused",
+      "expect": "mkGithubTerraform: fleet\\.estates\\.gh\\.git: plan \"bogus\" is not one of free, pro, team, enterprise",
+      "module": [
+        "{ lib, ... }: {",
+        "  fleet.estates.gh.git = lib.mkForce {",
+        "    kind = \"user\";",
+        "    platform = \"github\";",
+        "    org = \"example\";",
+        "    plan = \"bogus\";",
+        "    auth = { kind = \"token\"; tokenRef = \"sops:gh/gh#ci-token\"; };",
+        "  };",
+        "  fleet.repos.gh.app.environments = lib.mkForce { };",
+        "}"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "org-plan-pro-nothing-plan-dependent",
+      "description": "an organisation on pro with no environment, organisation secret or ruleset: still refused",
+      "expect": "mkGithubTerraform: fleet\\.estates\\.gh\\.git\\.plan: \"pro\" is a personal account's plan; an organisation \\(kind = \"org\"\\) is on free, team or enterprise",
+      "module": [
+        "{ lib, ... }: {",
+        "  fleet.estates.gh.git = lib.mkForce {",
+        "    kind = \"org\";",
+        "    platform = \"github\";",
+        "    org = \"example\";",
+        "    plan = \"pro\";",
+        "    auth = { kind = \"token\"; tokenRef = \"sops:gh/gh#ci-token\"; };",
+        "  };",
+        "  fleet.repos.gh.app.environments = lib.mkForce { };",
+        "}"
+      ],
+      "noecho": false
     }
   ],
   "personal": [
