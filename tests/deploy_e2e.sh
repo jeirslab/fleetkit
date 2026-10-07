@@ -14,7 +14,9 @@
 #      postgres URL never appears in the events;
 #   3. GitOps: `fleetkit serve --repo` on the estate repo, push mode preview:
 #      POST /v1/gitops/sync plans the head; a new commit pushed through the
-#      signed webhook plans that commit; a bad signature is 401;
+#      signed webhook plans that commit; a bad signature is 401; a pull request
+#      (refs/pull/1/head) is previewed at its head and reported to a stand-in
+#      GitHub API: statuses and a comment with the real plan;
 #   4. real colmena evaluates the runner's hive file.
 #
 # Not a gate: it needs the network (Pulumi plugins, provider binaries). No host
@@ -148,9 +150,29 @@ else
 fi
 
 # 3. GitOps.
+# A stand-in GitHub API: records statuses and comments as JSON lines.
+cat >"$TMP/gh.py" <<'PYEOF'
+import json, sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+log = open(sys.argv[2], "a")
+class H(BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def _reply(self, code, body):
+        raw = json.dumps(body).encode(); self.send_response(code)
+        self.send_header("content-length", str(len(raw))); self.end_headers(); self.wfile.write(raw)
+    def do_GET(self): self._reply(200, [])
+    def do_POST(self):
+        b = json.loads(self.rfile.read(int(self.headers["content-length"])))
+        log.write(json.dumps({"path": self.path, **b}) + "\n"); log.flush(); self._reply(201, {})
+HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+PYEOF
+python3 "$TMP/gh.py" 18742 "$TMP/gh.jsonl" &
+GH=$!
+trap 'kill $GH 2>/dev/null; cleanup' EXIT
 echo -n "e2e-token" >"$TMP/token"
 WH="e2e-hook"
 FLEETKIT_REPO="file://$E" FLEETKIT_DEPLOY_ON_PUSH=mini FLEETKIT_PUSH_MODE=preview FLEETKIT_WEBHOOK_SECRET="$WH" \
+  FLEETKIT_GITHUB_TOKEN=gh-e2e FLEETKIT_GITHUB_API=http://127.0.0.1:18742 \
   FLEETKIT_STATE_DIR="$TMP/gstate" \
   "$FK" serve --listen 127.0.0.1:18741 --token-file "$TMP/token" >"$TMP/serve.log" 2>&1 &
 SERVER=$!
@@ -187,6 +209,27 @@ echo "$rec" | tools jq -e --arg r "$two" '.state == "succeeded" and .result.rev 
 [[ -f $TMP/gstate/checkouts/$two/pulumi.nix ]] || fail "no checkout of $two"
 tools curl -sf "${auth[@]}" "$API/v1/gitops" | tools jq -e --arg r "$two" '.submitted.mini.rev == $r' >/dev/null \
   || fail "gitops status"
+
+# A pull request: previewed at its head, reported back.
+git -C "$E" checkout -q -b feature
+echo "# three" >>"$E/pulumi.nix"
+git -C "$E" -c user.name=e2e -c user.email=e2e@example.com commit -qam three
+three=$(git -C "$E" rev-parse HEAD)
+git -C "$E" update-ref refs/pull/1/head "$three"
+git -C "$E" checkout -q main
+body="{\"action\":\"opened\",\"repository\":{\"full_name\":\"example/estate\"},\"pull_request\":{\"number\":1,\"author_association\":\"OWNER\",\"base\":{\"ref\":\"main\"},\"head\":{\"sha\":\"$three\",\"repo\":{\"full_name\":\"example/estate\"}}}}"
+sig="sha256=$(printf '%s' "$body" | tools openssl dgst -sha256 -hmac "$WH" | awk '{print $NF}')"
+job3=$(tools curl -sf -X POST "$API/v1/hooks/github" -H 'x-github-event: pull_request' -H "x-hub-signature-256: $sig" \
+  -H 'content-type: application/json' -d "$body" | tools jq -r .submitted.mini)
+rec=$(wait_job "$job3")
+echo "$rec" | tools jq -e --arg r "$three" '.state == "succeeded" and .result.rev == $r and .request.pr == 1' >/dev/null \
+  || { echo "$rec" >&2; fail "pull request job"; }
+sleep 1
+tools jq -e -s --arg r "$three" 'map(select(.path == "/repos/example/estate/statuses/\($r)")) | map(.state) == ["pending", "success"]' \
+  "$TMP/gh.jsonl" >/dev/null || { cat "$TMP/gh.jsonl" >&2; fail "pull request statuses"; }
+tools jq -e -s 'map(select(.path == "/repos/example/estate/issues/1/comments"))[0].body
+  | test("fleetkit:mini") and test("\\| `mini-guests` \\| 6 \\| 0 \\| 0 \\| 0 \\| 0 \\|") and test("\\| `mini-extra` \\| 3 ")' \
+  "$TMP/gh.jsonl" >/dev/null || { cat "$TMP/gh.jsonl" >&2; fail "pull request comment"; }
 
 # 4.
 if nix shell nixpkgs#colmena --command colmena eval -f "$TMP/state/work/_hives/example.nix" --impure \

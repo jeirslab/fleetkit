@@ -18,6 +18,7 @@ class DeployRequest(BaseModel):
         default=None, description="Pulumi stacks to run (default: every stack of the estate).")
     rev: Optional[str] = Field(
         default=None, description="Git commit or branch to deploy (server with a repo only; default the branch head).")
+    pr: Optional[int] = Field(default=None, description="The pull request this job previews or deploys (set by GitOps).")
     infra: bool = Field(default=True, description="Run the Pulumi stage.")
     nixos: bool = Field(default=True, description="Run the Colmena stage.")
     hive: Optional[str] = Field(default=None, description="Hive name under hives.* (default: the estate).")

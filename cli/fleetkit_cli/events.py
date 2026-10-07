@@ -44,6 +44,11 @@ class Emitter:
             e = _redact(e, secrets)
         self._sink(e)
 
+    def redact(self, text: str) -> str:
+        with self._lock:
+            secrets = list(self._secrets)
+        return _redact(text, secrets)
+
     def secret(self, value: str) -> str:
         """Never let `value` reach an event (a decrypted backend URL or key:
         a failing tool may print it)."""

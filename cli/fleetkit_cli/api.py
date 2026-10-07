@@ -12,7 +12,7 @@
 With a repo (gitops.py):
   GET  /v1/gitops                  repo, branch, head, what each estate last had submitted
   POST /v1/gitops/sync             fetch now and deploy what changed
-  POST /v1/hooks/github            a GitHub push webhook (HMAC-signed, no bearer)
+  POST /v1/hooks/github            GitHub webhook, push and pull_request (HMAC-signed, no bearer)
 
 Every other /v1 route needs `Authorization: Bearer <token>`. A deploy of an
 estate that is already deploying is 409, with the running job's id.
@@ -141,6 +141,11 @@ def create_app(manager: JobManager, settings: Optional[Settings], token: Optiona
             event = request.headers.get("x-github-event", "")
             if event == "ping":
                 return {"ok": True}
+            if event == "pull_request":
+                try:
+                    return await asyncio.to_thread(g.on_pull_request, json.loads(body))
+                except Exception as e:  # noqa: BLE001 - reported to the caller
+                    raise HTTPException(502, str(e))
             if event != "push":
                 return {"ignored": f"event {event}"}
             payload = json.loads(body)

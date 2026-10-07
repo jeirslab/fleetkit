@@ -86,6 +86,9 @@ class JobManager:
         self.active: dict[str, str] = {}  # estate -> job id
         self.lock = threading.Lock()
         self.pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="deploy")
+        # Called with each job once it is final (GitOps reports PR results and
+        # starts what was queued behind it).
+        self.on_finish: list[Callable[[Job], None]] = []
         self._load()
 
     def _load(self) -> None:
@@ -128,7 +131,8 @@ class JobManager:
         except Cancelled:
             final = "cancelled"
         except Exception as e:  # noqa: BLE001 - every failure is reported on the job
-            j.error = f"{type(e).__name__}: {e}"
+            # The message of a failing tool can carry a decrypted secret too.
+            j.error = j.emitter.redact(f"{type(e).__name__}: {e}")
             j.emitter.emit("job", "error", error=j.error, trace=traceback.format_exc()[-4000:])
             final = "cancelled" if j.emitter.cancelled else "failed"
         finally:
@@ -137,6 +141,11 @@ class JobManager:
         j.finished = time.time()
         j.emitter.emit("job", final)
         j.set_state(final)
+        for hook in list(self.on_finish):
+            try:
+                hook(j)
+            except Exception:  # noqa: BLE001 - a hook must not break the worker
+                traceback.print_exc()
 
     def cancel(self, jid: str) -> Job | None:
         j = self.jobs.get(jid)

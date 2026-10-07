@@ -135,7 +135,7 @@ directories (a tenant's source) where sops files are looked up. `pulumi-bin`,
 | `POST /v1/deploys/{id}/cancel` | Pulumi's own cancel, or colmena terminated |
 | `GET /v1/estates` | estates and their stacks |
 | `GET /v1/gitops`, `POST /v1/gitops/sync` | GitOps status; fetch and deploy what changed now |
-| `POST /v1/hooks/github` | a GitHub push webhook, HMAC-signed (no bearer) |
+| `POST /v1/hooks/github` | GitHub webhook, `push` and `pull_request`, HMAC-signed (no bearer) |
 
 Bearer auth on every `/v1` route but the webhook; `--no-auth` only on
 loopback. One deploy per estate at a time (409 with the running job's id).
@@ -158,9 +158,38 @@ The branch is the desired state, and the server deploys it on itself:
 - `FLEETKIT_PUSH_MODE=preview` plans every push (pulumi preview, colmena build)
   and leaves applying to a person: `POST /v1/deploys {"estate", "rev"}`.
 
+### Pull requests
+
+The same webhook takes `pull_request` events (subscribe the hook to pushes and
+pull requests). Opening, pushing to, reopening or marking ready a PR into the
+branch previews each estate at the PR's head commit (the mirror fetches
+`refs/pull/<n>/head`), and the result goes back to the PR
+(`FLEETKIT_GITHUB_TOKEN`: statuses and issue comments, write):
+
+- a commit status per estate, context `fleetkit/<estate>`: pending while the
+  job runs, then success or failure with the change counts
+  (`preview succeeded: homelab-guests: create 1`), linking to the job when
+  `FLEETKIT_PUBLIC_URL` is set;
+- one comment per estate, edited in place on every push to the PR: per stack
+  the create / update / replace / delete / same counts and the program's store
+  path, NixOS built, or the error.
+
+With `FLEETKIT_TRIGGER=pr` (the NixOS module's default) a merged PR is what
+deploys: its merge commit, reported on the PR in the same comment, and pushes
+and polling deploy nothing. With `push`, PRs are previewed and the push to the
+branch deploys. A preview that arrives while its estate is busy is queued, not
+dropped.
+
+Only a PR from a branch of the same repo, by an owner, member or collaborator,
+is previewed. A preview runs the PR's own program with the estate's decrypted
+credentials, and a program can point a provider at any endpoint (the Proxmox
+token would go wherever `endpoint` says), so a fork or an outside author gets
+an `error` status ("not previewed: from a fork") and nothing runs. Keep branch
+protection on the branch: merging is deploying.
+
 `nixosModules.fleetkit-server` runs it as a hardened systemd service
-(`services.fleetkit = { enable; repo; branch; deployOnPush; pushMode; poll;
-listen; environmentFile; }`, `pushMode` defaulting to `preview`). The host holds
+(`services.fleetkit = { enable; repo; branch; deployOnPush; trigger; pushMode;
+poll; publicUrl; listen; environmentFile; }`; `trigger` defaults to `pr`). The host holds
 what deploying needs (the age key, Colmena's SSH key, a read-only deploy key,
 the Pulumi passphrase, the API token and webhook secret), all from
 `environmentFile`, none in the store: treat it like an operator's machine, and
@@ -172,7 +201,10 @@ put a TLS proxy in front of anything but loopback.
   (auth, lifecycle, events and stream, 409, failure, cancel, bad requests,
   restart recovery); GitOps on a local git repo (one submission per commit, a
   busy estate skipped, checkouts at the commit, the webhook's signature, a rev
-  through the deploy API); redaction.
+  through the deploy API); pull requests against a fake GitHub API (previews
+  at the PR head, statuses, one comment edited in place, forks, untrusted
+  authors, drafts and other bases not previewed, deploy on merge with
+  `trigger = pr`, a busy estate's preview queued); redaction.
 - `tests/pulumi_nix.sh` (gate): Pulumi.nix good and bad cases above.
 - `tests/deploy_e2e.sh` (networked, not a gate): a throwaway estate git repo
   whose pulumi.nix imports the model's stack and adds one composed from it;
@@ -180,7 +212,9 @@ put a TLS proxy in front of anything but loopback.
   (`E2E_PG_URL`, `E2E_S3_*`; local otherwise) from sops-encrypted credentials,
   the password-bearing URL never in the events; colmena called on the hive;
   then the server in GitOps mode: a sync plans the head, a signed webhook plans
-  the next commit, a bad signature is 401; real colmena evaluates the hive file.
+  the next commit, a bad signature is 401, a pull request is previewed at its
+  head and reported (statuses, and a comment with the real plan) to a
+  stand-in GitHub API; real colmena evaluates the hive file.
 
 Not tested: `pulumi up` or `colmena apply` against real hosts, a linode bucket,
 and the estate repo's own data.

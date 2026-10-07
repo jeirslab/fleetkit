@@ -51,6 +51,25 @@ in
       default = "preview";
       description = "deploy: apply every push. preview: plan every push; apply with POST /v1/deploys.";
     };
+    trigger = mkOption {
+      type = types.enum [
+        "push"
+        "pr"
+      ];
+      default = "pr";
+      description = ''
+        What deploys. pr: a merged pull request (its merge commit), reported
+        on the PR; pushes and polling deploy nothing. push: a push to the
+        branch (by the webhook or polling). Either way, pull requests from
+        trusted authors are previewed and reported on the PR.
+      '';
+    };
+    publicUrl = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "https://deploy.example.com";
+      description = "Where the API is reached from outside; GitHub statuses link to the job there.";
+    };
     poll = mkOption {
       type = types.ints.unsigned;
       default = 300;
@@ -72,7 +91,8 @@ in
       description = ''
         Environment file (systemd EnvironmentFile) with the secrets, e.g.
         FLEETKIT_API_TOKEN_FILE, PULUMI_CONFIG_PASSPHRASE_FILE,
-        FLEETKIT_WEBHOOK_SECRET_FILE, SOPS_AGE_KEY_FILE, and GIT_SSH_COMMAND /
+        FLEETKIT_WEBHOOK_SECRET_FILE, FLEETKIT_GITHUB_TOKEN_FILE (statuses and
+        PR comments), SOPS_AGE_KEY_FILE, and GIT_SSH_COMMAND /
         NIX_SSHOPTS naming the deploy keys.
       '';
     };
@@ -109,8 +129,12 @@ in
         FLEETKIT_DEPLOY_ON_PUSH = lib.concatStringsSep "," cfg.deployOnPush;
         FLEETKIT_PUSH_MODE = cfg.pushMode;
         FLEETKIT_POLL = toString cfg.poll;
+        FLEETKIT_TRIGGER = cfg.trigger;
         FLEETKIT_STATE_DIR = cfg.stateDir;
         PULUMI_HOME = "${cfg.stateDir}/pulumi-home";
+      }
+      // lib.optionalAttrs (cfg.publicUrl != null) {
+        FLEETKIT_PUBLIC_URL = cfg.publicUrl;
         HOME = cfg.stateDir;
       };
       serviceConfig = {
