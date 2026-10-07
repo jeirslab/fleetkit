@@ -36,8 +36,10 @@ tools/github-app-bootstrap --org ORG --manifest app.json \
 (`https://github.com/settings/apps/new`). `--key-prefix` is split on `.` or `/`
 into the sops path (`github.app` becomes `["github"]["app"]`). Other options:
 `--sops` and `--openssl` (commands), `--port`, `--timeout` (default 3000 s),
-`--no-browser` (print the local URL instead of opening it), `--rescue-dir`
-(below). It needs `sops` on the PATH and is stdlib Python otherwise.
+`--no-browser` (print the local URL instead of opening it). It needs `sops` on
+the PATH and is stdlib Python otherwise. There is no option for a rescue
+location: a rescue is always encrypted and always next to the sops file
+("If storing fails" below).
 
 The sops file must already exist; the tool does not create one. Before it
 serves the local page, so before anything reaches GitHub, it checks that the
@@ -47,11 +49,18 @@ credentials will be storable:
 - `sops decrypt FILE` succeeds (the output is discarded). That is the real
   test: it fails on a file that is not sops-encrypted and on one your key is
   not a recipient of, the two cases in which `sops set` would fail later;
-- the rescue directory exists and is writable.
+- the sops file's directory is writable.
 
 If any of these fails the tool exits there with the reason, and no App has
-been created. It does not look at `.sops.yaml` or creation rules: create the
-file with `sops` yourself so the right rule applies to it.
+been created. Create the file with `sops` yourself so the right creation rule
+applies to it.
+
+It then encrypts a dummy value with `sops encrypt --filename-override` for a
+rescue path next to the sops file, discarding the output. If that fails (no
+creation rule in `.sops.yaml` matches the path, usually) it prints a warning
+and goes on: storing normally succeeds, but if it did not there would be no
+rescue. Stop at the warning with Ctrl-C and fix the rule if you want the
+safety net; nothing has reached GitHub at that point.
 
 This follows GitHub's "Registering a GitHub App from a manifest" flow:
 
@@ -75,41 +84,65 @@ owner of the organization.
 
 ## If storing fails
 
-GitHub returns the private key, client secret and webhook secret once. If the
-tool cannot finish after the code was exchanged (a `sops set` fails, the disk
-is full, the key went away mid-run, the response was cut short or lacks the
-key), it does not drop them and does not print them. It writes what GitHub
-returned to a new file
+GitHub returns the private key, client secret and webhook secret once. The
+tool never writes them to disk in plaintext and never prints them, in this
+case either. If it cannot finish after the code was exchanged (a `sops set`
+fails or does not return, the key went away mid-run, Ctrl-C, the response was
+cut short or lacks the key), it pipes what GitHub returned on stdin to
 
-    <rescue dir>/github-app-rescue-<time>-<random>.decrypted.json
+    sops encrypt --filename-override <dir>/<name>.rescue-<time>.yaml \
+        --input-type json --output-type yaml /dev/stdin
 
-created with mode 0600, prints that path, lists by name which keys were stored
-and which were not, and exits non-zero. The rescue directory is `--rescue-dir`,
-by default the directory of the sops file (the system temp directory is tried
-if that write fails). **That file is plaintext.** The kit's `.gitignore`
-ignores `*.decrypted*`; check yours does before leaving it in a repository
-even briefly.
+and writes the ciphertext sops prints to that same path, as a new file with
+mode 0600. `<dir>` is the directory of the sops file and `<name>` its file
+name without the extension, so `secrets/github.yaml` gives
+`secrets/github.rescue-20261007T101500.yaml`.
 
-Fix what made sops fail, import each key the tool listed as not stored, then
-destroy the file. The file is GitHub's response, so its field names differ
-from the stored names (`id` is stored as the string `app_id`, `slug` as
-`app_slug`, `pem` as `app_pem`; the rest keep their names):
+sops chooses the recipients from the `--filename-override` path, by the
+creation rules in the estate's `.sops.yaml`. **The rescue path must match a
+creation rule**, normally the same one that covers the sops file's directory;
+a rule that names the sops file exactly (`path_regex: secrets/github\.yaml$`)
+does not cover it. Encrypting needs only the recipients' public keys, so the
+rescue works when your own private key is what failed.
+
+The tool then prints the rescue file's path, the key names in it, which keys
+were stored in the sops file and which were not (with sops's reason), and one
+import command per missing key, and exits non-zero. The rescue file is
+GitHub's response, so its key names differ from the stored ones (`id` is
+stored as the string `app_id`, `slug` as `app_slug`, `pem` as `app_pem`; the
+rest keep their names). Fix what made sops fail, then run the commands it
+printed; they have this shape (they need `jq`):
 
 ```sh
-R=<the rescue file>; F=secrets/github.yaml
-jq '.id | tostring'  "$R" | sops set --value-stdin "$F" '["github"]["app"]["app_id"]'
-jq .slug             "$R" | sops set --value-stdin "$F" '["github"]["app"]["app_slug"]'
-jq .pem              "$R" | sops set --value-stdin "$F" '["github"]["app"]["app_pem"]'
-jq .client_id        "$R" | sops set --value-stdin "$F" '["github"]["app"]["client_id"]'
-jq .client_secret    "$R" | sops set --value-stdin "$F" '["github"]["app"]["client_secret"]'
-jq .webhook_secret   "$R" | sops set --value-stdin "$F" '["github"]["app"]["webhook_secret"]'
-shred -u "$R"
+R=secrets/github.rescue-<time>.yaml; F=secrets/github.yaml
+sops decrypt --extract '["pem"]' "$R" | jq -Rs .   | sops set --value-stdin "$F" '["github"]["app"]["app_pem"]'
+sops decrypt --extract '["id"]'  "$R" | jq tostring | sops set --value-stdin "$F" '["github"]["app"]["app_id"]'
 ```
 
-Do not run the create step again instead: that registers a second App.
+The value goes from one sops to the other through the pipe and never reaches
+the terminal or a file. `jq -Rs .` turns the raw string `--extract` prints into
+the JSON string `sops set --value-stdin` expects; `jq tostring` does the same
+for the numeric `id`. Once every key is in the sops file, delete the rescue
+file (it is encrypted, so `rm` is enough) and go on with step 2. Do not run the
+create step again instead: that registers a second App.
+
+If the response was cut short or is not a JSON object, the rescue file holds
+it as one string under `raw_response`, and the tool prints no import command:
+a cut-short private key is not usable. Delete the App on GitHub and run the
+tool again; the rescue file is only there in case something in it is still
+wanted.
+
+### If the rescue fails too
+
+If `sops encrypt` fails as well (no creation rule matches, `sops` is gone, the
+directory cannot be written), nothing is written anywhere and the credentials
+that were not stored are lost. The tool says so, names the keys, prints the
+App's `html_url` (not a secret) and exits non-zero. The App then exists on
+GitHub with no installation: open that URL, delete it (Advanced, Delete GitHub
+App), fix what made sops fail, and run the tool again.
 
 If the exchange fails before any response arrives (a timeout, a dropped
-connection, an HTTP 5xx), there is nothing to rescue and the tool says the code
+connection, Ctrl-C, an HTTP 5xx), there is nothing to rescue and the tool says the code
 may or may not have been spent. Look at the organization's GitHub Apps page:
 if the App is there, its credentials can no longer be fetched, so delete it and
 start over; if it is not, run the tool again. An HTTP 4xx means GitHub refused

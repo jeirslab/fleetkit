@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Tests tools/github-app-bootstrap against a fake GitHub API and a fake sops.
-No network beyond 127.0.0.1, no real sops, no secrets. Prints one JSON line
+No network beyond 127.0.0.1, no real sops, no secrets. The fake sops keeps
+the "encrypted" file as plain JSON, so a stand-in secret inside the --sops-file
+itself is expected; anywhere else on disk it is a failure. Prints one JSON line
 {"github_app_bootstrap":"pass"|"fail"}; exit 0 iff pass."""
 import base64
+import hashlib
 import html
 import http.server
 import json
@@ -22,7 +25,7 @@ PEM = "FAKE-PEM-LINE-ONE\nTESTKEYMATERIAL\nFAKE-PEM-LAST-LINE\n"  # stand-in; th
 fails = []
 
 FAKE_SOPS = r'''#!/usr/bin/env python3
-import json, os, sys
+import hashlib, json, os, sys
 a = sys.argv[1:]
 secrets = ("TESTKEYMATERIAL", "WHSECRET", "CLSECRET")
 def violate(what):
@@ -42,6 +45,22 @@ if a[:2] == ["set", "--value-stdin"]:
     d = json.load(open(f))
     d[path] = json.loads(value)
     json.dump(d, open(f, "w"))
+elif a[:1] == ["encrypt"]:
+    # sops encrypt --filename-override PATH --input-type json --output-type yaml /dev/stdin
+    plain = sys.stdin.read()
+    if len(a) != 8 or a[1] != "--filename-override" or a[3:] != ["--input-type", "json", "--output-type", "yaml", "/dev/stdin"]:
+        sys.exit(9)
+    if os.environ.get("FAKE_SOPS_FAIL_ENCRYPT"):
+        # Hostile again: the plaintext on stderr.
+        sys.stderr.write("fake sops: error loading config: no matching creation rules found; input was " + plain + "\n")
+        sys.exit(1)
+    try:
+        doc = json.loads(plain)
+    except ValueError:
+        sys.exit(2)
+    # Recognisable, derived from the plaintext, holding none of its values.
+    sys.stdout.write("FAKE-SOPS-CIPHERTEXT\nkeys: %s\nsha256: %s\nsops:\n    fake: true\n"
+                     % (json.dumps(sorted(doc)), hashlib.sha256(plain.encode()).hexdigest()))
 elif a[:2] == ["decrypt", "--extract"]:
     sys.stdout.write(json.load(open(a[3]))[a[2]])
 elif a[:1] == ["decrypt"] and len(a) == 2:
@@ -107,7 +126,7 @@ class Api(http.server.BaseHTTPRequestHandler):
         m = re.fullmatch(r"/app-manifests/([^/]+)/conversions", self.path)
         good = json.dumps({"id": 4242, "slug": "fleetkit-test", "pem": PEM, "client_id": "Iv1.cid",
                            "html_url": "https://github.com/apps/fleetkit-test",
-                           "webhook_secret": "WHSECRET", "client_secret": "CLSECRET"}).encode()
+                           "webhook_secret": "WHSECRET", "client_secret": "CLSECRET"}).encode()  # GOOD in main()
         if m and m.group(1) == "goodcode":
             body = good
             self.send_response(201)
@@ -147,8 +166,13 @@ def run(tmp, manifest, sops_file, code="goodcode", bad_state=False, api_port=0, 
          "--sops", os.path.join(tmp, "sops"), "--api", f"http://127.0.0.1:{api_port}",
          "--no-browser", "--timeout", "20", *extra],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=dict(os.environ, **(env or {})))
-    first = p.stderr.readline()
-    url = re.search(r"Open (\S+) ", first).group(1)
+    first = ""
+    while not (found := re.search(r"Open (\S+) ", first)):  # a preflight warning may come first
+        line = p.stderr.readline()
+        if not line:
+            raise RuntimeError(f"tool exited before serving the form: {first}")
+        first += line
+    url = found.group(1)
     page = urllib.request.urlopen(url).read().decode()
     form_action = html.unescape(re.search(r'action="([^"]+)"', page).group(1))
     posted = json.loads(html.unescape(re.search(r'name=manifest value="([^"]*)"', page).group(1)))
@@ -192,13 +216,47 @@ def main():
         os.chmod(openssl, stat.S_IRWXU)
         os.environ["FAKE_SOPS_LOG"] = os.path.join(tmp, "violations")
         os.environ["FAKE_SOPS_CALLS"] = os.path.join(tmp, "calls")
-        # Stray rescue files must not land in the system temp directory.
+        # Nothing may land in the system temp directory.
         os.environ["TMPDIR"] = os.path.join(tmp, "systmp")
         os.mkdir(os.environ["TMPDIR"])
         SECRETS = ("TESTKEYMATERIAL", "WHSECRET", "CLSECRET")
+        GOOD = {"id": 4242, "slug": "fleetkit-test", "pem": PEM, "client_id": "Iv1.cid",
+                "html_url": "https://github.com/apps/fleetkit-test",
+                "webhook_secret": "WHSECRET", "client_secret": "CLSECRET"}
 
         def rescue_files(d):
-            return sorted(os.path.join(d, n) for n in os.listdir(d) if n.startswith("github-app-rescue-"))
+            return sorted(os.path.join(d, n) for n in os.listdir(d) if ".rescue-" in n)
+
+        def tree(d=tmp):
+            logs = {os.environ["FAKE_SOPS_CALLS"], os.environ["FAKE_SOPS_LOG"]}
+            return {os.path.join(r, n) for r, _, names in os.walk(d) for n in names} - logs
+
+        def secret_files(paths):
+            """Those of `paths` that hold a stand-in secret (or a pem line)."""
+            hit = set()
+            for p in paths:
+                with open(p, "rb") as f:
+                    data = f.read()
+                if any(x.encode() in data for x in SECRETS + ("FAKE-PEM",)):
+                    hit.add(p)
+            return hit
+
+        def check_rescue(path, sops_file, doc, err, label):
+            """`path` is a fake-encrypted rescue of `doc` next to `sops_file`."""
+            want_name = re.escape(os.path.splitext(os.path.basename(sops_file))[0]) + r"\.rescue-\d{8}T\d{6}(-[0-9a-f]{6})?\.yaml"
+            check(os.path.dirname(path) == os.path.dirname(sops_file) and re.fullmatch(want_name, os.path.basename(path)),
+                  f"{label}: rescue file is next to the sops file and named after it: {path}")
+            check(stat.S_IMODE(os.stat(path).st_mode) == 0o600, f"{label}: rescue file is mode 0600")
+            content = open(path).read()
+            check(content.startswith("FAKE-SOPS-CIPHERTEXT\n"), f"{label}: rescue file is what sops encrypt printed")
+            check(f"sha256: {hashlib.sha256(json.dumps(doc).encode()).hexdigest()}\n" in content,
+                  f"{label}: sops encrypt was given the exchange response on stdin")
+            check(not secret_files([path]), f"{label}: rescue file holds no secret value")
+            enc = [c for c in sops_calls() if c[:1] == ["encrypt"] and "preflight" not in c[2]]
+            check(enc == [["encrypt", "--filename-override", path, "--input-type", "json", "--output-type", "yaml", "/dev/stdin"]],
+                  f"{label}: one sops encrypt, --filename-override is the path written: {enc}")
+            check(path in err and "sops-encrypted" in err and f"Keys in it: {', '.join(sorted(doc))}" in err,
+                  f"{label}: rescue path and its key names reported: {err}")
 
         def sops_calls():
             with open(os.environ["FAKE_SOPS_CALLS"]) as f:
@@ -260,24 +318,33 @@ def main():
         # The preflight comes before the listener in a good run too.
         os.remove(os.environ["FAKE_SOPS_CALLS"])
         rc, err, _ = run(tmp, manifest, sfp, api_port=port, preexisting='{"other": "keep"}')
-        check(rc == 0 and sops_calls()[0] == ["decrypt", sfp] and len(sops_calls()) == 7,
-              f"good run: decrypt first, then six sets: {err}")
-        # an unwritable rescue directory is refused up front as well
+        calls = sops_calls()
+        check(rc == 0 and calls[0] == ["decrypt", sfp] and calls[1][:2] == ["encrypt", "--filename-override"]
+              and "locked.rescue-preflight.yaml" in calls[1][2] and [c[0] for c in calls[2:]] == ["set"] * 6,
+              f"good run: decrypt, a dummy encrypt for the rescue path, then six sets: {err}")
+        check("warning" not in err and not rescue_files(tmp), "good run: no warning, no rescue file")
+        # the plaintext rescue directory is gone, as an option too
         before = len(conversions())
         r = subprocess.run([sys.executable, TOOL, "--org", "acme", "--manifest", os.path.join(tmp, "m.json"),
                             "--sops-file", sfp, "--key-prefix", "x", "--sops", sops, "--no-browser",
-                            "--rescue-dir", os.path.join(tmp, "no-such-dir")], capture_output=True, text=True, timeout=30)
-        check(r.returncode != 0 and "rescue directory" in r.stderr and len(conversions()) == before,
-              "missing rescue directory refused before the exchange")
+                            "--rescue-dir", tmp], capture_output=True, text=True, timeout=30)
+        check(r.returncode != 0 and "unrecognized arguments" in r.stderr and len(conversions()) == before,
+              "--rescue-dir is not an option any more")
+        # (c) no code path writes the response in plaintext: the removed names stay removed
+        src = open(TOOL).read()
+        for gone in ("write_rescue", "die_rescued", "gettempdir", "rescue-dir", "rescue_dir", ".decrypted"):
+            check(gone not in src, f"tool source no longer mentions {gone}")
+        check(len(re.findall(r"\bos\.open\(|(?<![.\w])open\(", src)) == 2 and src.count("NamedTemporaryFile") == 1,
+              "tool opens only the manifest, the rescue ciphertext and the JWT signing input")
 
-        # (b) one set fails after the exchange: every other key is still
-        # attempted and stored, the response is kept 0600, nothing leaks.
-        sfb = os.path.join(tmp, "partial.json")
-        rdir = os.path.join(tmp, "rescue")
-        os.mkdir(rdir)
+        # (a) one set fails after the exchange: every other key is still
+        # attempted and stored, the response is kept ENCRYPTED, nothing leaks.
+        pdir = os.path.join(tmp, "partial")
+        os.mkdir(pdir)
+        sfb = os.path.join(pdir, "github.json")
         os.remove(os.environ["FAKE_SOPS_CALLS"])
-        rc, err, out = run(tmp, manifest, sfb, api_port=port, extra=("--rescue-dir", rdir),
-                           env={"FAKE_SOPS_FAIL_SET": "app_pem"})
+        files_before = tree()
+        rc, err, out = run(tmp, manifest, sfb, api_port=port, env={"FAKE_SOPS_FAIL_SET": "app_pem"})
         check(rc != 0, "a failed set exits non-zero")
         sets = [c[3] for c in sops_calls() if c[:2] == ["set", "--value-stdin"]]
         check(sets == [f'["github"]["app"]["{k}"]' for k in want], f"every key attempted despite a failure: {sets}")
@@ -287,45 +354,90 @@ def main():
                 check(f'["github"]["app"]["{k}"]' not in d, "failed key not stored")
             else:
                 check(d.get(f'["github"]["app"]["{k}"]') == v, f"{k} stored although app_pem failed")
-        found = rescue_files(rdir)
-        check(len(found) == 1, f"one rescue file in --rescue-dir: {found}")
-        check(not rescue_files(tmp) and not rescue_files(os.environ["TMPDIR"]), "rescue file only in --rescue-dir")
+        found = rescue_files(pdir)
+        new = tree() - files_before
+        check(len(found) == 1 and new == {sfb, *found}, f"exactly one new file besides the sops file: {sorted(new)}")
+        # The fake sops file is plain JSON, so sfb holds what was stored; no other new file may hold a secret.
+        check(secret_files(new) <= {sfb}, f"no new file holds a secret value: {sorted(secret_files(new) - {sfb})}")
+        check(not os.listdir(os.environ["TMPDIR"]), "nothing written to the temp directory")
         if found:
-            check(stat.S_IMODE(os.stat(found[0]).st_mode) == 0o600, "rescue file is mode 0600")
-            kept = json.load(open(found[0]))
-            check(kept.get("pem") == PEM and kept.get("client_secret") == "CLSECRET"
-                  and kept.get("webhook_secret") == "WHSECRET" and kept.get("id") == 4242,
-                  "rescue file holds the exchange response")
-            check(found[0] in err and "PLAINTEXT" in err and "shred" in err, f"rescue path and warning reported: {err}")
+            check_rescue(found[0], sfb, GOOD, err, "failed set")
+            check(f"decrypt --extract '[\"pem\"]' {found[0]} | jq -Rs . | " in err
+                  and f"set --value-stdin {sfb} '[\"github\"][\"app\"][\"app_pem\"]'" in err,
+                  f"import pipeline for the missing key printed: {err}")
+            check(err.count("decrypt --extract") == 1, "import pipeline only for the key that is missing")
         for leak in SECRETS:
             check(leak not in out and leak not in err, f"{leak} not printed when a set fails")
-        check("FAKE-PEM" not in out + err, "no pem line printed when a set fails")
-        check(re.search(r"stored: app_id, app_slug, client_id, client_secret, webhook_secret", err) is not None
+        check("FAKE-PEM" not in out + err and "PLAINTEXT" not in err and "shred" not in err,
+              "no pem line and no plaintext-file instructions printed when a set fails")
+        check(re.search(r"stored under github\.app in \S+: app_id, app_slug, client_id, client_secret, webhook_secret", err) is not None
               and re.search(r"NOT stored:\s+app_pem:", err) is not None, f"stored and missing key names reported: {err}")
         check("install:" not in out, "no success summary when a set fails")
 
-        # response without a pem: kept in the default rescue dir (the sops file's)
+        # app_id missing: its pipeline turns the number into the stored string
+        idir = os.path.join(tmp, "idfail")
+        os.mkdir(idir)
+        rc, err, out = run(tmp, manifest, os.path.join(idir, "s.json"), api_port=port, env={"FAKE_SOPS_FAIL_SET": "app_id"})
+        check(rc != 0 and len(rescue_files(idir)) == 1 and "decrypt --extract '[\"id\"]' " in err and "| jq tostring | " in err,
+              f"import pipeline for app_id: {err}")
+
+        # (b) the set fails and sops encrypt fails too: nothing is written,
+        # the loss is stated with the App's html_url, nothing leaks.
+        ldir = os.path.join(tmp, "lost")
+        os.mkdir(ldir)
+        sfl = os.path.join(ldir, "s.json")
+        files_before = tree()
+        rc, err, out = run(tmp, manifest, sfl, api_port=port,
+                           env={"FAKE_SOPS_FAIL_SET": "client_secret", "FAKE_SOPS_FAIL_ENCRYPT": "1"})
+        new = tree() - files_before
+        check(rc != 0, "failed set and failed encrypt exit non-zero")
+        check(new == {sfl} and not rescue_files(ldir), f"no rescue file when sops encrypt fails: {sorted(new)}")
+        check("client_secret" not in stored(sfl).get("x", "") and '["github"]["app"]["client_secret"]' not in stored(sfl)
+              and stored(sfl).get('["github"]["app"]["app_pem"]') == PEM, "the other keys are still stored")
+        check("LOST" in err and "Delete it: https://github.com/apps/fleetkit-test" in err and "no installation" in err
+              and "run this again" in err, f"lost credentials stated with the App's html_url: {err}")
+        check(re.search(r"NOT stored:\s+client_secret:", err) is not None and "sops-encrypted" not in err,
+              f"lost run names the missing key and claims no rescue: {err}")
+        check("warning: sops cannot encrypt" in err and "nothing was sent to GitHub yet" in err,
+              f"preflight warned that the rescue would not work: {err}")
+        for leak in SECRETS + ("FAKE-PEM",):
+            check(leak not in out and leak not in err, f"{leak} not printed when the rescue fails too")
+        check("Traceback" not in err and "install:" not in out, "lost run: no traceback, no success summary")
+
+        # response without a pem: encrypted next to the sops file, nothing stored
         ddir = os.path.join(tmp, "default-rescue")
         os.mkdir(ddir)
         sfn = os.path.join(ddir, "s.json")
+        os.remove(os.environ["FAKE_SOPS_CALLS"])
         rc, err, out = run(tmp, manifest, sfn, code="nopem", api_port=port)
         found = rescue_files(ddir)
-        check(rc != 0 and len(found) == 1 and stat.S_IMODE(os.stat(found[0]).st_mode) == 0o600 and open(sfn).read() == "{}",
-              f"unusable response kept in the sops file's directory, nothing stored: {err}")
-        check("CLSECRET" not in out + err, "unusable response not printed")
+        check(rc != 0 and len(found) == 1 and open(sfn).read() == "{}",
+              f"unusable response kept encrypted in the sops file's directory, nothing stored: {err}")
+        if found:
+            check_rescue(found[0], sfn, {"id": 4242, "slug": "fleetkit-test", "client_secret": "CLSECRET"}, err, "no pem")
+        check("CLSECRET" not in out + err and not secret_files(tree(ddir)), "unusable response neither printed nor on disk")
 
-        # the response stalls part way: what arrived is kept, not printed
+        # the response stalls part way: what arrived is encrypted, not printed
         tdir = os.path.join(tmp, "stall")
         os.mkdir(tdir)
-        rc, err, out = run(tmp, manifest, os.path.join(tdir, "s.json"), code="stall", api_port=port,
-                           extra=("--http-timeout", "1"))
+        sft = os.path.join(tdir, "s.json")
+        os.remove(os.environ["FAKE_SOPS_CALLS"])
+        rc, err, out = run(tmp, manifest, sft, code="stall", api_port=port, extra=("--http-timeout", "1"))
         found = rescue_files(tdir)
-        check(rc != 0 and len(found) == 1 and stat.S_IMODE(os.stat(found[0]).st_mode) == 0o600,
-              f"timeout mid-response goes to the rescue file: {err}")
+        check(rc != 0 and len(found) == 1, f"timeout mid-response goes to an encrypted rescue file: {err}")
         if found:
-            check("TESTKEYMATERIAL" in open(found[0]).read(), "partial response body kept")
+            check_rescue(found[0], sft, {"raw_response": json.dumps(GOOD)[:-10]}, err, "stall")
+        check(not secret_files(tree(tdir)), "partial response is nowhere on disk in plaintext")
         for leak in SECRETS:
             check(leak not in out + err, f"{leak} not printed on a mid-response timeout")
+        # ... and if it cannot be encrypted it is lost, with the page to look at
+        rc, err, out = run(tmp, manifest, sft, code="stall", api_port=port, extra=("--http-timeout", "1"),
+                           env={"FAKE_SOPS_FAIL_ENCRYPT": "1"})
+        check(rc != 0 and len(rescue_files(tdir)) == 1 and "LOST" in err
+              and "https://github.com/organizations/acme/settings/apps" in err and not secret_files(tree(tdir)),
+              f"partial response that cannot be encrypted is lost, not written: {err}")
+        for leak in SECRETS + ("FAKE-PEM",):
+            check(leak not in out + err, f"{leak} not printed when a partial response is lost")
 
         # no response at all: no rescue file, and the tool says the code's fate is unknown
         qdir = os.path.join(tmp, "silent")
@@ -338,7 +450,7 @@ def main():
         # the API is unreachable: the tool's own error, no traceback
         rc, err, out = run(tmp, manifest, os.path.join(qdir, "s.json"), api_port=1)
         check(rc != 0 and "code exchange failed" in err and "Traceback" not in err, f"unreachable API: {err}")
-        check(not rescue_files(os.environ["TMPDIR"]), "no rescue file strays into the temp directory")
+        check(not os.listdir(os.environ["TMPDIR"]), "nothing strays into the temp directory")
 
         # record installation
         env = dict(os.environ)
