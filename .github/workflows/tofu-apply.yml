@@ -1,7 +1,8 @@
 name: tofu-apply
 # Reusable. Applies after the author gate (the caller's command does the apply).
 # The author gate runs first: only when the pull request's author AND the account that merged it are
-# in ungated_authors does the command run. Otherwise nothing runs and a clearly worded status is
+# in ungated_authors, AND sha is that pull request's merge commit (and base_branch, when given, is
+# the branch it was merged into), does the command run. Otherwise nothing runs and a clearly worded status is
 # reported (state success, because a commit status has no neutral; the description says GATED and
 # that nothing ran). Context "tofu-apply".
 on:
@@ -16,17 +17,24 @@ on:
         type: string
         required: true
       sha:
-        description: Commit to check out and to report the status on.
+        description: >-
+          Commit to check out and to report the status on. Must be the merge commit of pull_request
+          (40 hex), or the gate stays closed.
         type: string
         required: true
       pull_request:
-        description: Number of the pull request in repository that produced sha.
+        description: Number of the pull request in repository whose merge produced sha.
         type: string
         required: true
       ungated_authors:
         description: Logins (comma, space or newline separated) whose pull requests may run unattended.
         type: string
         required: true
+      base_branch:
+        description: Optional. Branch the pull request must have been merged into; empty means any.
+        type: string
+        required: false
+        default: ""
       command:
         description: Command to run in the checkout (the lab's own tool).
         type: string
@@ -80,12 +88,16 @@ jobs:
           token: ${{ secrets.token }}
           repository: ${{ inputs.repository }}
           pull_request: ${{ inputs.pull_request }}
+          sha: ${{ inputs.sha }}
           ungated_authors: ${{ inputs.ungated_authors }}
+          base_branch: ${{ inputs.base_branch }}
       - name: status gated
         if: steps.gate.outputs.ungated != 'true'
+        env:
+          REASON: ${{ steps.gate.outputs.reason }}
         run: |
           gh api -X POST "repos/$REPO/statuses/$SHA" -f state=success -f context="$CONTEXT" \
-            -f description="GATED: author or merger not in the ungated list; nothing was run" \
+            -f description="GATED: $REASON; nothing was run" \
             -f target_url="$TARGET_URL"
       - uses: actions/checkout@v4
         if: steps.gate.outputs.ungated == 'true'

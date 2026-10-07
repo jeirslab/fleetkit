@@ -21,9 +21,11 @@ estate name: all of it arrives as an input or a secret from the caller.
 3. **Merge.** A person merges the tenant pull request.
 4. **Apply and deploy, on the deploy runner, gated by author.** After the
    merge, `tofu-apply` and `deploy` run on the deploy runner. Both start with
-   the `author-gate` action, which reads the pull request's author and merger
-   from the GitHub API and compares both with the caller's ungated list. If
-   either is not on the list, the job reports a success status described as
+   the `author-gate` action, which reads the pull request's author, merger
+   and merge commit from the GitHub API. It compares author and merger with
+   the caller's ungated list, and the commit it was asked to run with the
+   merge commit. If either login is not on the list, or the commit is not that
+   pull request's merge commit, the job reports a success status described as
    GATED and runs nothing: the checkout and the command are skipped. A person
    then runs the step by hand. `check-flake`, `nixos-build` and `tofu-plan`
    never deploy and do not use the gate.
@@ -48,7 +50,7 @@ reports the commit status and, where noted, reads the repository.
 | `check-flake` | checks runner | `runs_on`, `repository`, `sha`, `command` | `token`: reads the repository, writes commit statuses |
 | `nixos-build` | checks runner | same as `check-flake` | same |
 | `tofu-plan` | checks runner | same as `check-flake` | same |
-| `tofu-apply` | deploy runner | the above plus `pull_request` and `ungated_authors` | `token`: also reads the pull request |
+| `tofu-apply` | deploy runner | the above plus `pull_request` and `ungated_authors`; optional `base_branch`. `sha` must be the merge commit of `pull_request` | `token`: also reads the pull request |
 | `deploy` | deploy runner | same as `tofu-apply` | same |
 
 `repository` and `sha` name the repository and commit to check out and to
@@ -60,13 +62,34 @@ the exact descriptions.
 ### The author gate
 
 `.github/actions/author-gate/action.yml` is a composite action used by
-`tofu-apply` and `deploy`. It takes `token`, `repository`, `pull_request` and
-`ungated_authors` (logins separated by commas, spaces or newlines) and
-outputs `ungated`, `author` and `merged_by`. `ungated` is `true` only when
-the pull request has been merged and both its author and its merger are in the
-list. Both are read from the API with the given token; nothing about them is
-taken from the event that started the workflow or from the tenant signal. If
-the gate cannot decide, the workflow reports an error status and runs nothing.
+`tofu-apply` and `deploy`. It takes `token`, `repository`, `pull_request`,
+`sha`, `ungated_authors` (logins separated by commas, spaces or newlines) and
+optionally `base_branch`, and outputs `ungated`, `author`, `merged_by`,
+`merge_commit`, `base_ref` and `reason`. `ungated` is `true` only when all of
+these hold:
+
+- the pull request has been merged, and both its author and its merger are in
+  the list;
+- `sha` is the pull request's merge commit (`merge_commit_sha`);
+- `base_branch`, when given, is the branch it was merged into (`base.ref`).
+
+Author, merger, merge commit and base branch are read from the API with the
+given token; nothing about them is taken from the event that started the
+workflow or from the tenant signal. If the gate cannot decide, the workflow
+reports an error status and runs nothing.
+
+The pull request number and the commit can reach the lab from the tenant
+signal, which the tenant repository sends, so neither is trusted on its own.
+A number only selects which pull request the API is asked about. The commit
+is the one `tofu-apply` and `deploy` check out and run, and the gate binds it
+to that pull request: without the binding, a sender could name any old pull
+request merged by an ungated author together with a commit nobody ungated
+wrote or merged. With it, the only commit that passes is the one the ungated
+merger put on the base branch. This means the caller passes the merge commit
+as `sha`, not the pull request's head commit, and the status of `tofu-apply`
+and `deploy` is reported on the merge commit. Pass `base_branch` (for example
+`main`) so that a pull request merged into some other branch does not count;
+without it any base branch does.
 
 The workflows do not name the gate by a branch. They check out the kit at the
 commit the workflow file itself was called at (`job.workflow_sha`, from
@@ -77,7 +100,8 @@ before the gate and runs nothing. The kit checkout uses the job's own token,
 which is enough while the kit repository is public.
 
 A gated run reports the state `success`, because a commit status has no
-neutral state; the description starts with `GATED` and says nothing was run.
+neutral state; the description starts with `GATED`, gives the reason and
+says nothing was run.
 Do not read a green `tofu-apply` or `deploy` status as "applied" without
 reading its description.
 
@@ -120,7 +144,7 @@ repos.myestate.lab.files.".github/workflows/check-flake.yml".content =
     workflow = "check-flake";
     ref = "0123456789abcdef0123456789abcdef01234567"; # a full commit SHA
     on = { pull_request = { }; };
-    with = {
+    "with" = {
       runs_on = builtins.toJSON [ "self-hosted" "checks" ]; # a string holding a JSON list
       repository = "myorg/lab";
       sha = "\${{ github.sha }}";
@@ -132,7 +156,8 @@ repos.myestate.lab.files.".github/workflows/check-flake.yml".content =
 ```
 
 The arguments are `name`, `workflow`, `ref`, `on`, and optionally `with`,
-`secrets` and `permissions`. The kit repository is `jeirslab/fleetkit` unless
+`secrets` and `permissions`. `with` is a Nix keyword, so the attribute name
+must be quoted (`"with" = { ... };`); unquoted it is a syntax error. The kit repository is `jeirslab/fleetkit` unless
 overridden. The result is text; the kit renders it and never writes it. As with
 every managed file, plan and apply stay in the estate repository, and the
 text is escaped so that `${{ ... }}` expressions survive Terraform.
