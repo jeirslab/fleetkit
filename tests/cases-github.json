@@ -53,6 +53,8 @@
     "      message = \"Manage signal workflow\";",
     "    };",
     "    runners.ci = { labels = [ \"self-hosted\" \"checks\" ]; on = \"gh/runner\"; };",
+    "    runners.esc = { labels = [ \"\\${not_a_ref}\" ]; on = \"gh/runner\"; };",
+    "    files.\"docs/escaped.txt\" = { content = \"x\"; branch = \"\\${not_a_ref}\"; };",
     "  };",
     "  fleet.repos.gh.site.environments.live = { estateEnvironment = \"gh/prod\"; branches = [ \"main\" ]; };",
     "  fleet.estates.gh.git.actions.secrets.SITE_TOKEN = { sourceRef = \"sops:gh/gh#other-token\"; repos = [ \"gh/site\" ]; };",
@@ -215,7 +217,7 @@
     {
       "name": "org-plan-pro",
       "description": "an organisation that declares the personal-account plan pro",
-      "expect": "mkGithubTerraform: fleet\\.estates\\.gh\\.git\\.plan: \"pro\" is a personal account's plan; an organisation \\(kind = \"org\"\\) is on free, team or enterprise",
+      "expect": "- fleet\\.estates\\.gh\\.git\\.plan: \"pro\" is a personal account's plan; an organisation \\(kind = \"org\"\\) is on free, team or enterprise",
       "module": [
         "{ lib, ... }: { fleet.estates.gh.git.plan = lib.mkForce \"pro\"; }"
       ],
@@ -242,7 +244,7 @@
     {
       "name": "plan-unknown",
       "description": "an unknown git.plan on the organisation fixture",
-      "expect": "mkGithubTerraform: fleet\\.estates\\.gh\\.git: plan \"bogus\" is not one of free, pro, team, enterprise",
+      "expect": "- fleet\\.estates\\.gh\\.git\\.plan: \"bogus\" is not one of free, pro, team, enterprise",
       "module": [
         "{ lib, ... }: { fleet.estates.gh.git.plan = lib.mkForce \"bogus\"; }"
       ],
@@ -251,7 +253,7 @@
     {
       "name": "plan-unknown-nothing-plan-dependent",
       "description": "an unknown git.plan on a personal account with no environment, organisation secret or ruleset: still refused",
-      "expect": "mkGithubTerraform: fleet\\.estates\\.gh\\.git: plan \"bogus\" is not one of free, pro, team, enterprise",
+      "expect": "- fleet\\.estates\\.gh\\.git\\.plan: \"bogus\" is not one of free, pro, team, enterprise",
       "module": [
         "{ lib, ... }: {",
         "  fleet.estates.gh.git = lib.mkForce {",
@@ -269,7 +271,7 @@
     {
       "name": "org-plan-pro-nothing-plan-dependent",
       "description": "an organisation on pro with no environment, organisation secret or ruleset: still refused",
-      "expect": "mkGithubTerraform: fleet\\.estates\\.gh\\.git\\.plan: \"pro\" is a personal account's plan; an organisation \\(kind = \"org\"\\) is on free, team or enterprise",
+      "expect": "- fleet\\.estates\\.gh\\.git\\.plan: \"pro\" is a personal account's plan; an organisation \\(kind = \"org\"\\) is on free, team or enterprise",
       "module": [
         "{ lib, ... }: {",
         "  fleet.estates.gh.git = lib.mkForce {",

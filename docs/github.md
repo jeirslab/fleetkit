@@ -33,11 +33,20 @@ estate repo.
 | `locals.fleet_forks` | repositories that are forks |
 | `locals.fleet_unrendered` | what the kit cannot render (see below) |
 
+## Where the plan is checked
+
+`git.plan` is checked twice. The model refuses a value that is not `free`,
+`pro`, `team` or `enterprise`, and `pro` on an organisation, as a failed
+assertion of the fleet itself (`modules/loose.nix`), so a tenant check or any
+other evaluation of the fleet sees it. The renderer refuses the same two on
+every render, for a caller that passes a fleet it did not check.
+
 ## Estate text is never a template
 
 Terraform reads every string in `main.tf.json` as a template. Text the estate
-supplies (a managed file's path, content and commit message, an Actions
-variable's value, a label's name and description) is rendered with `${` and
+supplies (a managed file's path, branch, content and commit message, an
+Actions variable's value, a label's name and description, a runner's name
+and labels) is rendered with `${` and
 `%{` escaped (`$${`, `%%{`). A workflow file keeps its `${{ ... }}`
 expressions, and no value can turn into a reference to another part of the
 render, such as a secret. Only the kit's own expressions are templates.

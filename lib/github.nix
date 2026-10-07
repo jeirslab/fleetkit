@@ -414,15 +414,15 @@ let
         content = tfText x.v.content;
         overwrite_on_create = x.v.overwrite or true;
       }
-      // lib.optionalAttrs ((x.v.branch or null) != null) { inherit (x.v) branch; }
+      // lib.optionalAttrs ((x.v.branch or null) != null) { branch = tfText x.v.branch; }
       // lib.optionalAttrs ((x.v.message or null) != null) { commit_message = tfText x.v.message; };
     }) (flat repoFiles)
   );
   # Terraform cannot register a runner: report the declared ones only.
   runnerReport = map (x: {
     repository = "${estate}/${x.k}";
-    name = x.n;
-    labels = x.v.labels or [ ];
+    name = tfText x.n;
+    labels = map tfText (x.v.labels or [ ]);
     on = x.v.on or null;
   }) (flat repoRunners);
 

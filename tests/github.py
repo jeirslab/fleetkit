@@ -330,6 +330,13 @@ def check_full(doc, cases, all_skipped):
             problems.append(f"{rtype}: a runner must not be a resource (Terraform cannot register one)")
     if "self-hosted" not in json.dumps(locs) or "gh/runner" not in json.dumps(locs):
         problems.append("the runner (labels, guest gh/runner) is not exposed in locals")
+    # Estate text in a runner label or a file's branch is escaped like any other.
+    esc = [r for r in locs.get("fleet_runners", []) if r.get("name") == "esc"]
+    if len(esc) != 1 or esc[0].get("labels") != ["$${not_a_ref}"]:
+        problems.append(f"runner esc: label is not escaped in locals.fleet_runners: {esc}")
+    escf = only(resources, "github_repository_file", file="docs/escaped.txt")
+    if len(escf) != 1 or escf[0][1].get("branch") != "$${not_a_ref}":
+        problems.append(f"github_repository_file docs/escaped.txt: branch is not escaped: {escf}")
 
     # The skipped resources are still reported (their absence is checked in check()).
     if "free" not in all_skipped.lower():

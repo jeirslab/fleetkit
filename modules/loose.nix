@@ -95,8 +95,25 @@ let
           ]
         else
           [ ];
+      plan = g.plan or "free";
+      plans = [
+        "free"
+        "pro"
+        "team"
+        "enterprise"
+      ];
     in
-    keysOk (w "") [
+    [
+      {
+        assertion = builtins.isString plan && builtins.elem plan plans;
+        message = "${w "plan"}: \"${toString plan}\" is not one of ${lib.concatStringsSep ", " plans}";
+      }
+      {
+        assertion = !((g.kind or null) == "org" && plan == "pro");
+        message = "${w "plan"}: \"pro\" is a personal account's plan; an organisation (kind = \"org\") is on free, team or enterprise";
+      }
+    ]
+    ++ keysOk (w "") [
       "actions"
       "auth"
       "backend"
