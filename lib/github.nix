@@ -21,10 +21,27 @@
 # Repositories are never destroyed by removal: archive_on_destroy = true and
 # lifecycle.prevent_destroy = true. A fork is rendered like any repository
 # (the provider cannot create a fork relationship); the keys are listed in
-# locals.fleet_forks. What the model holds but is not rendered (deploy keys,
-# an environment's branches, outside collaborators) is listed in
-# locals.fleet_unrendered; rulesets above git.plan in
-# locals.fleet_skipped_rulesets.
+# locals.fleet_forks.
+#
+# Per repository, besides the repository itself: github_actions_secret,
+# github_actions_variable, github_issue_label and github_repository_file
+# (repos.<estate>.<key>.actions.secrets / actions.variables / labels / files).
+#
+# What the render reports in locals instead of rendering:
+#   fleet_unrendered            what the model holds but the kit cannot render:
+#                               deploy keys, every environment's branches
+#                               (those of a skipped environment too), outside
+#                               collaborators, some git.actions blocks
+#   fleet_skipped_rulesets      rulesets above git.plan
+#   fleet_skipped_environments  environments of a private repository on plan
+#                               "free" (an organisation or a personal account)
+#   fleet_skipped_org_secrets   organisation secrets that select a private
+#                               repository on plan "free" (the whole secret is
+#                               dropped, and its sops data is not read)
+#   fleet_runners               repos.<estate>.<key>.runners: data for a host
+#                               module, never a resource
+# An unset git.plan is "free". The plans are free < pro < team < enterprise;
+# "pro" is a personal account's plan (GitHub Pro), never an organisation's.
 {
   lib,
   fleet,
@@ -66,8 +83,11 @@ let
       );
     in
     if builtins.match "[A-Za-z_].*" clean != null then clean else "_${clean}";
-  # [ { raw; value; } ] -> { <tfName raw> = value; }; two entries that render
-  # the same name are an error, never a silent overwrite.
+  # [ { raw; value; label ? } ] -> { <tfName raw> = value; }; two entries that
+  # render the same name are an error, never a silent overwrite. `label` is
+  # what the error shows for an entry instead of its quoted raw name: a raw
+  # name joined from two parts ("<repo key>_<item>") can be the same string
+  # for both offenders, so those entries name their parts separately.
   named =
     what: pairs:
     let
@@ -78,7 +98,7 @@ let
       throw "${where}: ${what}: ${
         lib.concatStringsSep "; " (
           lib.mapAttrsToList (
-            n: ps: "${lib.concatMapStringsSep ", " (p: "\"${p.raw}\"") ps} all render the resource name \"${n}\""
+            n: ps: "${lib.concatMapStringsSep ", " (p: p.label or "\"${p.raw}\"") ps} all render the resource name \"${n}\""
           ) clashes
         )
       }"
@@ -115,7 +135,52 @@ let
   auth = g.auth or null;
   # Actions secrets are organisation resources: without an organisation none
   # is rendered, so its value is not read either.
-  secrets = lib.optionalAttrs isOrg (g.actions.secrets or { });
+  # An unset git.plan is "free": a paid organisation must say so to keep its
+  # private repositories' environments and its organisation secrets, and a
+  # personal account on GitHub Pro must say "pro" to keep the environments.
+  plan = g.plan or "free";
+  # free < pro < team < enterprise. "pro" is the paid plan of a personal
+  # account; an organisation is on free, team or enterprise.
+  rank = {
+    free = 0;
+    pro = 1;
+    team = 2;
+    enterprise = 3;
+  };
+  rankOf =
+    p: rank.${p} or (throw "${where}: plan \"${toString p}\" is not one of free, pro, team, enterprise");
+  planRank =
+    if isOrg && plan == "pro" then
+      throw "${where}.plan: \"pro\" is a personal account's plan; an organisation (kind = \"org\") is on free, team or enterprise"
+    else
+      rankOf plan;
+  # What the reasons in locals call the owner of the plan.
+  account = if isOrg then "the organisation" else "the account";
+  # A private repository on GitHub Free cannot use organisation secrets, and
+  # cannot have environments; the second holds for a personal account too
+  # (environments in a private repository need GitHub Pro there), so it is
+  # not tied to isOrg. Anything not public counts as private.
+  isPrivate = k: (repos.${k}.visibility or "private") != "public";
+  freePlan = planRank == rank.free;
+  allOrgSecrets = lib.optionalAttrs isOrg (g.actions.secrets or { });
+  orgSecretPrivateRepos =
+    s:
+    lib.filter (id: isPrivate (repoKey id)) (s.repos or [ ]);
+  secretsSkipped = lib.filterAttrs (_: s: freePlan && orgSecretPrivateRepos s != [ ]) allOrgSecrets;
+  secrets = lib.filterAttrs (n: _: !(secretsSkipped ? ${n})) allOrgSecrets;
+
+  # Repository-level Actions settings, read with defaults: the options live in
+  # modules/repos.nix.
+  repoActions = r: r.actions or { };
+  repoSecrets = lib.mapAttrs (_: r: (repoActions r).secrets or { }) repos;
+  repoVariables = lib.mapAttrs (_: r: (repoActions r).variables or { }) repos;
+  repoLabels = lib.mapAttrs (_: r: r.labels or { }) repos;
+  repoFiles = lib.mapAttrs (_: r: r.files or { }) repos;
+  repoRunners = lib.mapAttrs (_: r: r.runners or { }) repos;
+  # [ { k; n; v; } ] for one per-repository attrset.
+  flat =
+    perRepo:
+    lib.concatLists (lib.mapAttrsToList (k: m: lib.mapAttrsToList (n: v: { inherit k n v; }) m) perRepo);
   usedRefs =
     lib.optionals (auth != null) (
       if auth.kind == "app" then
@@ -127,7 +192,8 @@ let
       else
         [ auth.tokenRef ]
     )
-    ++ lib.mapAttrsToList (_: s: s.sourceRef) secrets;
+    ++ lib.mapAttrsToList (_: s: s.sourceRef) secrets
+    ++ map (x: x.v.sourceRef) (flat repoSecrets);
   resolved = map sopsRef usedRefs;
   sopsData = lib.listToAttrs (
     map (r: lib.nameValuePair r.name { source_file = r.path; }) resolved
@@ -183,11 +249,13 @@ let
     branch = r.defaultBranch;
   }) withDefaultBranch;
 
-  envList = lib.concatLists (
+  allEnvList = lib.concatLists (
     lib.mapAttrsToList (
       k: r: lib.mapAttrsToList (env: e: { inherit k env e; }) r.environments
     ) repos
   );
+  envSkipped = lib.filter (x: freePlan && isPrivate x.k) allEnvList;
+  envList = lib.filter (x: !(freePlan && isPrivate x.k)) allEnvList;
   environments = named "repository environments" (
     map (x: {
       raw = "${x.k}_${x.env}";
@@ -197,10 +265,12 @@ let
       };
     }) envList
   );
-  # An environment's deployment branches are not rendered.
+  # An environment's deployment branches are not rendered. A skipped
+  # environment's branches are still declared and still not rendered, so they
+  # stay listed (allEnvList, not envList).
   envBranches = lib.concatMap (
     x: map (b: "environment_branch:${x.k}.${x.env}:${b}") x.e.branches
-  ) envList;
+  ) allEnvList;
 
   # The model has no public key for a deploy key, so none is rendered.
   deployKeys = lib.concatLists (
@@ -276,17 +346,89 @@ let
     selected_repository_ids = map repoId (s.repos or [ ]);
   }) secrets;
 
+  # ---- repository-level Actions, labels, files, runners ------------------
+  repoName = k: ref "${repoAddr k}.name";
+  # The resource name is "<repo key>_<item>", which does not say where the
+  # key ends: repository "app" with "B_C" and repository "app_B" with "C" are
+  # the same string. A clash is reported with the two parts apart.
+  # Terraform reads every string of main.tf.json as a template. Text an
+  # estate supplies (a file's content, a variable's value, a label, a commit
+  # message) is escaped, so a workflow's ''${{ ... }} survives and no value can
+  # become a reference to something else in the render, a secret included.
+  # Only the kit's own expressions (sopsRef, resource references) are
+  # templates.
+  tfText =
+    lib.replaceStrings
+      [
+        "\${"
+        "%{"
+      ]
+      [
+        "$\${"
+        "%%{"
+      ];
+  perRepoLabel = kind: x: "repository \"${x.k}\" ${kind} \"${x.n}\"";
+  repoActionsSecrets = named "repository Actions secrets" (
+    map (x: {
+      raw = "${x.k}_${x.n}";
+      label = perRepoLabel "Actions secret" x;
+      value = {
+        repository = repoName x.k;
+        secret_name = x.n;
+        plaintext_value = (sopsRef x.v.sourceRef).expr;
+      };
+    }) (flat repoSecrets)
+  );
+  repoActionsVariables = named "repository Actions variables" (
+    map (x: {
+      raw = "${x.k}_${x.n}";
+      label = perRepoLabel "Actions variable" x;
+      value = {
+        repository = repoName x.k;
+        variable_name = x.n;
+        value = tfText x.v;
+      };
+    }) (flat repoVariables)
+  );
+  issueLabels = named "issue labels" (
+    map (x: {
+      raw = "${x.k}_${x.n}";
+      label = perRepoLabel "label" x;
+      value = {
+        repository = repoName x.k;
+        name = tfText x.n;
+        inherit (x.v) color;
+      }
+      // lib.optionalAttrs ((x.v.description or null) != null) {
+        description = tfText x.v.description;
+      };
+    }) (flat repoLabels)
+  );
+  repositoryFiles = named "repository files" (
+    map (x: {
+      raw = "${x.k}_${x.n}";
+      label = perRepoLabel "file" x;
+      value = {
+        repository = repoName x.k;
+        file = tfText x.n;
+        content = tfText x.v.content;
+        overwrite_on_create = x.v.overwrite or true;
+      }
+      // lib.optionalAttrs ((x.v.branch or null) != null) { branch = tfText x.v.branch; }
+      // lib.optionalAttrs ((x.v.message or null) != null) { commit_message = tfText x.v.message; };
+    }) (flat repoFiles)
+  );
+  # Terraform cannot register a runner: report the declared ones only.
+  runnerReport = map (x: {
+    repository = "${estate}/${x.k}";
+    name = tfText x.n;
+    labels = map tfText (x.v.labels or [ ]);
+    on = x.v.on or null;
+  }) (flat repoRunners);
+
   # ---- rulesets ----------------------------------------------------------
-  rank = {
-    free = 0;
-    team = 1;
-    enterprise = 2;
-  };
-  plan = g.plan or "free";
   rulesets = g.rulesets or { };
-  rankOf =
-    p: rank.${p} or (throw "${where}: plan \"${toString p}\" is not one of free, team, enterprise");
-  allowed = lib.filterAttrs (_: rs: rankOf (rs.requiresPlan or "free") <= rankOf plan) rulesets;
+  allowed = lib.filterAttrs (_: rs: rankOf (rs.requiresPlan or "free") <= planRank) rulesets;
   skipped = lib.filterAttrs (n: _: !(allowed ? ${n})) rulesets;
   renderRuleset = n: rs: {
     name = n;
@@ -330,7 +472,9 @@ let
 
   nonEmpty = lib.filterAttrs (_: v: v != { });
 in
-{
+# The plan is validated whatever the estate declares: forced here, not only
+# where an environment, organisation secret or ruleset happens to read it.
+builtins.seq planRank {
   terraform.required_providers = {
     github = {
       source = "integrations/github";
@@ -353,6 +497,10 @@ in
       github_repository = namedAttrs "repositories" renderRepo repos;
       github_branch_default = branchDefaults;
       github_repository_environment = environments;
+      github_actions_secret = repoActionsSecrets;
+      github_actions_variable = repoActionsVariables;
+      github_issue_label = issueLabels;
+      github_repository_file = repositoryFiles;
     }
     // lib.optionalAttrs isOrg orgResources
   );
@@ -362,6 +510,16 @@ in
     fleet_skipped_rulesets = lib.mapAttrsToList (
       n: rs: "${n}: requires plan ${rs.requiresPlan}, the organisation is on ${plan}"
     ) skipped;
+    fleet_skipped_environments = map (
+      x: "${x.k}.${x.env}: private repository, environments need a paid plan, ${account} is on ${plan}"
+    ) envSkipped;
+    fleet_skipped_org_secrets = lib.mapAttrsToList (
+      n: s:
+      "${n}: organisation secrets are not available to private repositories on ${plan} (${
+        lib.concatStringsSep ", " (orgSecretPrivateRepos s)
+      }); use repository-level secrets"
+    ) secretsSkipped;
+    fleet_runners = runnerReport;
     fleet_unrendered =
       deployKeys
       ++ envBranches
