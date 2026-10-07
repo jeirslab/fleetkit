@@ -21,10 +21,26 @@
 # Repositories are never destroyed by removal: archive_on_destroy = true and
 # lifecycle.prevent_destroy = true. A fork is rendered like any repository
 # (the provider cannot create a fork relationship); the keys are listed in
-# locals.fleet_forks. What the model holds but is not rendered (deploy keys,
-# an environment's branches, outside collaborators) is listed in
-# locals.fleet_unrendered; rulesets above git.plan in
-# locals.fleet_skipped_rulesets.
+# locals.fleet_forks.
+#
+# Per repository, besides the repository itself: github_actions_secret,
+# github_actions_variable, github_issue_label and github_repository_file
+# (repos.<estate>.<key>.actions.secrets / actions.variables / labels / files).
+#
+# What the render reports in locals instead of rendering:
+#   fleet_unrendered            what the model holds but the kit cannot render:
+#                               deploy keys, every environment's branches
+#                               (those of a skipped environment too), outside
+#                               collaborators, some git.actions blocks
+#   fleet_skipped_rulesets      rulesets above git.plan
+#   fleet_skipped_environments  environments of a private repository on plan
+#                               "free"
+#   fleet_skipped_org_secrets   organisation secrets that select a private
+#                               repository on plan "free" (the whole secret is
+#                               dropped, and its sops data is not read)
+#   fleet_runners               repos.<estate>.<key>.runners: data for a host
+#                               module, never a resource
+# An unset git.plan is "free".
 {
   lib,
   fleet,
@@ -115,6 +131,8 @@ let
   auth = g.auth or null;
   # Actions secrets are organisation resources: without an organisation none
   # is rendered, so its value is not read either.
+  # An unset git.plan is "free": a paid organisation must say so to keep its
+  # private repositories' environments and its organisation secrets.
   plan = g.plan or "free";
   # A private repository on GitHub Free cannot use organisation secrets, and
   # cannot have environments. Anything not public counts as private.
@@ -223,10 +241,12 @@ let
       };
     }) envList
   );
-  # An environment's deployment branches are not rendered.
+  # An environment's deployment branches are not rendered. A skipped
+  # environment's branches are still declared and still not rendered, so they
+  # stay listed (allEnvList, not envList).
   envBranches = lib.concatMap (
     x: map (b: "environment_branch:${x.k}.${x.env}:${b}") x.e.branches
-  ) envList;
+  ) allEnvList;
 
   # The model has no public key for a deploy key, so none is rendered.
   deployKeys = lib.concatLists (

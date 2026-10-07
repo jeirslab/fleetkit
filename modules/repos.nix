@@ -147,7 +147,7 @@ let
                   labels = mkOption { type = types.listOf types.str; };
                   on = mkOption {
                     type = types.str;
-                    description = "Guest id (<estate>/<name>) that runs this runner: a guest of the same estate or a lab guest. Model data only; Terraform cannot register a runner.";
+                    description = "Guest id (<estate>/<name>) that runs this runner. Any declared guest is accepted, of this estate or another: the model has no rule for which estate may place a runner where, so placement across estates is NOT checked here. Whoever reads locals.fleet_runners to configure a host must decide whether that guest may serve this repository. Model data only; Terraform cannot register a runner.";
                   };
                 };
               }
@@ -256,6 +256,8 @@ let
             lib.mapAttrsToList (
               rn: rv:
               [
+                # Any declared guest: the estate of the guest is not compared
+                # with the repository's (see the option description).
                 (h.refAssertion {
                   where = w "runners.${rn}.on";
                   kind = "guest";

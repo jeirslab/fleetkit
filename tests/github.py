@@ -128,6 +128,9 @@ def check(doc, schema, full=None):
             problems.append(f"github_repository_environment.{name}: deployment_branch_policy is rendered")
     if full and "environment_branch:site.live:main" not in (locs.get("fleet_unrendered") or []):
         problems.append("locals.fleet_unrendered does not list environment_branch:site.live:main")
+    # A skipped environment's branches are still declared and still unrendered.
+    if "environment_branch:app.prod:main" not in (locs.get("fleet_unrendered") or []):
+        problems.append("locals.fleet_unrendered does not list environment_branch:app.prod:main (a skipped environment's branches stay listed)")
     if "github_repository_environment_deployment_policy" in resources:
         problems.append("github_repository_environment_deployment_policy is rendered")
     skipped_text = {
