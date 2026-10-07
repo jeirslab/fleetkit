@@ -27,16 +27,18 @@ class DeployRequest(BaseModel):
 
 
 def run(s: Settings, req: DeployRequest, ev: Emitter) -> dict[str, Any]:
-    result: dict[str, Any] = {"infra": {}, "nixos": None}
+    result: dict[str, Any] = {"infra": {}, "programs": {}, "nixos": None}
     stacks: list[str] = []
     if req.infra:
         stacks = req.stacks or render.stacks_of(s, req.estate)
         # Render everything before changing anything: a model that does not
         # evaluate fails the deploy with nothing applied.
-        workdirs = {st: render.render(s, req.estate, st, ev) for st in stacks}
+        rendered = {st: render.render(s, req.estate, st, ev) for st in stacks}
+        # The store path of each program: exactly what this deploy ran.
+        result["programs"] = {st: main for st, (_, main) in rendered.items()}
         for st in stacks:
             ev.check()
-            result["infra"][st] = infra.run(s, workdirs[st], st, ev, req.preview,
+            result["infra"][st] = infra.run(s, rendered[st][0], st, ev, req.preview,
                                             req.refresh, req.targets)
     if req.nixos:
         # After infra: the hive is evaluated now, against what was provisioned.

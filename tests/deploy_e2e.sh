@@ -84,6 +84,13 @@ if "$FK" preview mini --hive example --json >"$TMP/preview.jsonl" 2>"$TMP/previe
   tools jq -e -s 'map(select(.kind=="step" and .op=="create")) | length >= 4' "$TMP/preview.jsonl" >/dev/null \
     || fail "preview steps"
   grep -q '00000000-0000-0000-0000-000000000000' "$TMP/preview.jsonl" && fail "token in the events"
+  # The project dir: Pulumi.json, Main.json a rooted link to the program in
+  # the store, and the secrets file linked from the estate repo.
+  wd="$TMP/state/work/mini/guests"
+  [[ -f $wd/Pulumi.json && ! -e $wd/Pulumi.yaml ]] || fail "the project file is not Pulumi.json"
+  [[ $(readlink "$wd/Main.json") == /nix/store/*-Main.json ]] || fail "Main.json is not the program in the store"
+  [[ $(readlink "$wd/secrets/tf.json") == "$E/secrets/tf.json" ]] || fail "the secrets file is not linked"
+  grep -q "$(readlink "$wd/Main.json")" "$TMP/preview.jsonl" || fail "the program's store path is not in the events"
   grep -q "^build -f $TMP/state/work/_hives/example.nix --impure$" "$TMP/colmena.calls" \
     || { cat "$TMP/colmena.calls" >&2; fail "colmena build call"; }
 else
@@ -109,7 +116,7 @@ for _ in $(seq 600); do
   sleep 1
 done
 [[ $state == succeeded ]] || { tools curl -sf "${auth[@]}" "$API/v1/deploys/$job/events" >&2; fail "API job is $state"; }
-tools curl -sf "${auth[@]}" "$API/v1/deploys/$job" | tools jq -e '.result.infra.guests.create == 6 and .result.nixos == "built"' >/dev/null \
+tools curl -sf "${auth[@]}" "$API/v1/deploys/$job" | tools jq -e '.result.infra.guests.create == 6 and .result.nixos == "built" and (.result.programs.guests | startswith("/nix/store/"))' >/dev/null \
   || fail "API job result"
 tools curl -sf "${auth[@]}" "$API/v1/deploys/$job/stream" | grep -q '^event: end' || fail "API stream end"
 bstate=$(tools curl -sf "${auth[@]}" "$API/v1/deploys/$bad" | tools jq -r '.state + " " + .error')

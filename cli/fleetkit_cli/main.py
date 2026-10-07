@@ -72,7 +72,8 @@ def render_cmd(ctx: click.Context, estate: str, stack: str | None) -> None:
     s = _settings(ctx)
     ev = Emitter(lambda e: None)
     for st in [stack] if stack else render.stacks_of(s, estate):
-        click.echo(render.render(s, estate, st, ev))
+        wd, main = render.render(s, estate, st, ev)
+        click.echo(f"{wd}  (program {main})")
 
 
 def _deploy_options(f):

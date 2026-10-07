@@ -30,13 +30,43 @@ The gap is the model's untyped blocks (`docs/schema-todo.md`): their contents
 are checked at steps 2 to 4, not by a Nix option type. Generating
 `types.submodule`s from the pinned schemas would move that to step 1.
 
+## JSON all the way
+
+There is no YAML anywhere: Nix emits JSON (`builtins.toJSON`), and Pulumi's
+YAML runtime reads JSON because JSON is YAML. The runner lays each stack out as
+
+```
+<state>/work/<estate>/<stack>/
+  Pulumi.json        name, runtime: yaml, packages   (the project)
+  Main.json  ->  /nix/store/<hash>-Main.json        (the program: resources, variables, outputs)
+  secrets/...  ->  the estate repo's sops files     (the sops provider reads them relative to here)
+  Pulumi.<stack>.json                               (Pulumi's, written on stack init)
+```
+
+`Main.json` is written by `builtins.toFile` during the same `nix eval` (no
+build, no `pkgs`), so the program that runs is an immutable, content-addressed
+store file. The work dir link is a GC root (`nix build --out-link`), and every
+deploy records each program's store path (`result.programs`, and the render
+event), so a deploy says exactly what it ran.
+
+What does not work, found by trying (Pulumi 3.261, pulumi-yaml in pulumi-bin):
+
+- `Pulumi.json` holding the whole program: the CLI accepts the file name, but
+  the YAML runtime finds no program in it and crashes (nil template).
+- `packages` in `Main.json`: `pulumi install` no longer sees the bridge's
+  parameters and looks for a nonexistent `pulumi-proxmox` plugin. They belong in
+  the project file only.
+- `main:` pointing the project at a store directory: the program loads, but the
+  packages are again not resolved, even with a project file in that directory.
+  A symlinked `Main.json` in the project dir avoids it.
+
 ## The runner (`packages.fleetkit`, `cli/`)
 
 One pipeline, the same for the CLI and the API:
 
-1. **render**: `nix eval --json <repo>#pulumi.<estate>.<stack>` for every
-   stack, each into a project dir. All stacks render before anything runs, so
-   a model that does not evaluate changes nothing.
+1. **render**: `nix eval` of `<repo>#pulumi.<estate>.<stack>` for every
+   stack, each into a project dir as above. All stacks render before anything
+   runs, so a model that does not evaluate changes nothing.
 2. **infra**: per stack, the Pulumi Automation API (`install`, then `preview`
    or `up`). Engine events (each resource step, diagnostics, the summary) go
    to the event stream. `show_secrets` is off: `up()` defaults it on.
@@ -96,8 +126,8 @@ estate repo's own data (its tenant input could not be fetched here).
 ## The compiler (`lib.toPulumi`)
 
 - `lib.toPulumi { tf; project; adopt ? { }; }` translates the provider-argument
-  stage into a [Pulumi YAML] program. JSON is YAML, so `builtins.toJSON` of the
-  result is a valid `Pulumi.yaml`.
+  stage into a [Pulumi YAML] program, as a Nix attrset; the runner writes it as
+  JSON (above).
 - `lib.mkPulumi { fleet; estate; adopt ? false; }` and
   `lib.mkGithubPulumi { fleet; estate; }` are `toPulumi` over
   `lib.internal.guests` and `lib.internal.github`. Every model error those
