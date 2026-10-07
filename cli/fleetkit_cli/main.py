@@ -71,9 +71,9 @@ def render_cmd(ctx: click.Context, estate: str, stack: str | None) -> None:
     """Write the Pulumi project of each stack and print its directory."""
     s = _settings(ctx)
     ev = Emitter(lambda e: None)
-    for st in [stack] if stack else render.stacks_of(s, estate):
-        wd, main = render.render(s, estate, st, ev)
-        click.echo(f"{wd}  (program {main})")
+    for name, st in render.stacks_of(s, estate, [stack] if stack else None).items():
+        wd = render.render(s, name, st, ev)
+        click.echo(f"{wd}  (program {st['file']})")
 
 
 def _deploy_options(f):
@@ -130,12 +130,15 @@ def deploy(ctx: click.Context, estate: str, goal: str, **kw) -> None:
 
 
 @cli.command()
+@click.option("--repo", envvar="FLEETKIT_REPO",
+              help="GitOps: the estate repo's git URL; each deploy runs from a checkout of its commit.")
 @click.option("--listen", default="127.0.0.1:8740", show_default=True, help="host:port")
 @click.option("--token-file", envvar="FLEETKIT_API_TOKEN_FILE", help="File holding the bearer token.")
 @click.option("--no-auth", is_flag=True, help="No token; allowed only on a loopback address.")
 @click.option("--workers", default=4, show_default=True, help="Estates deploying at once.")
 @click.pass_context
-def serve(ctx: click.Context, listen: str, token_file: str | None, no_auth: bool, workers: int) -> None:
+def serve(ctx: click.Context, repo: str | None, listen: str, token_file: str | None, no_auth: bool,
+          workers: int) -> None:
     """Serve deploys over HTTP (see `fleetkit serve --help` and api.py)."""
     import uvicorn
 
@@ -152,9 +155,33 @@ def serve(ctx: click.Context, listen: str, token_file: str | None, no_auth: bool
         token = None
     elif not token:
         raise click.ClickException("no token: set FLEETKIT_API_TOKEN(_FILE) or pass --token-file")
-    s = _settings(ctx)
-    manager = JobManager(s.state_dir, lambda req, ev: pipeline.run(s, req, ev), workers)
-    uvicorn.run(create_app(manager, s, token), host=host or "127.0.0.1", port=int(port), log_level="info")
+    try:
+        s = Settings.from_env(ctx.obj["flake"], ctx.obj["state_dir"], repo)
+    except SettingsError as e:
+        raise click.ClickException(str(e))
+    gitops = None
+    if s.git is None:
+        def runner(req, ev):
+            if req.rev:
+                raise ValueError("rev needs a server with a repo (--repo / FLEETKIT_REPO)")
+            return pipeline.run(s, req, ev)
+        manager = JobManager(s.state_dir, runner, workers)
+    else:
+        from .gitops import GitOps, Repo
+
+        git = Repo(s)
+
+        def runner(req, ev):
+            sha = git.resolve(req.rev)
+            ev.emit("git", "checkout", rev=sha, branch=s.git.branch)
+            result = pipeline.run(s.at(git.checkout(sha)), req, ev)
+            return {"rev": sha, **result}
+
+        manager = JobManager(s.state_dir, runner, workers)
+        gitops = GitOps(s, git, manager)
+        gitops.start_polling()
+    uvicorn.run(create_app(manager, s, token, gitops), host=host or "127.0.0.1", port=int(port),
+                log_level="info")
 
 
 def main() -> None:

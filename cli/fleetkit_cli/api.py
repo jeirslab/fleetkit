@@ -9,12 +9,18 @@
   GET  /v1/estates                 estates and their stacks (evaluates the repo)
   GET  /healthz                    liveness, no auth
 
-Every /v1 route needs `Authorization: Bearer <token>`. A deploy of an estate
-that is already deploying is 409, with the running job's id.
+With a repo (gitops.py):
+  GET  /v1/gitops                  repo, branch, head, what each estate last had submitted
+  POST /v1/gitops/sync             fetch now and deploy what changed
+  POST /v1/hooks/github            a GitHub push webhook (HMAC-signed, no bearer)
+
+Every other /v1 route needs `Authorization: Bearer <token>`. A deploy of an
+estate that is already deploying is 409, with the running job's id.
 """
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
 import json
 from typing import Any, Optional
@@ -28,7 +34,8 @@ from .pipeline import DeployRequest
 from .settings import Settings
 
 
-def create_app(manager: JobManager, settings: Optional[Settings], token: Optional[str]) -> FastAPI:
+def create_app(manager: JobManager, settings: Optional[Settings], token: Optional[str],
+               gitops: Any = None) -> FastAPI:
     app = FastAPI(title="fleetkit", version="0.1.0",
                   description="Deploy an estate: Pulumi for what exists, Colmena for what runs on it.")
 
@@ -101,8 +108,47 @@ def create_app(manager: JobManager, settings: Optional[Settings], token: Optiona
         if settings is None:
             raise HTTPException(503, "no estate repo configured")
         try:
-            return render.estates(settings)
-        except render.RenderError as e:
+            s = settings
+            if gitops is not None:
+                s = settings.at(gitops.repo.checkout(gitops.repo.resolve(None)))
+            return render.estates(s)
+        except Exception as e:  # noqa: BLE001 - reported to the caller
             raise HTTPException(500, str(e))
+
+    if gitops is not None:
+        g = gitops
+
+        @app.get("/v1/gitops", dependencies=[Depends(auth)])
+        def gitops_status() -> dict[str, Any]:
+            return g.status()
+
+        @app.post("/v1/gitops/sync", dependencies=[Depends(auth)])
+        async def gitops_sync() -> dict[str, Any]:
+            try:
+                return await asyncio.to_thread(g.sync, "api")
+            except Exception as e:  # noqa: BLE001 - reported to the caller
+                raise HTTPException(502, str(e))
+
+        @app.post("/v1/hooks/github")
+        async def github_hook(request: Request) -> dict[str, Any]:
+            secret = g.g.webhook_secret
+            if not secret:
+                raise HTTPException(404, "no webhook secret configured")
+            body = await request.body()
+            want = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(request.headers.get("x-hub-signature-256", ""), want):
+                raise HTTPException(401, "bad signature")
+            event = request.headers.get("x-github-event", "")
+            if event == "ping":
+                return {"ok": True}
+            if event != "push":
+                return {"ignored": f"event {event}"}
+            payload = json.loads(body)
+            if payload.get("ref") != f"refs/heads/{g.g.branch}":
+                return {"ignored": f"ref {payload.get('ref')}"}
+            try:
+                return await asyncio.to_thread(g.sync, "github push", payload.get("after"))
+            except Exception as e:  # noqa: BLE001 - reported to the caller
+                raise HTTPException(502, str(e))
 
     return app

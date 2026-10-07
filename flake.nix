@@ -5,7 +5,7 @@
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/b5aa0fbd538984f6e3d201be0005b4463d8b09f8";
 
   outputs =
-    { nixpkgs, ... }:
+    { self, nixpkgs, ... }:
     let
       fleetLib = import ./lib;
       withLib = f: args: f ({ inherit (nixpkgs) lib; } // args);
@@ -26,6 +26,12 @@
         # -> a Colmena hive: meta plus one node per guest that names a nixos.module.
         # With `site` instead of `estate`: the site's nodes that name one.
         mkHive = import ./lib/hive.nix;
+        # Pulumi.nix: an estate's Pulumi stacks as Nix modules, each property
+        # typed from the pinned schemas. { stacks; fromModel; } (lib/pulumi).
+        pulumi = import ./lib/pulumi {
+          inherit (nixpkgs) lib;
+          inherit self;
+        };
         # The provider arguments of an estate, in the pinned Terraform
         # providers' own names (Pulumi runs those providers through its bridge,
         # and their schemas are what the model is checked against). Internal:
@@ -75,6 +81,9 @@
           };
       };
 
+      # Experimental: the deploy server as a NixOS service (GitOps mode).
+      nixosModules.fleetkit-server = import ./nixos/fleetkit-server.nix { inherit self; };
+
       # Experimental: the deploy runner (cli/). pulumi, colmena and sops are on
       # its PATH; nix is the host's.
       packages = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-linux" ] (
@@ -100,6 +109,7 @@
             nativeCheckInputs = [
               py.pytestCheckHook
               py.httpx
+              pkgs.git
             ];
             makeWrapperArgs = [
               "--suffix"
@@ -109,6 +119,7 @@
                 pkgs.pulumi-bin
                 pkgs.colmena
                 pkgs.sops
+                pkgs.git
               ])
             ];
             meta.mainProgram = "fleetkit";

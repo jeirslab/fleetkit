@@ -74,6 +74,7 @@ bash tests/github.sh >&2 || fidelity=fail
 # Pulumi schemas (tests/pulumi.sh; offline). tests/pulumi_preview.sh is the
 # networked end-to-end check and is not a gate.
 bash tests/pulumi.sh >&2 || fidelity=fail
+bash tests/pulumi_nix.sh >&2 || fidelity=fail
 log "fidelity: $fidelity"
 
 ok=false

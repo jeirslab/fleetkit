@@ -14,6 +14,18 @@ class Cancelled(Exception):
     pass
 
 
+def _redact(v: Any, secrets: list[str]) -> Any:
+    if isinstance(v, str):
+        for x in secrets:
+            v = v.replace(x, "[secret]")
+        return v
+    if isinstance(v, dict):
+        return {k: _redact(x, secrets) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_redact(x, secrets) for x in v]
+    return v
+
+
 class Emitter:
     """Stamps events with time and stage, and carries the cancel flag."""
 
@@ -22,9 +34,23 @@ class Emitter:
         self._cancel = threading.Event()
         self._on_cancel: list[Callable[[], None]] = []
         self._lock = threading.Lock()
+        self._secrets: set[str] = set()
 
     def emit(self, stage: str, kind: str, **data: Any) -> None:
-        self._sink({"ts": time.time(), "stage": stage, "kind": kind, **data})
+        e = {"ts": time.time(), "stage": stage, "kind": kind, **data}
+        with self._lock:
+            secrets = list(self._secrets)
+        if secrets:
+            e = _redact(e, secrets)
+        self._sink(e)
+
+    def secret(self, value: str) -> str:
+        """Never let `value` reach an event (a decrypted backend URL or key:
+        a failing tool may print it)."""
+        if value and len(value) >= 4:
+            with self._lock:
+                self._secrets.add(value)
+        return value
 
     def cancel(self) -> None:
         self._cancel.set()

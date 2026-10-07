@@ -16,10 +16,10 @@ from .events import Emitter
 from .settings import Settings
 
 
-def _stack(s: Settings, wd: Path) -> auto.Stack:
+def _stack(s: Settings, wd: Path, env: dict[str, str]) -> auto.Stack:
     opts = auto.LocalWorkspaceOptions(
         work_dir=str(wd),
-        env_vars=s.pulumi_env(),
+        env_vars=env,
         secrets_provider="passphrase",
         pulumi_home=str(s.pulumi_home) if s.pulumi_home else None,
     )
@@ -46,10 +46,10 @@ def _on_event(ev: Emitter, stack: str):
     return handle
 
 
-def run(s: Settings, wd: Path, stack: str, ev: Emitter, preview: bool,
+def run(s: Settings, wd: Path, stack: str, env: dict[str, str], ev: Emitter, preview: bool,
         refresh: bool = False, targets: list[str] | None = None) -> dict[str, Any]:
     ev.check()
-    st = _stack(s, wd)
+    st = _stack(s, wd, env)
     ev.emit("infra", "install", stack=stack)
     st.workspace.install()
     # A cancel asks the engine to stop at the next safe point; state stays

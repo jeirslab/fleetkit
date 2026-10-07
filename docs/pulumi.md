@@ -3,125 +3,187 @@
 Branch-only experiment, not for `unstable`. Terraform and OpenTofu are gone
 from the deploy path: Pulumi provisions what exists (guests, pools, the GitHub
 organisation), Colmena configures what runs on it, and one runner drives both,
-from a command line or an HTTP API. The model, its checks and every render
-stay pure Nix.
+from a command line, an HTTP API, or a GitOps server. What is deployed is
+declared and type-checked in Nix; nothing is declared in Python or YAML.
 
 ```
-fleet model ─ lib.internal.guests ─▶ provider args ─ lib.toPulumi ─▶ pulumi.<estate>.guests ─┐
-            ─ lib.internal.github ─▶ provider args ─ lib.toPulumi ─▶ pulumi.<estate>.github ─┤ fleetkit
-            ─ lib.mkHive ──────────────────────────────────────────▶ hives.<estate> ─────────┘ (CLI / API)
+fleet model ─ lib.pulumi.fromModel ─┐
+pulumi.nix  (hand-written stacks) ──┴▶ lib.pulumi.stacks ─▶ pulumi.<stack> ─┐ fleetkit
+fleet model ─ lib.mkHive ─────────────────────────────────▶ hives.<estate> ─┘ (CLI / API / GitOps)
 ```
+
+## Pulumi.nix (`lib.pulumi`, `lib/pulumi/`)
+
+An estate repo declares its stacks as Nix modules, the way NixOS declares a
+system:
+
+```nix
+# flake.nix
+pulumi = fleetkit.lib.pulumi.stacks {
+  fleet = config.fleet;                  # the checked model
+  modules = [ ./pulumi.nix ];
+};
+
+# pulumi.nix
+{ fleetkit, config, ... }: {
+  imports = [
+    (fleetkit.lib.pulumi.fromModel { estate = "homelab"; })                  # stack homelab-guests
+    (fleetkit.lib.pulumi.fromModel { estate = "homelab"; github = true; })   # stack homelab-github
+  ];
+  # What the model does not describe, beside what it does:
+  stacks.homelab-guests.resources.backup-pool = {
+    type = "proxmox:index/virtualEnvironmentPool:VirtualEnvironmentPool";
+    properties = { poolId = "backup"; comment = "PBS targets"; };
+    options.provider = "\${provider-proxmox}";
+  };
+  # Override anything with the module system:
+  stacks.homelab-guests.backend = { type = "local"; path = "homelab"; };
+}
+```
+
+Per stack: `estate` (what `fleetkit deploy <estate>` runs), `packages`,
+`resources.<key> = { type; name?; properties; options; }`, `variables`,
+`outputs`, `backend`. Read-only: `program` (the checked program), `file` (it as
+`Pulumi.yaml` in the store, by `builtins.toFile`) and `secrets` (the sops
+files its invokes read).
+
+**Types.** Every resource's `properties` are checked against the pinned Pulumi
+schema of its `type` (`lib/pulumi/types.nix`). Types are built only for the
+types a stack uses: a stack with a container, a VM and pools evaluates in about
+0.6 s. Errors are module-system errors at the property's path:
+
+```
+error: The option `stacks.mini-guests.resources.extra-pool.properties.poolID' does not exist.
+error: A definition for option `stacks.mini-guests.resources.extra-pool.properties.poolId' is not of type `...'
+error: stacks.mini-guests.resources.extra-pool.properties: proxmox:index/...:VirtualEnvironmentPool requires poolId
+error: stacks.mini-guests: references to no resource or variable: nope
+```
+
+Any property also takes a `"${...}"` reference string; references are checked
+to name a resource or variable of the stack, not typed. Packages with no pinned
+schema are not checked.
 
 ## Where the declaring and the type checking happen
 
-Nothing is declared outside Nix. The Pulumi programs are not written in a
-Pulumi language: they are Pulumi YAML, which is data, rendered by `nix eval`
-the way a derivation is built, and the runner only runs them. So the checks
-are all on the Nix side or on the rendered artefact, in this order:
+1. the model's module types and assertions (`modules/`), at eval;
+2. Pulumi.nix: each property against the pinned schema, at eval;
+3. `tests/pulumi.sh` / `tests/pulumi_nix.sh` (gates, offline);
+4. `pulumi preview`: Pulumi's own check against the running provider.
 
-1. the model's module types (`modules/`) and its assertions, at eval;
-2. the name maps: a provider argument the pinned provider does not have fails
-   the render (`lib/pulumi.nix`), at eval;
-3. `tests/pulumi.sh` (gate, offline): every program against the pinned Pulumi
-   schemas, property by property, list or object;
-4. `pulumi preview`: Pulumi's own type check against the running provider.
+## State backends (`lib/pulumi/backend.nix`, `cli/fleetkit_cli/backends.py`)
 
-The gap is the model's untyped blocks (`docs/schema-todo.md`): their contents
-are checked at steps 2 to 4, not by a Nix option type. Generating
-`types.submodule`s from the pinned schemas would move that to step 1.
+`fromModel` sets each stack's `backend` from the model: the estate's `backend`
+(the GitHub stack: `git.backend`). Pulumi.nix can override it per stack. The
+runner decrypts what the backend needs with `sops --extract` and registers
+every decrypted value for redaction: an event or log line that contains one
+shows `[secret]` (Pulumi does print a backend URL it cannot open).
 
-## JSON all the way
+| `fleet.backends` | Pulumi | Tested |
+|---|---|---|
+| `pg` (`connRef`) | `postgres://` from the decrypted connection string; one `pulumi_state` table, keyed by project and stack, so estates share a database (a `search_path` parameter moves it to a schema). A project in `localStacks` keeps local state. | yes, PostgreSQL 18 |
+| `s3`, garage (`host`, `credsRef`, `bucket`) | `s3://<bucket>/<estate>/?endpoint=http://<garage lan address>:3900&region=garage&use_path_style=true`; keys from `credsRef` (`access_key_id`, `secret_access_key`) | yes, garage |
+| `s3`, linode (`buckets.<estate>`, `credentials`) | `s3://<bucket>/<keyPrefix>?endpoint=...&region=...&use_path_style=true` | URL form only |
+| `local` (`path`) | `file://<state dir>/<path>` (default `pulumi-state`) | yes |
+| none | `PULUMI_BACKEND_URL` from the environment, or the deploy fails: never Pulumi Cloud by default | |
 
-There is no YAML anywhere: Nix emits JSON (`builtins.toJSON`), and Pulumi's
-YAML runtime reads JSON because JSON is YAML. The runner lays each stack out as
-
-```
-<state>/work/<estate>/<stack>/
-  Pulumi.json        name, runtime: yaml, packages   (the project)
-  Main.json  ->  /nix/store/<hash>-Main.json        (the program: resources, variables, outputs)
-  secrets/...  ->  the estate repo's sops files     (the sops provider reads them relative to here)
-  Pulumi.<stack>.json                               (Pulumi's, written on stack init)
-```
-
-`Main.json` is written by `builtins.toFile` during the same `nix eval` (no
-build, no `pkgs`), so the program that runs is an immutable, content-addressed
-store file. The work dir link is a GC root (`nix build --out-link`), and every
-deploy records each program's store path (`result.programs`, and the render
-event), so a deploy says exactly what it ran.
-
-What does not work, found by trying (Pulumi 3.261, pulumi-yaml in pulumi-bin):
-
-- `Pulumi.json` holding the whole program: the CLI accepts the file name, but
-  the YAML runtime finds no program in it and crashes (nil template).
-- `packages` in `Main.json`: `pulumi install` no longer sees the bridge's
-  parameters and looks for a nonexistent `pulumi-proxmox` plugin. They belong in
-  the project file only.
-- `main:` pointing the project at a store directory: the program loads, but the
-  packages are again not resolved, even with a project file in that directory.
-  A symlinked `Main.json` in the project dir avoids it.
+Path-style addressing is required for an IP or LAN endpoint (without it Pulumi
+asks `<bucket>.<ip>`). The model gained `type = "local"` (with `path`) and a
+garage `bucket`; `schemaPrefix` (a tofu notion) is not used.
 
 ## The runner (`packages.fleetkit`, `cli/`)
 
-One pipeline, the same for the CLI and the API:
+One pipeline for the CLI, the API and GitOps:
 
-1. **render**: `nix eval` of `<repo>#pulumi.<estate>.<stack>` for every
-   stack, each into a project dir as above. All stacks render before anything
-   runs, so a model that does not evaluate changes nothing.
-2. **infra**: per stack, the Pulumi Automation API (`install`, then `preview`
-   or `up`). Engine events (each resource step, diagnostics, the summary) go
-   to the event stream. `show_secrets` is off: `up()` defaults it on.
-3. **nixos**: `colmena apply <goal>` (or `build` for a preview) on
-   `hives.<hive>` (default: the estate), read through a one-line `hive.nix`.
-   It runs after infra, so the hive is evaluated against what was provisioned.
+1. **render**: `nix eval` of `<repo>#pulumi` (estate, backend, file, secrets
+   of each stack). Each stack of the estate gets a project dir:
+   ```
+   <state>/work/<stack>/
+     Pulumi.yaml  ->  /nix/store/<hash>-Pulumi.yaml   (a GC root; JSON)
+     secrets/...  ->  the sops files its invokes read
+   ```
+2. **backends**: every stack's backend resolved and its secrets decrypted.
+   Steps 1 and 2 finish for every stack before anything runs: a model that does
+   not evaluate, or a secret that does not decrypt, changes nothing.
+3. **infra**: per stack, the Pulumi Automation API (`install`, then `preview`
+   or `up`), engine events to the event stream, `show_secrets` off.
+4. **nixos**: `colmena apply <goal>` (`build` for a preview) on
+   `hives.<hive>` (default: the estate), after infra.
+
+Every deploy's result names each program's store path: what ran, exactly.
 
 ```sh
 fleetkit estates
 fleetkit preview homelab                 # pulumi preview + colmena build; changes nothing
 fleetkit deploy homelab --goal test      # pulumi up + colmena apply test
-fleetkit deploy homelab --no-nixos --stack guests
-fleetkit serve --listen 127.0.0.1:8740   # token from FLEETKIT_API_TOKEN(_FILE)
+fleetkit deploy homelab --no-nixos --stack homelab-guests
+fleetkit serve                           # the API (below); --repo for GitOps
 ```
 
-It refuses to run without `PULUMI_BACKEND_URL` (no silent Pulumi Cloud) and
-without `PULUMI_CONFIG_PASSPHRASE(_FILE)`. `SOPS_AGE_KEY_FILE` decrypts the
-model's secrets; `FLEETKIT_SECRET_ROOTS` adds directories (a tenant's source)
-where the programs' sops files are looked up. `pulumi-bin`, `colmena` and
-`sops` come with the package; `nix` is the host's.
+`PULUMI_CONFIG_PASSPHRASE(_FILE)` encrypts Pulumi's secrets in state;
+`SOPS_AGE_KEY_FILE` decrypts the model's; `FLEETKIT_SECRET_ROOTS` adds
+directories (a tenant's source) where sops files are looked up. `pulumi-bin`,
+`colmena`, `sops` and `git` come with the package; `nix` is the host's.
 
 ### HTTP API (`cli/fleetkit_cli/api.py`; OpenAPI at `/docs`)
 
 | | |
 |---|---|
-| `POST /v1/deploys` | start a deploy: `{estate, stacks?, infra, nixos, hive?, on[], goal, preview, refresh, targets[]}` → 202 and the job |
-| `GET /v1/deploys[/{id}]` | jobs / one job (state, result, error) |
+| `POST /v1/deploys` | `{estate, stacks?, rev?, infra, nixos, hive?, on[], goal, preview, refresh, targets[]}` → 202 and the job |
+| `GET /v1/deploys[/{id}]` | jobs / one job (state, result with rev and programs, error) |
 | `GET /v1/deploys/{id}/events?after=&wait=` | events from a sequence number, long-polling |
 | `GET /v1/deploys/{id}/stream` | the same as server-sent events, ending with the job record |
 | `POST /v1/deploys/{id}/cancel` | Pulumi's own cancel, or colmena terminated |
-| `GET /v1/estates` | estates and stacks |
+| `GET /v1/estates` | estates and their stacks |
+| `GET /v1/gitops`, `POST /v1/gitops/sync` | GitOps status; fetch and deploy what changed now |
+| `POST /v1/hooks/github` | a GitHub push webhook, HMAC-signed (no bearer) |
 
-Every `/v1` route needs `Authorization: Bearer <token>`; `--no-auth` is
-refused off loopback. One deploy per estate at a time (409 with the running
-job's id), several estates at once. Jobs are records plus append-only JSONL
-event logs under the state dir; a job that was running when the server
-stopped reads `interrupted` on restart. Why this and not tofu behind a web
-hook: the Automation API gives structured per-resource events and a cancel
-that leaves state consistent, and the pipeline is a function the CLI and the
-server share, not a subprocess the server scrapes.
+Bearer auth on every `/v1` route but the webhook; `--no-auth` only on
+loopback. One deploy per estate at a time (409 with the running job's id).
+Jobs are records plus JSONL event logs; a job cut off by a restart reads
+`interrupted`.
+
+## GitOps (`fleetkit serve --repo`, `cli/fleetkit_cli/gitops.py`)
+
+The branch is the desired state, and the server deploys it on itself:
+
+- it keeps a bare mirror of the estate repo (`<state>/repo.git`) and runs each
+  job from a checkout of one commit (`<state>/checkouts/<sha>`, a shared clone,
+  detached; the last few are kept). Nix evaluates a clean tree at a known
+  revision, and the job records the sha;
+- a push arrives by polling (`FLEETKIT_POLL` seconds) or by the GitHub webhook
+  (`FLEETKIT_WEBHOOK_SECRET`); each estate in `FLEETKIT_DEPLOY_ON_PUSH` whose
+  last submitted commit is not the head gets a job for the head. A commit is
+  submitted once per estate: a failed deploy is fixed forward, or re-run with
+  `POST /v1/deploys {"rev": ...}`. A busy estate is picked up next time;
+- `FLEETKIT_PUSH_MODE=preview` plans every push (pulumi preview, colmena build)
+  and leaves applying to a person: `POST /v1/deploys {"estate", "rev"}`.
+
+`nixosModules.fleetkit-server` runs it as a hardened systemd service
+(`services.fleetkit = { enable; repo; branch; deployOnPush; pushMode; poll;
+listen; environmentFile; }`, `pushMode` defaulting to `preview`). The host holds
+what deploying needs (the age key, Colmena's SSH key, a read-only deploy key,
+the Pulumi passphrase, the API token and webhook secret), all from
+`environmentFile`, none in the store: treat it like an operator's machine, and
+put a TLS proxy in front of anything but loopback.
 
 ### Tested
 
-- `cli/tests/test_api.py` (runs in the package build, offline, fake runner):
-  auth, lifecycle, events and the stream, 409, failure, cancel, bad requests,
-  restart recovery.
-- `tests/deploy_e2e.sh` (networked, not a gate): a throwaway estate flake on
-  this checkout; `fleetkit estates`; `fleetkit preview` (a real pulumi preview,
-  6 creates, the token never in the events; colmena called as `build -f
-  <hive.nix>`); the same through `fleetkit serve` with curl (401, 202, job
-  succeeded, stream end, an unknown estate's job failed with the render
-  error); and real colmena evaluating the runner's hive file.
+- `cli/tests` (in the package build, offline): the API with a fake runner
+  (auth, lifecycle, events and stream, 409, failure, cancel, bad requests,
+  restart recovery); GitOps on a local git repo (one submission per commit, a
+  busy estate skipped, checkouts at the commit, the webhook's signature, a rev
+  through the deploy API); redaction.
+- `tests/pulumi_nix.sh` (gate): Pulumi.nix good and bad cases above.
+- `tests/deploy_e2e.sh` (networked, not a gate): a throwaway estate git repo
+  whose pulumi.nix imports the model's stack and adds one composed from it;
+  real pulumi previews of both, with state in PostgreSQL and garage
+  (`E2E_PG_URL`, `E2E_S3_*`; local otherwise) from sops-encrypted credentials,
+  the password-bearing URL never in the events; colmena called on the hive;
+  then the server in GitOps mode: a sync plans the head, a signed webhook plans
+  the next commit, a bad signature is 401; real colmena evaluates the hive file.
 
-Not tested: a `pulumi up` or `colmena apply` against real hosts, and the
-estate repo's own data (its tenant input could not be fetched here).
+Not tested: `pulumi up` or `colmena apply` against real hosts, a linode bucket,
+and the estate repo's own data.
 
 ## The compiler (`lib.toPulumi`)
 
@@ -215,10 +277,7 @@ a private repository this environment could not fetch).
   or Vault; not age). OpenTofu keeps `data.sops_file` results in state in
   plain text unless its state encryption is configured. So this is a gain, but it needs one more key: a passphrase kept
   in SOPS (`PULUMI_CONFIG_PASSPHRASE`) is the age-only option.
-- **State backends.** `pulumi login` takes `file://`, `s3://`, `gs://`,
-  `azblob://` and `postgres://`, so `fleet.backends` maps over. The rendered
-  program does not name a backend, just as the Terraform render does not yet
-  (#10).
+- **State backends.** See "State backends" above.
 - **Pulumi Cloud is the default.** Without `PULUMI_BACKEND_URL` or
   `pulumi login`, some commands fall back to Pulumi Cloud; in this experiment
   `pulumi package add` created an ephemeral Pulumi Cloud agent account. A

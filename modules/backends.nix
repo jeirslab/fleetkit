@@ -51,8 +51,11 @@ let
           type = types.enum [
             "pg"
             "s3"
+            "local"
           ];
         };
+        # local
+        path = nullable types.str "local: state directory, relative to the deploy runner's state directory (default pulumi-state).";
         # pg
         schemaPrefix = nullable types.str "pg: state schema prefix.";
         connRef = nullable sopsRef "pg: sops ref of the connection string.";
@@ -64,7 +67,8 @@ let
         ]) "s3: provider.";
         # garage
         host = nullable types.str "garage: guest id.";
-        credsRef = nullable sopsRef "garage: sops ref of the credentials.";
+        credsRef = nullable sopsRef "garage: sops ref of the credentials (a subtree with access_key_id and secret_access_key).";
+        bucket = nullable types.str "garage: bucket the state goes in (keys prefixed with the estate).";
         # linode
         endpoint = nullable types.str "linode: endpoint URL.";
         region = nullable types.str "linode: region.";
@@ -79,7 +83,7 @@ let
   );
 
   # required / forbidden field names per variant
-  variantOf = b: if b.type == "pg" then "pg" else if b.provider == null then "s3" else "s3-${b.provider}";
+  variantOf = b: if b.type != "s3" then b.type else if b.provider == null then "s3" else "s3-${b.provider}";
   fieldsOf = {
     pg = [
       "schemaPrefix"
@@ -96,7 +100,11 @@ let
       "credentials"
     ];
   };
-  allFields = lib.unique (lib.concatLists (lib.attrValues fieldsOf)) ++ [ "buckets" ];
+  allFields = lib.unique (lib.concatLists (lib.attrValues fieldsOf)) ++ [
+    "buckets"
+    "bucket"
+    "path"
+  ];
   isSet = b: f: if f == "buckets" then b.buckets != { } else b.${f} != null;
 
   backendAssertions =
@@ -105,7 +113,12 @@ let
       where = "fleet.backends.${bname}";
       variant = variantOf b;
       required = fieldsOf.${variant} or [ ];
-      allowed = required ++ lib.optional (variant == "s3-linode") "buckets" ++ lib.optional (lib.hasPrefix "s3" variant) "provider";
+      allowed =
+        required
+        ++ lib.optional (variant == "s3-linode") "buckets"
+        ++ lib.optional (variant == "s3-garage") "bucket"
+        ++ lib.optional (variant == "local") "path"
+        ++ lib.optional (lib.hasPrefix "s3" variant) "provider";
       missing = lib.filter (f: !(isSet b f)) required;
       foreign = lib.filter (f: isSet b f && !(lib.elem f allowed)) allFields;
     in
@@ -115,8 +128,8 @@ let
         message = "${where}: type \"s3\" requires provider (garage or linode)";
       }
       {
-        assertion = b.type != "pg" || b.provider == null;
-        message = "${where}: type \"pg\" must not set provider";
+        assertion = b.type == "s3" || b.provider == null;
+        message = "${where}: type \"${b.type}\" must not set provider";
       }
       {
         assertion = missing == [ ];

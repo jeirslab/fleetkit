@@ -25,6 +25,10 @@ outputs = { fleetkit, xgcs, ... }: {
 - Repositories: an estate declares its GitHub organisation and repositories
   in the model (`fleet.estates.<e>.git`, `fleet.repos.<e>`). That is the
   GitHub management plane only; nothing is cloned or vendored from it.
+- `lib.pulumi` (Pulumi.nix): an estate's Pulumi stacks as Nix modules, each
+  resource's properties typed from the pinned schemas, the model's stacks
+  imported with `fromModel`, backends from `fleet.backends`. Experimental; see
+  `docs/pulumi.md`.
 - `lib.mkPulumi` / `lib.mkGithubPulumi` render an estate's guests and pools,
   and its GitHub organisation, as Pulumi YAML programs; Pulumi runs the pinned
   Terraform providers through its terraform-provider bridge. `lib.internal`
@@ -32,7 +36,9 @@ outputs = { fleetkit, xgcs, ... }: {
   `docs/github.md`). Experimental; see `docs/pulumi.md`.
 - `packages.fleetkit` (`cli/`) deploys an estate: `pulumi up` on its programs,
   then `colmena apply` on its hive, from the command line or an HTTP API
-  (`fleetkit serve`). Experimental; see `docs/pulumi.md`.
+  (`fleetkit serve`), or as a GitOps server that deploys the estate repo's
+  branch (`fleetkit serve --repo`, `nixosModules.fleetkit-server`).
+  Experimental; see `docs/pulumi.md`.
 - `providers/` pinned provider schemas the guest model is checked against.
 - `docs/` the model's decisions: `guest-model.md`, `guest-provider-map.md`,
   `deploy.md`, `tenants.md`, `schema-todo.md` (the inventory of untyped blocks).
