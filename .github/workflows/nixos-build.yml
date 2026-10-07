@@ -1,0 +1,60 @@
+name: nixos-build
+# Reusable. Runs the caller's command (the lab's NixOS build/eval step) on a tenant repository commit.
+# Reports a commit status (context "nixos-build") on the given repository and commit: pending at start,
+# success or failure at the end.
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: JSON list of runner labels, e.g. '["self-hosted","nix"]'.
+        type: string
+        required: true
+      repository:
+        description: owner/name of the repository to check out and to report the status on.
+        type: string
+        required: true
+      sha:
+        description: Commit to check out and to report the status on.
+        type: string
+        required: true
+      command:
+        description: Command to run in the checkout (the lab's own tool, e.g. tools/fleet check).
+        type: string
+        required: true
+    secrets:
+      token:
+        description: Token that can read the repository and write commit statuses on it.
+        required: true
+permissions:
+  contents: read
+jobs:
+  run:
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    env:
+      GH_TOKEN: ${{ secrets.token }}
+      REPO: ${{ inputs.repository }}
+      SHA: ${{ inputs.sha }}
+      CONTEXT: nixos-build
+      TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: status pending
+        run: |
+          gh api -X POST "repos/$REPO/statuses/$SHA" -f state=pending -f context="$CONTEXT" \
+            -f description="running" -f target_url="$TARGET_URL"
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.sha }}
+          token: ${{ secrets.token }}
+      - name: run
+        env:
+          COMMAND: ${{ inputs.command }}
+        run: bash -c "$COMMAND"
+      - name: status final
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ "$JOB_STATUS" = success ]; then state=success; desc="passed"; else state=failure; desc="failed or cancelled"; fi
+          gh api -X POST "repos/$REPO/statuses/$SHA" -f state="$state" -f context="$CONTEXT" \
+            -f description="$desc" -f target_url="$TARGET_URL"

@@ -1,0 +1,113 @@
+name: deploy
+# Reusable. Deploys after the author gate (the caller's command does the deploy).
+# The author gate runs first: only when the pull request's author AND the account that merged it are
+# in ungated_authors does the command run. Otherwise nothing runs and a clearly worded status is
+# reported (state success, because a commit status has no neutral; the description says GATED and
+# that nothing ran). Context "deploy".
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: JSON list of runner labels, e.g. '["self-hosted","nix"]'.
+        type: string
+        required: true
+      repository:
+        description: owner/name of the repository to check out and to report the status on.
+        type: string
+        required: true
+      sha:
+        description: Commit to check out and to report the status on.
+        type: string
+        required: true
+      pull_request:
+        description: Number of the pull request in repository that produced sha.
+        type: string
+        required: true
+      ungated_authors:
+        description: Logins (comma, space or newline separated) whose pull requests may run unattended.
+        type: string
+        required: true
+      command:
+        description: Command to run in the checkout (the lab's own tool).
+        type: string
+        required: true
+    secrets:
+      token:
+        description: Token that can read the repository and its pull requests and write commit statuses.
+        required: true
+permissions:
+  contents: read
+jobs:
+  run:
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    env:
+      GH_TOKEN: ${{ secrets.token }}
+      REPO: ${{ inputs.repository }}
+      SHA: ${{ inputs.sha }}
+      CONTEXT: deploy
+      TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: status pending
+        run: |
+          gh api -X POST "repos/$REPO/statuses/$SHA" -f state=pending -f context="$CONTEXT" \
+            -f description="checking author gate" -f target_url="$TARGET_URL"
+      # The gate is the kit's action at the very commit this workflow file was called at
+      # (job.workflow_sha), never a branch: the caller's SHA pin covers the gate too. It is checked
+      # out before, and apart from, the repository the command runs in. An empty or non-commit value
+      # would make the checkout fall back to a branch, so it is refused first.
+      # fromJSON(toJSON(job)): actionlint releases that predate job.workflow_* reject the plain form.
+      - name: kit commit of this workflow
+        env:
+          KIT_REPO: ${{ fromJSON(toJSON(job)).workflow_repository }}
+          KIT_SHA: ${{ fromJSON(toJSON(job)).workflow_sha }}
+        run: |
+          if ! [[ "$KIT_SHA" =~ ^[0-9a-f]{40}$ && -n "$KIT_REPO" ]]; then
+            echo "cannot tell which kit commit this workflow runs at; refusing to load the gate" >&2
+            exit 1
+          fi
+      - name: fetch the author gate
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ fromJSON(toJSON(job)).workflow_repository }}
+          ref: ${{ fromJSON(toJSON(job)).workflow_sha }}
+          path: .fleetkit
+          sparse-checkout: .github/actions
+          persist-credentials: false
+      - name: author gate
+        id: gate
+        uses: ./.fleetkit/.github/actions/author-gate
+        with:
+          token: ${{ secrets.token }}
+          repository: ${{ inputs.repository }}
+          pull_request: ${{ inputs.pull_request }}
+          ungated_authors: ${{ inputs.ungated_authors }}
+      - name: status gated
+        if: steps.gate.outputs.ungated != 'true'
+        run: |
+          gh api -X POST "repos/$REPO/statuses/$SHA" -f state=success -f context="$CONTEXT" \
+            -f description="GATED: author or merger not in the ungated list; nothing was run" \
+            -f target_url="$TARGET_URL"
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.ungated == 'true'
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.sha }}
+          token: ${{ secrets.token }}
+      - name: run
+        if: steps.gate.outputs.ungated == 'true'
+        env:
+          COMMAND: ${{ inputs.command }}
+        run: bash -c "$COMMAND"
+      - name: status final
+        if: always() && steps.gate.outputs.ungated == 'true'
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ "$JOB_STATUS" = success ]; then state=success; desc="passed"; else state=failure; desc="failed or cancelled"; fi
+          gh api -X POST "repos/$REPO/statuses/$SHA" -f state="$state" -f context="$CONTEXT" \
+            -f description="$desc" -f target_url="$TARGET_URL"
+      - name: status gate error
+        if: failure() && steps.gate.outcome != 'success'
+        run: |
+          gh api -X POST "repos/$REPO/statuses/$SHA" -f state=error -f context="$CONTEXT" \
+            -f description="author gate could not decide; nothing was run" -f target_url="$TARGET_URL"

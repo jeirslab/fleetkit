@@ -1,0 +1,56 @@
+name: author-gate
+description: >
+  Outputs ungated=true only when BOTH the pull request's author and the account that merged it are
+  in the caller's ungated list. Both are read from the API with the given token; nothing about them
+  is taken from the event that started the workflow.
+inputs:
+  token:
+    description: Token that can read pull requests of `repository`.
+    required: true
+  repository:
+    description: owner/name of the repository the pull request belongs to.
+    required: true
+  pull_request:
+    description: Pull request number.
+    required: true
+  ungated_authors:
+    description: Logins allowed to pass the gate, separated by commas, spaces or newlines.
+    required: true
+outputs:
+  ungated:
+    description: '"true" only if author and merged_by are both in ungated_authors, else "false".'
+    value: ${{ steps.gate.outputs.ungated }}
+  author:
+    description: The pull request author's login.
+    value: ${{ steps.gate.outputs.author }}
+  merged_by:
+    description: The login that merged the pull request (empty when not merged).
+    value: ${{ steps.gate.outputs.merged_by }}
+runs:
+  using: composite
+  steps:
+    - id: gate
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ inputs.repository }}
+        PR: ${{ inputs.pull_request }}
+        UNGATED: ${{ inputs.ungated_authors }}
+      run: |
+        set -euo pipefail
+        case "$PR" in ''|*[!0-9]*) echo "pull_request must be a number" >&2; exit 1 ;; esac
+        pr_json="$(gh api "repos/$REPO/pulls/$PR")"
+        author="$(jq -r '.user.login // ""' <<<"$pr_json")"
+        merged_by="$(jq -r '.merged_by.login // ""' <<<"$pr_json")"
+        ungated=false
+        if [ -n "$author" ] && [ -n "$merged_by" ]; then
+          ungated="$(jq -rn --arg a "$author" --arg m "$merged_by" --arg list "$UNGATED" '
+            ($list | split("[,\\s]+"; "g") | map(select(. != ""))) as $ok
+            | if ($ok | index($a)) != null and ($ok | index($m)) != null then "true" else "false" end')"
+        fi
+        {
+          echo "ungated=$ungated"
+          echo "author=$author"
+          echo "merged_by=$merged_by"
+        } >> "$GITHUB_OUTPUT"
+        echo "author=$author merged_by=$merged_by ungated=$ungated"

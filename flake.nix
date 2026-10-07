@@ -34,6 +34,10 @@
         # { org; tiers ? [ "pipeline" "terraform-admin" ]; name ? null; redirectUrl ? null; }
         # -> the GitHub App manifest for that org (docs/github-app.md).
         mkGithubAppManifest = args: import ./lib/github-app.nix ({ inherit (nixpkgs) lib; } // args);
+        # { name; workflow; ref; on; with ? { }; secrets ? { }; permissions ? { }; kitRepo ? "jeirslab/fleetkit"; }
+        # -> the text of a caller workflow file that runs the kit's reusable workflow
+        # at `ref` (a 40-hex commit SHA, else an evaluation error).
+        mkWorkflowCaller = args: import ./lib/workflow-caller.nix ({ inherit (nixpkgs) lib; } // args);
       };
 
       # The schema's own description of itself, from a model with no data

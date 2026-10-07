@@ -1,0 +1,53 @@
+name: tenant-signal
+# Reusable. Tells the lab repository that a tenant repository's pull request has something to check,
+# by sending it a repository_dispatch. No other logic.
+on:
+  workflow_call:
+    inputs:
+      lab_repository:
+        description: owner/name of the lab repository that receives the dispatch.
+        type: string
+        required: true
+      tenant_repository:
+        description: owner/name of the tenant repository the pull request is in.
+        type: string
+        required: true
+      pull_request:
+        description: Pull request number in the tenant repository.
+        type: string
+        required: true
+      sha:
+        description: Commit of the pull request to check.
+        type: string
+        required: true
+      event_type:
+        description: repository_dispatch event type the lab listens for.
+        type: string
+        required: false
+        default: tenant-signal
+      runs_on:
+        description: JSON list of runner labels, e.g. '["ubuntu-latest"]'.
+        type: string
+        required: true
+    secrets:
+      token:
+        description: Token allowed to create a repository_dispatch on the lab repository.
+        required: true
+permissions: {}
+jobs:
+  signal:
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    steps:
+      - name: send repository_dispatch to the lab
+        env:
+          GH_TOKEN: ${{ secrets.token }}
+          LAB: ${{ inputs.lab_repository }}
+          EVENT: ${{ inputs.event_type }}
+          TENANT: ${{ inputs.tenant_repository }}
+          PR: ${{ inputs.pull_request }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          jq -n --arg e "$EVENT" --arg t "$TENANT" --arg pr "$PR" --arg sha "$SHA" \
+            '{event_type: $e, client_payload: {tenant_repository: $t, pull_request: $pr, sha: $sha}}' \
+            | gh api -X POST "repos/$LAB/dispatches" --input -
