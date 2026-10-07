@@ -115,7 +115,30 @@ let
   auth = g.auth or null;
   # Actions secrets are organisation resources: without an organisation none
   # is rendered, so its value is not read either.
-  secrets = lib.optionalAttrs isOrg (g.actions.secrets or { });
+  plan = g.plan or "free";
+  # A private repository on GitHub Free cannot use organisation secrets, and
+  # cannot have environments. Anything not public counts as private.
+  isPrivate = k: (repos.${k}.visibility or "private") != "public";
+  freePlan = plan == "free";
+  allOrgSecrets = lib.optionalAttrs isOrg (g.actions.secrets or { });
+  orgSecretPrivateRepos =
+    s:
+    lib.filter (id: isPrivate (repoKey id)) (s.repos or [ ]);
+  secretsSkipped = lib.filterAttrs (_: s: freePlan && orgSecretPrivateRepos s != [ ]) allOrgSecrets;
+  secrets = lib.filterAttrs (n: _: !(secretsSkipped ? ${n})) allOrgSecrets;
+
+  # Repository-level Actions settings, read with defaults: the options live in
+  # modules/repos.nix.
+  repoActions = r: r.actions or { };
+  repoSecrets = lib.mapAttrs (_: r: (repoActions r).secrets or { }) repos;
+  repoVariables = lib.mapAttrs (_: r: (repoActions r).variables or { }) repos;
+  repoLabels = lib.mapAttrs (_: r: r.labels or { }) repos;
+  repoFiles = lib.mapAttrs (_: r: r.files or { }) repos;
+  repoRunners = lib.mapAttrs (_: r: r.runners or { }) repos;
+  # [ { k; n; v; } ] for one per-repository attrset.
+  flat =
+    perRepo:
+    lib.concatLists (lib.mapAttrsToList (k: m: lib.mapAttrsToList (n: v: { inherit k n v; }) m) perRepo);
   usedRefs =
     lib.optionals (auth != null) (
       if auth.kind == "app" then
@@ -127,7 +150,8 @@ let
       else
         [ auth.tokenRef ]
     )
-    ++ lib.mapAttrsToList (_: s: s.sourceRef) secrets;
+    ++ lib.mapAttrsToList (_: s: s.sourceRef) secrets
+    ++ map (x: x.v.sourceRef) (flat repoSecrets);
   resolved = map sopsRef usedRefs;
   sopsData = lib.listToAttrs (
     map (r: lib.nameValuePair r.name { source_file = r.path; }) resolved
@@ -183,11 +207,13 @@ let
     branch = r.defaultBranch;
   }) withDefaultBranch;
 
-  envList = lib.concatLists (
+  allEnvList = lib.concatLists (
     lib.mapAttrsToList (
       k: r: lib.mapAttrsToList (env: e: { inherit k env e; }) r.environments
     ) repos
   );
+  envSkipped = lib.filter (x: freePlan && isPrivate x.k) allEnvList;
+  envList = lib.filter (x: !(freePlan && isPrivate x.k)) allEnvList;
   environments = named "repository environments" (
     map (x: {
       raw = "${x.k}_${x.env}";
@@ -276,13 +302,66 @@ let
     selected_repository_ids = map repoId (s.repos or [ ]);
   }) secrets;
 
+  # ---- repository-level Actions, labels, files, runners ------------------
+  repoName = k: ref "${repoAddr k}.name";
+  repoActionsSecrets = named "repository Actions secrets" (
+    map (x: {
+      raw = "${x.k}_${x.n}";
+      value = {
+        repository = repoName x.k;
+        secret_name = x.n;
+        plaintext_value = (sopsRef x.v.sourceRef).expr;
+      };
+    }) (flat repoSecrets)
+  );
+  repoActionsVariables = named "repository Actions variables" (
+    map (x: {
+      raw = "${x.k}_${x.n}";
+      value = {
+        repository = repoName x.k;
+        variable_name = x.n;
+        value = x.v;
+      };
+    }) (flat repoVariables)
+  );
+  issueLabels = named "issue labels" (
+    map (x: {
+      raw = "${x.k}_${x.n}";
+      value = {
+        repository = repoName x.k;
+        name = x.n;
+        inherit (x.v) color;
+      }
+      // lib.optionalAttrs ((x.v.description or null) != null) { inherit (x.v) description; };
+    }) (flat repoLabels)
+  );
+  repositoryFiles = named "repository files" (
+    map (x: {
+      raw = "${x.k}_${x.n}";
+      value = {
+        repository = repoName x.k;
+        file = x.n;
+        inherit (x.v) content;
+        overwrite_on_create = x.v.overwrite or true;
+      }
+      // lib.optionalAttrs ((x.v.branch or null) != null) { inherit (x.v) branch; }
+      // lib.optionalAttrs ((x.v.message or null) != null) { commit_message = x.v.message; };
+    }) (flat repoFiles)
+  );
+  # Terraform cannot register a runner: report the declared ones only.
+  runnerReport = map (x: {
+    repository = "${estate}/${x.k}";
+    name = x.n;
+    labels = x.v.labels or [ ];
+    on = x.v.on or null;
+  }) (flat repoRunners);
+
   # ---- rulesets ----------------------------------------------------------
   rank = {
     free = 0;
     team = 1;
     enterprise = 2;
   };
-  plan = g.plan or "free";
   rulesets = g.rulesets or { };
   rankOf =
     p: rank.${p} or (throw "${where}: plan \"${toString p}\" is not one of free, team, enterprise");
@@ -353,6 +432,10 @@ in
       github_repository = namedAttrs "repositories" renderRepo repos;
       github_branch_default = branchDefaults;
       github_repository_environment = environments;
+      github_actions_secret = repoActionsSecrets;
+      github_actions_variable = repoActionsVariables;
+      github_issue_label = issueLabels;
+      github_repository_file = repositoryFiles;
     }
     // lib.optionalAttrs isOrg orgResources
   );
@@ -362,6 +445,16 @@ in
     fleet_skipped_rulesets = lib.mapAttrsToList (
       n: rs: "${n}: requires plan ${rs.requiresPlan}, the organisation is on ${plan}"
     ) skipped;
+    fleet_skipped_environments = map (
+      x: "${x.k}.${x.env}: private repository, environments need a paid plan, the organisation is on ${plan}"
+    ) envSkipped;
+    fleet_skipped_org_secrets = lib.mapAttrsToList (
+      n: s:
+      "${n}: organisation secrets are not available to private repositories on ${plan} (${
+        lib.concatStringsSep ", " (orgSecretPrivateRepos s)
+      }); use repository-level secrets"
+    ) secretsSkipped;
+    fleet_runners = runnerReport;
     fleet_unrendered =
       deployKeys
       ++ envBranches

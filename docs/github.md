@@ -15,14 +15,21 @@ estate repo.
 | `provider.github` | `owner` is `git.org`; authentication from `git.auth`. `kind = "app"` renders an `app_auth` block (`id`, `installation_id`, `pem_file`), `kind = "token"` renders `token`. Every value is a `${data.sops_file...}` reference resolved from the estate's secret refs, with the same ref form and nested-key rule as `mkTerraform`; never a literal credential |
 | `resource.github_repository.<key>` | each `fleet.repos.<estate>.<key>`: `name` (the repo's `name`, else its key), `visibility`, `description`, `has_issues` / `has_wiki` / `has_projects` from `features`, merge settings from `merge`, `archived`. `archive_on_destroy` (true unless the repository sets `archiveOnDestroy = false`) and `lifecycle.prevent_destroy = true` |
 | `resource.github_branch_default.<key>` | repositories that set `defaultBranch` |
-| `resource.github_repository_environment.<key>_<environment>` | each environment of a repository (its `branches` are not rendered, see below) |
+| `resource.github_repository_environment.<key>_<environment>` | each environment of a repository (its `branches` are not rendered, see below); not rendered for a private repository when `git.plan` is `free` |
+| `resource.github_actions_secret.<key>_<NAME>` | `repos.<estate>.<key>.actions.secrets.<NAME>.sourceRef`; `plaintext_value` is always a `${data.sops_file...}` reference |
+| `resource.github_actions_variable.<key>_<NAME>` | `repos.<estate>.<key>.actions.variables.<NAME>` (the value is plain text, not a secret) |
+| `resource.github_issue_label.<key>_<name>` | `repos.<estate>.<key>.labels.<name>` (`color`, optional `description`); one resource per label, so labels made by hand are left alone |
+| `resource.github_repository_file.<key>_<path>` | `repos.<estate>.<key>.files.<path>` (`content`, optional `branch`, `message`, `overwrite`): `file`, `content`, `overwrite_on_create`, and `branch` / `commit_message` when set (otherwise the default branch and the provider's message). Meant for a workflow file the lab keeps in a tenant repository |
 | `github_organization_settings` | `git.organization`, when `git.kind == "org"` |
 | `github_membership` | one per member; the role comes from the `admin` / `member` lists, and a principal id is resolved to its `github` login through `fleet.operators.principals` |
 | `github_team`, `github_team_members`, `github_team_repository` | `git.teams`; membership is authoritative |
 | `github_actions_organization_permissions` | `git.actions` |
-| `github_actions_organization_secret` | each `git.actions.secrets` entry; `plaintext_value` is a `${data.sops_file...}` reference, `visibility = "selected"` with `selected_repository_ids` referencing the rendered repositories |
+| `github_actions_organization_secret` | each `git.actions.secrets` entry; `plaintext_value` is a `${data.sops_file...}` reference, `visibility = "selected"` with `selected_repository_ids` referencing the rendered repositories. Not rendered when `git.plan` is `free` and any selected repository is private |
 | `github_organization_ruleset` | each ruleset whose `requiresPlan` is satisfied by `git.plan` (`free` < `team` < `enterprise`) |
 | `locals.fleet_skipped_rulesets` | rulesets not rendered because the plan is too low, with the reason |
+| `locals.fleet_skipped_environments` | environments not rendered (private repository on a Free organisation), with the reason |
+| `locals.fleet_skipped_org_secrets` | organisation secrets not rendered (Free plan, a selected repository is private), with the reason and the repositories |
+| `locals.fleet_runners` | the runners declared in `repos.<estate>.<key>.runners` (`repository`, `name`, `labels`, `on`); report data only |
 | `locals.fleet_forks` | repositories that are forks |
 | `locals.fleet_unrendered` | what the kit cannot render (see below) |
 
@@ -73,6 +80,14 @@ its own backend configuration. Any `lib` argument is supplied by the kit.
   `locals.fleet_unrendered` when present.
 - Rulesets above the organisation's plan: they would fail at apply, so they
   are skipped and listed in `locals.fleet_skipped_rulesets`.
+- Environments of a private repository on a Free organisation, and
+  organisation secrets that select a private repository on Free: GitHub does
+  not provide them there, so they are skipped and reported in
+  `locals.fleet_skipped_environments` / `locals.fleet_skipped_org_secrets`.
+  Use repository-level secrets and variables instead.
+- Runners: Terraform cannot register a self-hosted runner (the runner host
+  asks GitHub for its own registration token), so `runners` yields no
+  resource, only `locals.fleet_runners` for a host module to read.
 - Forks: the provider cannot create a fork relationship. A fork is rendered
   like any repository and noted in `locals.fleet_forks`.
 - Repository destruction: removing an entry never deletes a repository

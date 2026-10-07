@@ -1,0 +1,143 @@
+{
+  "support": [
+    "_: {",
+    "  fleet = {",
+    "    sites.s1 = {",
+    "      region = \"test\";",
+    "      networks.lan.cidr = \"192.0.2.0/24\";",
+    "      bridges.vmbr0.network = \"s1/lan\";",
+    "      nodes.n1 = {",
+    "        osType = \"debian-pve\";",
+    "        address = \"192.0.2.10\";",
+    "      };",
+    "      storage.local = { type = \"dir\"; path = \"/var/lib/vz\"; content = [ \"rootdir\" \"images\" \"vztmpl\" ]; };",
+    "      images.tpl = { datastore = \"s1/local\"; contentType = \"vztmpl\"; fileName = \"tpl.tar.zst\"; build.method = \"nix\"; };",
+    "      providers.proxmox = {",
+    "        api = \"https://192.0.2.10:8006/\";",
+    "        tokenRef = \"sops:gh/gh#repo-token\";",
+    "        ids.vmid.scope = \"cluster\";",
+    "        defaults = {",
+    "          console = \"console\";",
+    "          nic = { name = \"eth0\"; bridge = \"s1/vmbr0\"; };",
+    "          operatingSystem = { type = \"nixos\"; templateFileId = \"local:vztmpl/tpl.tar.zst\"; };",
+    "        };",
+    "      };",
+    "    };",
+    "    guests.gh.runner = {",
+    "      vmid = 9301;",
+    "      kind = \"lxc\";",
+    "      on = \"s1/n1\";",
+    "      networkInterfaces = [ { network = \"lan\"; address = \"192.0.2.51\"; } ];",
+    "      disks = [ { role = \"root\"; size = 8; datastore = \"s1/local\"; } ];",
+    "    };",
+    "    estates.gh.secrets.files.gh.keys = [ \"repo-token\" \"other-token\" ];",
+    "    estates.other = { owner = \"Other\"; };",
+    "    repos.other.thing = { visibility = \"private\"; };",
+    "  };",
+    "}"
+  ],
+  "positive": [
+    "_: {",
+    "  fleet.repos.gh.app = {",
+    "    actions = {",
+    "      secrets.REPO_TOKEN.sourceRef = \"sops:gh/gh#repo-token\";",
+    "      variables.DEPLOY_TARGET = \"staging\";",
+    "    };",
+    "    labels = {",
+    "      \"needs-review\" = { color = \"d93f0b\"; description = \"Waiting on a reviewer.\"; };",
+    "      \"bug\" = { color = \"b60205\"; };",
+    "    };",
+    "    files.\".github/workflows/signal.yml\" = {",
+    "      content = \"name: signal\\non: push\\njobs: {}\\n\";",
+    "      message = \"Manage signal workflow\";",
+    "    };",
+    "    runners.ci = { labels = [ \"self-hosted\" \"checks\" ]; on = \"gh/runner\"; };",
+    "  };",
+    "  fleet.repos.gh.site.environments.live = { estateEnvironment = \"gh/prod\"; branches = [ \"main\" ]; };",
+    "  fleet.estates.gh.git.actions.secrets.SITE_TOKEN = { sourceRef = \"sops:gh/gh#other-token\"; repos = [ \"gh/site\" ]; };",
+    "}"
+  ],
+  "negative": [
+    {
+      "name": "literal-secret",
+      "description": "a literal secret value where a sops ref is required",
+      "expect": "LITERAL|sourceRef|sops",
+      "module": [
+        "_: { fleet.repos.gh.app.actions.secrets.LITERAL.sourceRef = \"not-a-ref-LITERALVALUE\"; }"
+      ],
+      "noecho": true
+    },
+    {
+      "name": "literal-secret-plaintext",
+      "description": "a plaintext_value attribute beside the ref",
+      "expect": "plaintext_value|does not exist|LITERAL",
+      "module": [
+        "_: { fleet.repos.gh.app.actions.secrets.LITERAL = { sourceRef = \"sops:gh/gh#repo-token\"; plaintext_value = \"not-a-ref-LITERALVALUE\"; }; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "secret-unknown-key",
+      "description": "a sops ref to a key the estate's secrets do not declare",
+      "expect": "not-declared|MISSING|sourceRef|sops",
+      "module": [
+        "_: { fleet.repos.gh.app.actions.secrets.MISSING.sourceRef = \"sops:gh/gh#not-declared\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "org-secret-other-estate-repo",
+      "description": "an organisation secret naming a repository of another estate",
+      "expect": "other/thing|CI_TOKEN|estate",
+      "module": [
+        "_: { fleet.estates.gh.git.actions.secrets.CI_TOKEN.repos = [ \"other/thing\" ]; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "runner-on-node",
+      "description": "a runner on a node, which is not a guest",
+      "expect": "s1/n1|runners|guest",
+      "module": [
+        "_: { fleet.repos.gh.app.runners.ci = { labels = [ \"self-hosted\" ]; on = \"s1/n1\"; }; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "runner-on-unknown",
+      "description": "a runner on an id that is no guest",
+      "expect": "gh/nope|runners|guest",
+      "module": [
+        "_: { fleet.repos.gh.app.runners.ci = { labels = [ \"self-hosted\" ]; on = \"gh/nope\"; }; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "file-bad-path",
+      "description": "a managed file with an absolute path",
+      "expect": "/abs/path|files|path",
+      "module": [
+        "_: { fleet.repos.gh.app.files.\"/abs/path\".content = \"x\"; }"
+      ],
+      "noecho": false
+    }
+  ],
+  "isolation": {
+    "description": "the other estate's repository carries a file, a secret and a label; none may reach estate gh's render",
+    "module": [
+      "_: {",
+      "  fleet.estates.other.secrets = { backend = \"sops\"; files.x = { path = \"secrets/x.json\"; keys = [ \"y\" ]; }; };",
+      "  fleet.repos.other.thing = {",
+      "    actions.secrets.OTHER_ONLY.sourceRef = \"sops:other/x#y\";",
+      "    labels.other-only.color = \"ffffff\";",
+      "    files.\"other-only.txt\".content = \"x\";",
+      "  };",
+      "}"
+    ],
+    "absent": [
+      "OTHER_ONLY",
+      "other-only",
+      "thing"
+    ]
+  }
+}
