@@ -1,0 +1,101 @@
+name: author-gate
+description: >
+  Outputs ungated=true only when BOTH the pull request's author and the account that merged it are
+  in the caller's ungated list AND `sha` is that pull request's merge commit (and, when base_branch
+  is given, the pull request was merged into that branch). Author, merger, merge commit and base
+  branch are read from the API with the given token; nothing about them is taken from the event
+  that started the workflow. The pull request number and `sha` may come from an untrusted sender:
+  a number alone proves nothing, so the commit that will be run is bound to it here.
+inputs:
+  token:
+    description: Token that can read pull requests of `repository`.
+    required: true
+  repository:
+    description: owner/name of the repository the pull request belongs to.
+    required: true
+  pull_request:
+    description: Pull request number.
+    required: true
+  sha:
+    description: >
+      The commit the caller is about to check out and run. The gate passes only if it is the pull
+      request's merge commit (merge_commit_sha), as a full 40 hex SHA.
+    required: true
+  ungated_authors:
+    description: Logins allowed to pass the gate, separated by commas, spaces or newlines.
+    required: true
+  base_branch:
+    description: >
+      Optional. When set, the pull request must have been merged into this branch (base.ref).
+      Empty means any base branch.
+    required: false
+    default: ""
+outputs:
+  ungated:
+    description: >
+      "true" only if author and merged_by are both in ungated_authors, sha is the pull request's
+      merge commit and base_branch (when given) is its base branch; else "false".
+    value: ${{ steps.gate.outputs.ungated }}
+  author:
+    description: The pull request author's login.
+    value: ${{ steps.gate.outputs.author }}
+  merged_by:
+    description: The login that merged the pull request (empty when not merged).
+    value: ${{ steps.gate.outputs.merged_by }}
+  merge_commit:
+    description: The pull request's merge commit (empty when not merged).
+    value: ${{ steps.gate.outputs.merge_commit }}
+  base_ref:
+    description: The branch the pull request targets.
+    value: ${{ steps.gate.outputs.base_ref }}
+  reason:
+    description: Why the gate is closed (empty when ungated is "true").
+    value: ${{ steps.gate.outputs.reason }}
+runs:
+  using: composite
+  steps:
+    - id: gate
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ inputs.repository }}
+        PR: ${{ inputs.pull_request }}
+        SHA: ${{ inputs.sha }}
+        UNGATED: ${{ inputs.ungated_authors }}
+        BASE_BRANCH: ${{ inputs.base_branch }}
+      run: |
+        set -euo pipefail
+        case "$PR" in ''|*[!0-9]*) echo "pull_request must be a number" >&2; exit 1 ;; esac
+        if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then echo "sha must be a full 40 hex commit" >&2; exit 1; fi
+        pr_json="$(gh api "repos/$REPO/pulls/$PR")"
+        author="$(jq -r '.user.login // ""' <<<"$pr_json")"
+        merged_by="$(jq -r '.merged_by.login // ""' <<<"$pr_json")"
+        merged="$(jq -r '.merged // false' <<<"$pr_json")"
+        base_ref="$(jq -r '.base.ref // ""' <<<"$pr_json")"
+        # merge_commit_sha of an unmerged pull request is GitHub's test merge, not a merge: ignore it.
+        merge_commit=""
+        if [ "$merged" = true ]; then merge_commit="$(jq -r '.merge_commit_sha // ""' <<<"$pr_json")"; fi
+        ungated=false
+        reason=""
+        if [ "$merged" != true ] || [ -z "$author" ] || [ -z "$merged_by" ]; then
+          reason="pull request is not merged"
+        elif [ "$(jq -rn --arg a "$author" --arg m "$merged_by" --arg list "$UNGATED" '
+            ($list | split("[,\\s]+"; "g") | map(select(. != ""))) as $ok
+            | if ($ok | index($a)) != null and ($ok | index($m)) != null then "true" else "false" end')" != true ]; then
+          reason="author or merger not in the ungated list"
+        elif [ -z "$merge_commit" ] || [ "$SHA" != "$merge_commit" ]; then
+          reason="commit is not the pull request's merge commit"
+        elif [ -n "$BASE_BRANCH" ] && [ "$base_ref" != "$BASE_BRANCH" ]; then
+          reason="pull request was not merged into the expected branch"
+        else
+          ungated=true
+        fi
+        {
+          echo "ungated=$ungated"
+          echo "author=$author"
+          echo "merged_by=$merged_by"
+          echo "merge_commit=$merge_commit"
+          echo "base_ref=$base_ref"
+          echo "reason=$reason"
+        } >> "$GITHUB_OUTPUT"
+        echo "author=$author merged_by=$merged_by base=$base_ref merge_commit=$merge_commit sha=$SHA ungated=$ungated${reason:+ ($reason)}"
