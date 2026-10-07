@@ -144,10 +144,13 @@ let
             type = types.lazyAttrsOf (
               types.submodule {
                 options = {
-                  labels = mkOption { type = types.listOf types.str; };
+                  labels = mkOption {
+                    type = types.listOf types.str;
+                    description = "The labels the runner registers with, which a workflow's runs-on selects (for example [ \"self-hosted\" \"checks\" ]). At least one. Reported in locals.fleet_runners.";
+                  };
                   on = mkOption {
                     type = types.str;
-                    description = "Guest id (<estate>/<name>) that runs this runner. Any declared guest is accepted, of this estate or another: the model has no rule for which estate may place a runner where, so placement across estates is NOT checked here. Whoever reads locals.fleet_runners to configure a host must decide whether that guest may serve this repository. Model data only; Terraform cannot register a runner.";
+                    description = "Guest id (<estate>/<name>) that runs this runner. It must be a declared guest of the same estate as the repository: a runner on another estate's guest is an evaluation error. Model data only; Terraform cannot register a runner.";
                   };
                 };
               }
@@ -256,13 +259,17 @@ let
             lib.mapAttrsToList (
               rn: rv:
               [
-                # Any declared guest: the estate of the guest is not compared
-                # with the repository's (see the option description).
                 (h.refAssertion {
                   where = w "runners.${rn}.on";
                   kind = "guest";
                   ids = ids.guest;
                 } rv.on)
+                # A declared guest, and one of the repository's own estate.
+                # An id that is no guest at all is reported above only.
+                {
+                  assertion = !(builtins.elem rv.on ids.guest) || lib.hasPrefix "${estate}/" rv.on;
+                  message = "${w "runners.${rn}.on"}: guest reference \"${rv.on}\" belongs to another estate (a runner must be on a guest of the repository's estate, expected ${estate}/...)";
+                }
                 {
                   assertion = rv.labels != [ ];
                   message = "${w "runners.${rn}.labels"}: a runner needs at least one label";

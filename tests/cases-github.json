@@ -61,7 +61,7 @@
     {
       "name": "literal-secret",
       "description": "a literal secret value where a sops ref is required",
-      "expect": "LITERAL|sourceRef|sops",
+      "expect": "fleet\\.repos\\.gh\\.app\\.actions\\.secrets\\.LITERAL\\.sourceRef: secret reference <withheld: not a sops: reference> does not exist \\(a secret reference must start with sops:\\)",
       "module": [
         "_: { fleet.repos.gh.app.actions.secrets.LITERAL.sourceRef = \"not-a-ref-LITERALVALUE\"; }"
       ],
@@ -70,7 +70,7 @@
     {
       "name": "literal-secret-plaintext",
       "description": "a plaintext_value attribute beside the ref",
-      "expect": "plaintext_value|does not exist|LITERAL",
+      "expect": "The option `fleet\\.repos\\.gh\\.app\\.actions\\.secrets\\.LITERAL\\.plaintext_value' does not exist",
       "module": [
         "_: { fleet.repos.gh.app.actions.secrets.LITERAL = { sourceRef = \"sops:gh/gh#repo-token\"; plaintext_value = \"not-a-ref-LITERALVALUE\"; }; }"
       ],
@@ -79,7 +79,7 @@
     {
       "name": "secret-unknown-key",
       "description": "a sops ref to a key the estate's secrets do not declare",
-      "expect": "not-declared|MISSING|sourceRef|sops",
+      "expect": "fleet\\.repos\\.gh\\.app\\.actions\\.secrets\\.MISSING\\.sourceRef: secret reference \"sops:gh/gh#not-declared\" does not exist \\(known secret ids: ",
       "module": [
         "_: { fleet.repos.gh.app.actions.secrets.MISSING.sourceRef = \"sops:gh/gh#not-declared\"; }"
       ],
@@ -87,17 +87,17 @@
     },
     {
       "name": "org-secret-other-estate-repo",
-      "description": "an organisation secret naming a repository of another estate",
-      "expect": "other/thing|CI_TOKEN|estate",
+      "description": "an organisation secret (one the fixture does not define) naming a repository of another estate",
+      "expect": "mkGithubTerraform: fleet\\.estates\\.gh\\.git: repository \"other/thing\" is not a repository of estate \"gh\"",
       "module": [
-        "_: { fleet.estates.gh.git.actions.secrets.CI_TOKEN.repos = [ \"other/thing\" ]; }"
+        "_: { fleet.estates.gh.git.actions.secrets.OTHER_REPO_TOKEN = { sourceRef = \"sops:gh/gh#other-token\"; repos = [ \"other/thing\" ]; }; }"
       ],
       "noecho": false
     },
     {
       "name": "runner-on-node",
       "description": "a runner on a node, which is not a guest",
-      "expect": "s1/n1|runners|guest",
+      "expect": "fleet\\.repos\\.gh\\.app\\.runners\\.ci\\.on: guest reference \"s1/n1\" does not exist \\(known guest ids: ",
       "module": [
         "_: { fleet.repos.gh.app.runners.ci = { labels = [ \"self-hosted\" ]; on = \"s1/n1\"; }; }"
       ],
@@ -106,7 +106,7 @@
     {
       "name": "runner-on-unknown",
       "description": "a runner on an id that is no guest",
-      "expect": "gh/nope|runners|guest",
+      "expect": "fleet\\.repos\\.gh\\.app\\.runners\\.ci\\.on: guest reference \"gh/nope\" does not exist \\(known guest ids: ",
       "module": [
         "_: { fleet.repos.gh.app.runners.ci = { labels = [ \"self-hosted\" ]; on = \"gh/nope\"; }; }"
       ],
@@ -115,9 +115,54 @@
     {
       "name": "file-bad-path",
       "description": "a managed file with an absolute path",
-      "expect": "/abs/path|files|path",
+      "expect": "fleet\\.repos\\.gh\\.app\\.files\\./abs/path: file path \"/abs/path\" must be relative to the repository root and contain no \\.\\.",
       "module": [
         "_: { fleet.repos.gh.app.files.\"/abs/path\".content = \"x\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "runner-on-other-estate-guest",
+      "description": "a runner on a declared guest of another estate than the repository's",
+      "expect": "fleet\\.repos\\.gh\\.app\\.runners\\.ci\\.on: guest reference \"other/box\" belongs to another estate \\(a runner must be on a guest of the repository's estate, expected gh/\\.\\.\\.\\)",
+      "module": [
+        "_: {",
+        "  fleet.guests.other.box = {",
+        "    vmid = 9302;",
+        "    kind = \"lxc\";",
+        "    on = \"s1/n1\";",
+        "    networkInterfaces = [ { network = \"lan\"; address = \"192.0.2.52\"; } ];",
+        "    disks = [ { role = \"root\"; size = 8; datastore = \"s1/local\"; } ];",
+        "  };",
+        "  fleet.repos.gh.app.runners.ci = { labels = [ \"self-hosted\" ]; on = \"other/box\"; };",
+        "}"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "file-on-other-estate-repo",
+      "description": "a tenant source (estate other) that sets a file on a repository of estate gh",
+      "expect": "tenant other \\([^)]*\\) sets fleet\\.repos outside what a tenant owns",
+      "tenant": {
+        "name": "other",
+        "module": [
+          "_: { fleet.repos.gh.app.files.\"x\".content = \"x\"; }"
+        ]
+      },
+      "module": [
+        "_: { }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "resource-name-collision",
+      "description": "two repository secrets whose <repo key>_<name> is the same string",
+      "expect": "repository Actions secrets: repository \"app\" Actions secret \"B_C\", repository \"app_B\" Actions secret \"C\" all render the resource name \"app_B_C\"",
+      "module": [
+        "_: {",
+        "  fleet.repos.gh.app.actions.secrets.B_C.sourceRef = \"sops:gh/gh#repo-token\";",
+        "  fleet.repos.gh.app_B.actions.secrets.C.sourceRef = \"sops:gh/gh#other-token\";",
+        "}"
       ],
       "noecho": false
     }

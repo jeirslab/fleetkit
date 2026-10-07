@@ -29,7 +29,7 @@ estate repo.
 | `locals.fleet_skipped_rulesets` | rulesets not rendered because the plan is too low, with the reason |
 | `locals.fleet_skipped_environments` | environments not rendered (private repository on a Free organisation), with the reason |
 | `locals.fleet_skipped_org_secrets` | organisation secrets not rendered (Free plan, a selected repository is private), with the reason and the repositories |
-| `locals.fleet_runners` | the runners declared in `repos.<estate>.<key>.runners` (`repository`, `name`, `labels`, `on`); report data only. `on` is checked to be a declared guest, not to be a guest of the same estate (see below) |
+| `locals.fleet_runners` | the runners declared in `repos.<estate>.<key>.runners` (`repository`, `name`, `labels`, `on`); report data only. `on` is a guest of the repository's own estate (see below) |
 | `locals.fleet_forks` | repositories that are forks |
 | `locals.fleet_unrendered` | what the kit cannot render (see below) |
 
@@ -48,8 +48,38 @@ name that would start with a digit or `-` gets a leading `_`. A repo key
 `foo.bar` has the address `github_repository.foo_bar`. Two keys that
 sanitise to the same name are an evaluation error, not a silent merge.
 
+The per-repository resources (Actions secrets, Actions variables, labels,
+files) are named `<repo key>_<item>`. That name does not say where the key
+ends, so repository `app` with the secret `B_C` and repository `app_B` with
+the secret `C` both render `app_B_C`. This is the same evaluation error, and
+its message names the repository key and the item separately for each
+offender: `repository "app" Actions secret "B_C", repository "app_B" Actions
+secret "C" all render the resource name "app_B_C"`.
+
 A team, ruleset or Actions secret may only name repositories of the estate
 being rendered; a repository id of another estate is an evaluation error.
+
+## What the schema checks
+
+`modules/repos.nix` refuses these at evaluation, each with a message that
+starts with the option path (`fleet.repos.<estate>.<key>...`):
+
+| Option | Rule |
+| ------ | ---- |
+| `actions.secrets.<NAME>` | the name is letters, digits and `_`, does not start with a digit and does not start with `GITHUB_` (GitHub reserves that prefix) |
+| `actions.secrets.<NAME>.sourceRef` | a `sops:` reference that a declared secrets file of the same estate provides; a value that is not a `sops:` reference is refused without being echoed |
+| `actions.variables.<NAME>` | the same name rule as a secret |
+| `labels.<name>.color` | exactly six hex digits, no leading `#` |
+| `files.<path>` | the path is relative to the repository root: not empty, no leading `/`, no `..` component |
+| `runners.<name>.labels` | at least one label |
+| `runners.<name>.on` | a declared guest, and a guest of the same estate as the repository |
+
+A file, secret, variable, label or runner can only be declared by the estate
+that owns the repository: `fleet.repos.<tenant>` is the only part of
+`fleet.repos` a tenant source may set (`lib/default.nix`, `tenantViolations`),
+so a tenant that sets `fleet.repos.<other estate>.<key>.files.<path>` fails
+evaluation with `tenant <tenant> (...) sets fleet.repos outside what a tenant
+owns`.
 
 ## Using it from an estate repo
 
@@ -91,12 +121,9 @@ its own backend configuration. Any `lib` argument is supplied by the kit.
 - Runners: Terraform cannot register a self-hosted runner (the runner host
   asks GitHub for its own registration token), so `runners` yields no
   resource, only `locals.fleet_runners` for a host module to read. A runner's
-  `on` must be a declared guest, and that is all the model checks: it may be
-  a guest of another estate (a tenant repository served by a lab runner), and
-  the model has no rule that says which estate may place a runner where.
-  `fleet.repos.<tenant>` is tenant-owned, so a tenant can name any guest
-  here. The module that turns `locals.fleet_runners` into a runner on a host
-  must itself decide whether that guest may serve that repository.
+  `on` must be a declared guest of the same estate as the repository; a
+  runner on another estate's guest is an evaluation error (see "What the
+  schema checks").
 - Forks: the provider cannot create a fork relationship. A fork is rendered
   like any repository and noted in `locals.fleet_forks`.
 - Repository destruction: removing an entry never deletes a repository
@@ -178,6 +205,8 @@ imports resources or manages state.
 pinned provider schema, that every resource name is a legal Terraform name,
 the expected addresses, the skipped ruleset, that no
 credential is a literal and that every repository has `archive_on_destroy`.
+`tests/cases-github.json` holds the negative cases: one refused declaration
+per rule above, each pinned to the message of the validation that refuses it.
 It runs under the `fidelity` gate in `tools/gates.sh`.
 
 ## Three rules the renderer keeps

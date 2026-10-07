@@ -10,8 +10,13 @@
 #             with another estate's repository carrying the same blocks, which
 #             must not reach estate gh's render;
 #   negative  the fixture plus support plus one bad declaration, each of which
-#             must fail evaluation with a message naming the offender, and must
-#             never echo a literal secret value.
+#             must fail evaluation with the message of the validation that
+#             refuses it ("expect", an extended regular expression pinned to
+#             that message, case-sensitive), and must never echo a literal
+#             secret value. A case with a "tenant" block also writes that
+#             module as <tmp>/tenant-<case>/fleet/default.nix and passes the
+#             directory to lib.fleet as tenants.<name>, so the declaration is
+#             judged as a tenant's (lib/default.nix, tenantViolations).
 # Prints one JSON line: {"github":"pass"|"fail"}; exit 0 iff pass.
 set -uo pipefail
 
@@ -28,7 +33,7 @@ fail() {
 
 # Write each Nix module of the case file to $TMP/<name>.nix.
 python3 - "$CASES" "$TMP" <<'PY' || exit 2
-import json, sys
+import json, os, sys
 d = json.load(open(sys.argv[1], encoding="utf-8"))
 out = sys.argv[2]
 def w(name, lines):
@@ -38,15 +43,21 @@ w("positive", d["positive"])
 w("isolation", d["isolation"]["module"])
 for c in d["negative"]:
     w("neg-" + c["name"], c["module"])
+    # A tenant source: <dir>/fleet/default.nix, the layout lib.mkFleet reads.
+    if "tenant" in c:
+        src = f"{out}/tenant-{c['name']}/fleet"
+        os.makedirs(src)
+        open(f"{src}/default.nix", "w", encoding="utf-8").write("\n".join(c["tenant"]["module"]) + "\n")
 PY
 
 # render NAME MODULE... : evaluate estate gh with the fixture plus the modules.
+# TENANTS, when set, is the body of the tenants attrset (estate = source;).
 render() {
   local name="$1" mods="" m
   shift
   for m in "$@"; do mods="$mods $TMP/$m.nix"; done
   nix eval --impure --json "$ROOT#lib" --apply "l: l.mkGithubTerraform {
-    fleet = l.fleet { modules = [ $ROOT/tests/fixtures/gh-mini $mods ]; };
+    fleet = l.fleet { modules = [ $ROOT/tests/fixtures/gh-mini $mods ]; tenants = { ${TENANTS:-} }; };
     estate = \"gh\";
   }" >"$TMP/$name.json" 2>"$TMP/$name.err"
 }
@@ -68,12 +79,16 @@ else
 fi
 
 # negative: each must fail to evaluate, name the offender, and not leak a value.
-while IFS=$'\t' read -r name expect noecho; do
+while IFS=$'\t' read -r name expect noecho tenant; do
+  # A case with a tenant passes its source (written above) as that estate's
+  # tenant, so the definition is judged by the tenant boundary.
+  TENANTS=""
+  [[ -n $tenant ]] && TENANTS="$tenant = \"$TMP/tenant-$name\";"
   if render "neg-$name" support "neg-$name"; then
     fail "negative $name: evaluated, but must be refused"
     continue
   fi
-  if ! grep -Eiq -- "$expect" "$TMP/neg-$name.err"; then
+  if ! grep -Eq -- "$expect" "$TMP/neg-$name.err"; then
     fail "negative $name: the error does not mention /$expect/"
     tail -n 8 "$TMP/neg-$name.err" >&2
   fi
@@ -85,7 +100,7 @@ while IFS=$'\t' read -r name expect noecho; do
 done < <(python3 -c '
 import json, sys
 for c in json.load(open(sys.argv[1], encoding="utf-8"))["negative"]:
-    print(c["name"] + "\t" + c["expect"] + "\t" + ("1" if c.get("noecho") else "0"))
+    print("\t".join([c["name"], c["expect"], "1" if c.get("noecho") else "0", c.get("tenant", {}).get("name", "")]))
 ' "$CASES")
 
 printf '{"github":"%s"}\n' "$status"

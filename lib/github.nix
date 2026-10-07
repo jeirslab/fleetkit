@@ -82,8 +82,11 @@ let
       );
     in
     if builtins.match "[A-Za-z_].*" clean != null then clean else "_${clean}";
-  # [ { raw; value; } ] -> { <tfName raw> = value; }; two entries that render
-  # the same name are an error, never a silent overwrite.
+  # [ { raw; value; label ? } ] -> { <tfName raw> = value; }; two entries that
+  # render the same name are an error, never a silent overwrite. `label` is
+  # what the error shows for an entry instead of its quoted raw name: a raw
+  # name joined from two parts ("<repo key>_<item>") can be the same string
+  # for both offenders, so those entries name their parts separately.
   named =
     what: pairs:
     let
@@ -94,7 +97,7 @@ let
       throw "${where}: ${what}: ${
         lib.concatStringsSep "; " (
           lib.mapAttrsToList (
-            n: ps: "${lib.concatMapStringsSep ", " (p: "\"${p.raw}\"") ps} all render the resource name \"${n}\""
+            n: ps: "${lib.concatMapStringsSep ", " (p: p.label or "\"${p.raw}\"") ps} all render the resource name \"${n}\""
           ) clashes
         )
       }"
@@ -324,9 +327,14 @@ let
 
   # ---- repository-level Actions, labels, files, runners ------------------
   repoName = k: ref "${repoAddr k}.name";
+  # The resource name is "<repo key>_<item>", which does not say where the
+  # key ends: repository "app" with "B_C" and repository "app_B" with "C" are
+  # the same string. A clash is reported with the two parts apart.
+  perRepoLabel = kind: x: "repository \"${x.k}\" ${kind} \"${x.n}\"";
   repoActionsSecrets = named "repository Actions secrets" (
     map (x: {
       raw = "${x.k}_${x.n}";
+      label = perRepoLabel "Actions secret" x;
       value = {
         repository = repoName x.k;
         secret_name = x.n;
@@ -337,6 +345,7 @@ let
   repoActionsVariables = named "repository Actions variables" (
     map (x: {
       raw = "${x.k}_${x.n}";
+      label = perRepoLabel "Actions variable" x;
       value = {
         repository = repoName x.k;
         variable_name = x.n;
@@ -347,6 +356,7 @@ let
   issueLabels = named "issue labels" (
     map (x: {
       raw = "${x.k}_${x.n}";
+      label = perRepoLabel "label" x;
       value = {
         repository = repoName x.k;
         name = x.n;
@@ -358,6 +368,7 @@ let
   repositoryFiles = named "repository files" (
     map (x: {
       raw = "${x.k}_${x.n}";
+      label = perRepoLabel "file" x;
       value = {
         repository = repoName x.k;
         file = x.n;
