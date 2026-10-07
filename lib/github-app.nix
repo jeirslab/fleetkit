@@ -11,6 +11,8 @@
 #
 # The data is github/app-manifest.nix. Tiers merge by taking the higher level
 # per permission (read < write < admin), so a tier set is order independent.
+# terraform-admin always includes pipeline: selecting it alone renders the
+# pipeline permissions too.
 {
   lib,
   org,
@@ -30,10 +32,13 @@ let
   };
   appName = if name != null then name else lib.replaceStrings [ "%s" ] [ org ] data.namePattern;
   unknown = lib.filter (t: !(data.tiers ? ${t})) tiers;
+  effectiveTiers = lib.unique (
+    lib.optional (lib.elem "terraform-admin" tiers) "pipeline" ++ tiers
+  );
   higher = a: b: if rank.${a} >= rank.${b} then a else b;
   permissions = lib.foldl' (
     acc: t: acc // lib.mapAttrs (k: v: if acc ? ${k} then higher acc.${k} v else v) data.tiers.${t}
-  ) { } tiers;
+  ) { } effectiveTiers;
 in
 assert lib.assertMsg (org != "") "mkGithubAppManifest: org must not be empty";
 assert lib.assertMsg (tiers != [ ]) "mkGithubAppManifest: tiers must not be empty";

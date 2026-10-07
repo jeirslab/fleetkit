@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Renders lib.mkGithubAppManifest for both tier selections and checks: only
 # known manifest keys, only known permission names and levels, no webhook, and
-# that terraform-admin (alone or with pipeline) is a superset of pipeline.
+# that terraform-admin (alone or with pipeline) is a superset of pipeline, and
+# that permission keys exist in the pinned GitHub list (github/permission-names.txt).
 # Evaluation only. Prints {"github_app":"pass"|"fail"}; exit 0 iff pass.
 set -uo pipefail
 
@@ -23,17 +24,17 @@ nix eval --json "$ROOT#lib" --apply 'l: (builtins.tryEval (l.mkGithubAppManifest
 [[ $(cat "$TMP/bad.json") == false ]] || { echo "github_app: unknown tier was accepted" >&2; status=fail; }
 
 if [[ $status == pass ]]; then
-  python3 - "$TMP" "$ROOT/lib/../providers" <<'PY' >&2 || status=fail
+  python3 - "$TMP" "$ROOT/github/permission-names.txt" <<'PY' >&2 || status=fail
 import json, sys
 tmp = sys.argv[1]
 load = lambda n: json.load(open(f"{tmp}/{n}.json"))
 KEYS = {"name", "url", "hook_attributes", "redirect_url", "description", "public",
         "default_events", "default_permissions", "callback_urls", "setup_url",
         "request_oauth_on_install", "setup_on_update"}
-# GitHub's server-to-server permission names that this kit uses.
-PERMS = {"metadata", "contents", "statuses", "pull_requests", "issues", "actions",
-         "administration", "secrets", "variables", "workflows", "members",
-         "organization_administration"}
+PERMS = {l.strip() for l in open(sys.argv[2]) if l.strip() and not l.startswith("#")}
+if "variables" in PERMS or "actions_variables" not in PERMS: print("github_app: pinned permission list looks wrong"); sys.exit(1)
+# Selftest: a key GitHub does not have must not pass the permission check.
+if "invented_permission" in PERMS: print("github_app: selftest: invented key is in the pinned list"); sys.exit(1)
 RANK = {"read": 1, "write": 2, "admin": 3}
 bad = []
 for n in ("both", "pipeline", "admin"):
@@ -56,6 +57,8 @@ for k, v in p.items():
 for k, v in a.items():
     if k not in b or RANK[b[k]] < RANK[v]: bad.append(f"both lacks terraform-admin permission {k}={v}")
 if set(b) != set(p) | set(a): bad.append("both is not the union of the tiers")
+for k, v in p.items():
+    if k not in a or RANK[a[k]] < RANK[v]: bad.append(f"terraform-admin alone lacks pipeline permission {k}={v}")
 if not (set(a) - set(p)): bad.append("terraform-admin adds nothing to pipeline")
 for x in bad: print("github_app:", x)
 sys.exit(1 if bad else 0)

@@ -28,9 +28,9 @@ is still sent because the field requires one; it is never called.
 `redirect_url` is only set when you pass `redirectUrl`.
 
 Every permission key below was checked against GitHub's server-to-server
-permission list (`actions`, `administration`, `contents`, `issues`,
+permission list, pinned in `github/permission-names.txt` (`actions`, `administration`, `contents`, `issues`,
 `members`, `metadata`, `organization_administration`, `pull_requests`,
-`secrets`, `statuses`, `variables`, `workflows`).
+`secrets`, `statuses`, `actions_variables`, `workflows`).
 
 ## An App is per org
 
@@ -61,7 +61,7 @@ managing the org. Selecting both takes the higher level per permission.
 | ---------- | ----- | --- |
 | `administration` | write | Create and configure repositories; register repo runners. |
 | `secrets` | write | Repository Actions secrets. |
-| `variables` | write | Repository Actions variables. |
+| `actions_variables` | write | Repository Actions variables. |
 | `workflows` | write | Write files under `.github/workflows/`. |
 | `contents` | write | Commit managed files (raises the pipeline level). |
 | `members` | write | Org membership and teams. |
