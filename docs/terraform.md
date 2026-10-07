@@ -1,4 +1,8 @@
-# Rendering Terraform from the model (`lib.mkTerraform`)
+# The guests' provider arguments (`lib.internal.guests`)
+
+This branch deploys with Pulumi: this stage is what `lib.mkPulumi` compiles
+(see `docs/pulumi.md`). `mkTerraform` below is `lib.internal.guests`; nothing
+runs tofu.
 
 `lib.mkTerraform { fleet, estate }` turns the evaluated model into an
 attrset that `builtins.toJSON` writes as a valid `main.tf.json`. It is a pure

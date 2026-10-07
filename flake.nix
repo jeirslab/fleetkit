@@ -26,18 +26,23 @@
         # -> a Colmena hive: meta plus one node per guest that names a nixos.module.
         # With `site` instead of `estate`: the site's nodes that name one.
         mkHive = import ./lib/hive.nix;
-        # { fleet; estate; } -> an attrset for builtins.toJSON into main.tf.json.
-        mkTerraform = args: import ./lib/terraform.nix ({ inherit (nixpkgs) lib; } // args);
-        # { fleet; estate; } -> the estate's GitHub repositories and organisation
-        # as an attrset for builtins.toJSON into main.tf.json.
-        mkGithubTerraform = args: import ./lib/github.nix ({ inherit (nixpkgs) lib; } // args);
-        # Experimental: the same renders as Pulumi YAML programs (builtins.toJSON
-        # into Pulumi.yaml), through Pulumi's terraform-provider bridge at the
-        # pinned provider versions. See docs/pulumi.md.
+        # The provider arguments of an estate, in the pinned Terraform
+        # providers' own names (Pulumi runs those providers through its bridge,
+        # and their schemas are what the model is checked against). Internal:
+        # the stage mkPulumi / mkGithubPulumi compile from; tests read it.
+        internal = {
+          # { fleet; estate; } -> guests and pools, main.tf.json shaped.
+          guests = args: import ./lib/terraform.nix ({ inherit (nixpkgs) lib; } // args);
+          # { fleet; estate; } -> the GitHub organisation and repositories.
+          github = args: import ./lib/github.nix ({ inherit (nixpkgs) lib; } // args);
+        };
+        # Pulumi YAML programs (builtins.toJSON into Pulumi.yaml) through
+        # Pulumi's terraform-provider bridge at the pinned provider versions;
+        # the fleetkit package runs them, then Colmena. See docs/pulumi.md.
         # { tf; project; description ? null; } -> a Pulumi YAML program.
         toPulumi = args: import ./lib/pulumi.nix ({ inherit (nixpkgs) lib; } // args);
-        # { fleet; estate; adopt ? false; } -> mkTerraform's render as a Pulumi
-        # program. adopt = true sets options.import on every guest and pool
+        # { fleet; estate; adopt ? false; } -> the estate's guests and pools as a
+        # Pulumi program. adopt = true sets options.import on every guest and pool
         # (bpg import ids <node>/<vmid> and <pool_id>), for moving an estate
         # that is already deployed onto Pulumi without recreating it.
         mkPulumi =
@@ -60,7 +65,7 @@
               }
             );
           };
-        # { fleet; estate; } -> mkGithubTerraform's render as a Pulumi program.
+        # { fleet; estate; } -> the estate's GitHub organisation as a Pulumi program.
         mkGithubPulumi =
           args:
           import ./lib/pulumi.nix {
@@ -69,6 +74,48 @@
             project = "${args.estate}-github";
           };
       };
+
+      # Experimental: the deploy runner (cli/). pulumi, colmena and sops are on
+      # its PATH; nix is the host's.
+      packages = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-linux" ] (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          py = pkgs.python3Packages;
+        in
+        rec {
+          fleetkit = py.buildPythonApplication {
+            pname = "fleetkit";
+            version = "0.1.0";
+            pyproject = true;
+            src = ./cli;
+            build-system = [ py.setuptools ];
+            dependencies = with py; [
+              click
+              fastapi
+              uvicorn
+              pydantic
+              pulumi
+            ];
+            nativeCheckInputs = [
+              py.pytestCheckHook
+              py.httpx
+            ];
+            makeWrapperArgs = [
+              "--suffix"
+              "PATH"
+              ":"
+              (nixpkgs.lib.makeBinPath [
+                pkgs.pulumi-bin
+                pkgs.colmena
+                pkgs.sops
+              ])
+            ];
+            meta.mainProgram = "fleetkit";
+          };
+          default = fleetkit;
+        }
+      );
 
       # The schema's own description of itself, from a model with no data
       # (tests/guest_fidelity.py and tests/loose_blocks.sh read it).

@@ -1,4 +1,8 @@
-# Rendering GitHub from the model (`lib.mkGithubTerraform`)
+# The GitHub provider arguments (`lib.internal.github`)
+
+This branch deploys with Pulumi: this stage is what `lib.mkGithubPulumi`
+compiles (see `docs/pulumi.md`). `mkGithubTerraform` below is
+`lib.internal.github`; nothing runs tofu.
 
 `lib.mkGithubTerraform { fleet, estate }` turns the evaluated model into an
 attrset that `builtins.toJSON` writes as a valid `main.tf.json` for the

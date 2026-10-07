@@ -22,7 +22,6 @@ data (not names), "f": nested fields}.
 """
 import json
 import pathlib
-import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent

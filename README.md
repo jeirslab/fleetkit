@@ -25,14 +25,14 @@ outputs = { fleetkit, xgcs, ... }: {
 - Repositories: an estate declares its GitHub organisation and repositories
   in the model (`fleet.estates.<e>.git`, `fleet.repos.<e>`). That is the
   GitHub management plane only; nothing is cloned or vendored from it.
-- `lib.mkTerraform` renders an estate's managed guests and pools as a
-  `main.tf.json` attrset; see `docs/terraform.md`. The kit never runs tofu.
-- `lib.mkGithubTerraform` renders an estate's organisation and repositories as
-  a `main.tf.json` attrset for the GitHub provider; see `docs/github.md`. The
-  kit never runs tofu.
-- Experimental (this branch): `lib.mkPulumi` / `lib.mkGithubPulumi` render the
-  same stacks as Pulumi YAML programs through Pulumi's terraform-provider
-  bridge at the pinned versions; see `docs/pulumi.md`.
+- `lib.mkPulumi` / `lib.mkGithubPulumi` render an estate's guests and pools,
+  and its GitHub organisation, as Pulumi YAML programs; Pulumi runs the pinned
+  Terraform providers through its terraform-provider bridge. `lib.internal`
+  holds the provider-argument stage they compile from (`docs/terraform.md`,
+  `docs/github.md`). Experimental; see `docs/pulumi.md`.
+- `packages.fleetkit` (`cli/`) deploys an estate: `pulumi up` on its programs,
+  then `colmena apply` on its hive, from the command line or an HTTP API
+  (`fleetkit serve`). Experimental; see `docs/pulumi.md`.
 - `providers/` pinned provider schemas the guest model is checked against.
 - `docs/` the model's decisions: `guest-model.md`, `guest-provider-map.md`,
   `deploy.md`, `tenants.md`, `schema-todo.md` (the inventory of untyped blocks).

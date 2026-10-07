@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check a rendered main.tf.json (lib.mkGithubTerraform on tests/fixtures/gh-mini)
+"""Check a rendered main.tf.json (lib.internal.github on tests/fixtures/gh-mini)
 against the pinned integrations/github schema.
 
   github.py RENDERED.json [--schema FILE]

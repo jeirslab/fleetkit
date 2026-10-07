@@ -31,7 +31,7 @@
   estate,
 }:
 let
-  where = "mkGithubTerraform: fleet.estates.${estate}.git";
+  where = "mkGithubPulumi: fleet.estates.${estate}.git";
   sopsRef = import ./sops-ref.nix { inherit fleet estate where; };
 
   g =

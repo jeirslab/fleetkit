@@ -1,28 +1,110 @@
-# Pulumi instead of OpenTofu (experiment)
+# Deploying with Pulumi and Colmena (experiment)
 
-Branch-only experiment, not for `unstable`: can the deploy engine be Pulumi
-while the model, its checks and the render stay pure Nix? Short answer: yes,
-and it plugs in after the Terraform render without touching the model.
-
-## How it plugs in
+Branch-only experiment, not for `unstable`. Terraform and OpenTofu are gone
+from the deploy path: Pulumi provisions what exists (guests, pools, the GitHub
+organisation), Colmena configures what runs on it, and one runner drives both,
+from a command line or an HTTP API. The model, its checks and every render
+stay pure Nix.
 
 ```
-fleet model ──lib.mkTerraform──▶ main.tf.json attrset ──lib.toPulumi──▶ Pulumi.yaml (JSON)
-            ──lib.mkGithubTerraform──▶       "         ──lib.toPulumi──▶      "
+fleet model ─ lib.internal.guests ─▶ provider args ─ lib.toPulumi ─▶ pulumi.<estate>.guests ─┐
+            ─ lib.internal.github ─▶ provider args ─ lib.toPulumi ─▶ pulumi.<estate>.github ─┤ fleetkit
+            ─ lib.mkHive ──────────────────────────────────────────▶ hives.<estate> ─────────┘ (CLI / API)
 ```
 
-- `lib.toPulumi { tf; project; adopt ? { }; }` translates any rendered
-  `main.tf.json` attrset into a [Pulumi YAML] program. JSON is YAML, so
-  `builtins.toJSON` of the result is a valid `Pulumi.yaml`. It is evaluation
-  only, like the Terraform render.
+## Where the declaring and the type checking happen
+
+Nothing is declared outside Nix. The Pulumi programs are not written in a
+Pulumi language: they are Pulumi YAML, which is data, rendered by `nix eval`
+the way a derivation is built, and the runner only runs them. So the checks
+are all on the Nix side or on the rendered artefact, in this order:
+
+1. the model's module types (`modules/`) and its assertions, at eval;
+2. the name maps: a provider argument the pinned provider does not have fails
+   the render (`lib/pulumi.nix`), at eval;
+3. `tests/pulumi.sh` (gate, offline): every program against the pinned Pulumi
+   schemas, property by property, list or object;
+4. `pulumi preview`: Pulumi's own type check against the running provider.
+
+The gap is the model's untyped blocks (`docs/schema-todo.md`): their contents
+are checked at steps 2 to 4, not by a Nix option type. Generating
+`types.submodule`s from the pinned schemas would move that to step 1.
+
+## The runner (`packages.fleetkit`, `cli/`)
+
+One pipeline, the same for the CLI and the API:
+
+1. **render**: `nix eval --json <repo>#pulumi.<estate>.<stack>` for every
+   stack, each into a project dir. All stacks render before anything runs, so
+   a model that does not evaluate changes nothing.
+2. **infra**: per stack, the Pulumi Automation API (`install`, then `preview`
+   or `up`). Engine events (each resource step, diagnostics, the summary) go
+   to the event stream. `show_secrets` is off: `up()` defaults it on.
+3. **nixos**: `colmena apply <goal>` (or `build` for a preview) on
+   `hives.<hive>` (default: the estate), read through a one-line `hive.nix`.
+   It runs after infra, so the hive is evaluated against what was provisioned.
+
+```sh
+fleetkit estates
+fleetkit preview homelab                 # pulumi preview + colmena build; changes nothing
+fleetkit deploy homelab --goal test      # pulumi up + colmena apply test
+fleetkit deploy homelab --no-nixos --stack guests
+fleetkit serve --listen 127.0.0.1:8740   # token from FLEETKIT_API_TOKEN(_FILE)
+```
+
+It refuses to run without `PULUMI_BACKEND_URL` (no silent Pulumi Cloud) and
+without `PULUMI_CONFIG_PASSPHRASE(_FILE)`. `SOPS_AGE_KEY_FILE` decrypts the
+model's secrets; `FLEETKIT_SECRET_ROOTS` adds directories (a tenant's source)
+where the programs' sops files are looked up. `pulumi-bin`, `colmena` and
+`sops` come with the package; `nix` is the host's.
+
+### HTTP API (`cli/fleetkit_cli/api.py`; OpenAPI at `/docs`)
+
+| | |
+|---|---|
+| `POST /v1/deploys` | start a deploy: `{estate, stacks?, infra, nixos, hive?, on[], goal, preview, refresh, targets[]}` → 202 and the job |
+| `GET /v1/deploys[/{id}]` | jobs / one job (state, result, error) |
+| `GET /v1/deploys/{id}/events?after=&wait=` | events from a sequence number, long-polling |
+| `GET /v1/deploys/{id}/stream` | the same as server-sent events, ending with the job record |
+| `POST /v1/deploys/{id}/cancel` | Pulumi's own cancel, or colmena terminated |
+| `GET /v1/estates` | estates and stacks |
+
+Every `/v1` route needs `Authorization: Bearer <token>`; `--no-auth` is
+refused off loopback. One deploy per estate at a time (409 with the running
+job's id), several estates at once. Jobs are records plus append-only JSONL
+event logs under the state dir; a job that was running when the server
+stopped reads `interrupted` on restart. Why this and not tofu behind a web
+hook: the Automation API gives structured per-resource events and a cancel
+that leaves state consistent, and the pipeline is a function the CLI and the
+server share, not a subprocess the server scrapes.
+
+### Tested
+
+- `cli/tests/test_api.py` (runs in the package build, offline, fake runner):
+  auth, lifecycle, events and the stream, 409, failure, cancel, bad requests,
+  restart recovery.
+- `tests/deploy_e2e.sh` (networked, not a gate): a throwaway estate flake on
+  this checkout; `fleetkit estates`; `fleetkit preview` (a real pulumi preview,
+  6 creates, the token never in the events; colmena called as `build -f
+  <hive.nix>`); the same through `fleetkit serve` with curl (401, 202, job
+  succeeded, stream end, an unknown estate's job failed with the render
+  error); and real colmena evaluating the runner's hive file.
+
+Not tested: a `pulumi up` or `colmena apply` against real hosts, and the
+estate repo's own data (its tenant input could not be fetched here).
+
+## The compiler (`lib.toPulumi`)
+
+- `lib.toPulumi { tf; project; adopt ? { }; }` translates the provider-argument
+  stage into a [Pulumi YAML] program. JSON is YAML, so `builtins.toJSON` of the
+  result is a valid `Pulumi.yaml`.
 - `lib.mkPulumi { fleet; estate; adopt ? false; }` and
-  `lib.mkGithubPulumi { fleet; estate; }` are `toPulumi` over `mkTerraform` and
-  `mkGithubTerraform`. Every throw those raise (two sites, offsite guest,
-  missing token) is raised unchanged, so both engines plan the same model.
-- Pulumi YAML was chosen over a TypeScript/Python/Go program on purpose: the
-  program is data, Nix stays the only language, and the render stays a pure
-  eval. No Node or Python toolchain is needed; the YAML language host ships
-  inside `pulumi-bin`.
+  `lib.mkGithubPulumi { fleet; estate; }` are `toPulumi` over
+  `lib.internal.guests` and `lib.internal.github`. Every model error those
+  raise (two sites, offsite guest, missing token) surfaces unchanged.
+- The stage keeps the pinned Terraform providers' own argument names because
+  those providers are what runs (through the bridge), and their schemas are
+  what the guest model is checked against (`docs/guest-provider-map.md`).
 
 ## Providers: the same binaries, at the same pins
 
@@ -81,7 +163,7 @@ know fails evaluation.
   that `prevent_destroy` becomes `protect`, that packages are the bridge at the
   pins, that every reference resolves, and that provider credentials are sops
   invoke references. It also checks that `split`/`offsite` are refused with
-  mkTerraform's message and that the name maps match their generator. Eight
+  a message naming mkPulumi and that the name maps match their generator. Eight
   hand mutations (shape flips, a typo, a literal token, a lost protect, a
   missing resource, a wrong pin, a dangling reference) are each caught.
 - `tests/pulumi_preview.sh` (networked, not a gate): `pulumi install` and

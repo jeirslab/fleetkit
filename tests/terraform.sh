@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Renders lib.mkTerraform for the estates of tests/fixtures/tf-mini and checks
+# Renders lib.internal.guests (what mkPulumi compiles) for the estates of tests/fixtures/tf-mini and checks
 # each result against the pinned bpg/proxmox schema (tests/terraform.py), and
 # that an estate whose guests are on two sites does not render. Evaluation
 # only. Prints one JSON line: {"terraform":"pass"|"fail"}; exit 0 iff pass.
@@ -10,7 +10,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 render() { # estate -> $TMP/<estate>.json, or the error in $TMP/<estate>.err
-  nix eval --impure --json "$ROOT#lib" --apply "l: l.mkTerraform {
+  nix eval --impure --json "$ROOT#lib" --apply "l: l.internal.guests {
     fleet = l.fleet { modules = [ $ROOT/tests/fixtures/tf-mini ]; };
     estate = \"$1\";
   }" >"$TMP/$1.json" 2>"$TMP/$1.err"

@@ -2,8 +2,8 @@
 # Experimental. Renders lib.mkPulumi for the estates of tests/fixtures/tf-mini
 # and lib.mkGithubPulumi for gh-mini, and checks each against its Terraform
 # render and the pinned Pulumi schemas (tests/pulumi.py); that the estates
-# mkTerraform refuses (split, offsite) are refused by mkPulumi with the same
-# message; and that the name maps are what tests/gen_pulumi_names.py makes from
+# the internal stage refuses (split, offsite) are refused by mkPulumi with a
+# message naming it; and that the name maps are what tests/gen_pulumi_names.py makes from
 # the pinned schemas. Evaluation only. Prints one JSON line:
 # {"pulumi":"pass"|"fail"}; exit 0 iff pass.
 set -uo pipefail
@@ -13,7 +13,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 render() { # fn fixture estate -> $TMP/<estate>.<fn>.json, or the error in .err
-  nix eval --impure --json "$ROOT#lib" --apply "l: l.$1 {
+  nix eval --impure --json "$ROOT#lib" --apply "l: l.${1//_/.} {
     fleet = l.fleet { modules = [ $ROOT/tests/fixtures/$2 ]; };
     estate = \"$3\";
   }" >"$TMP/$3.$1.json" 2>"$TMP/$3.$1.err"
@@ -29,17 +29,17 @@ pair() { # tfFn pulumiFn fixture estate
   fi
 }
 for estate in mini tenant bare; do
-  pair mkTerraform mkPulumi tf-mini "$estate"
+  pair internal_guests mkPulumi tf-mini "$estate"
 done
-pair mkGithubTerraform mkGithubPulumi gh-mini gh
+pair internal_github mkGithubPulumi gh-mini gh
 
-# What mkTerraform refuses, mkPulumi refuses with the same message.
+# What the internal stage refuses, mkPulumi refuses, naming mkPulumi.
 for estate in split offsite; do
   if render mkPulumi tf-mini "$estate"; then
-    echo "FAIL $estate: mkPulumi rendered what mkTerraform refuses" >&2
+    echo "FAIL $estate: mkPulumi rendered what the internal stage refuses" >&2
     status=fail
-  elif ! grep -q "mkTerraform: fleet\.estates\.$estate: " "$TMP/$estate.mkPulumi.err"; then
-    echo "FAIL $estate: mkPulumi's error is not mkTerraform's" >&2
+  elif ! grep -q "mkPulumi: fleet\.estates\.$estate: " "$TMP/$estate.mkPulumi.err"; then
+    echo "FAIL $estate: mkPulumi's error does not name it" >&2
     tail -n 20 "$TMP/$estate.mkPulumi.err" >&2
     status=fail
   fi

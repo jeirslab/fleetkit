@@ -33,7 +33,7 @@ let
 
   provOf = site: fleet.sites.${site}.providers.proxmox;
 
-  where = "mkTerraform: fleet.estates.${estate}";
+  where = "mkPulumi: fleet.estates.${estate}";
   sopsRef = import ./sops-ref.nix { inherit fleet estate where; };
 
   # One provider. With a placement it is placement.provider; without one it is
