@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Renders lib.mkGithubTerraform for the estate "gh" of tests/fixtures/gh-mini
 # and checks the result against the pinned integrations/github schema
-# (tests/github.py). Evaluation only. Three groups, from tests/cases-github.json:
+# (tests/github.py). Evaluation only. Four groups, from tests/cases-github.json:
 #   base      the fixture alone (a Free-plan org, a private repo with an
 #             environment, an organisation secret: both must be reported as
 #             skipped, not rendered);
@@ -9,6 +9,10 @@
 #             block (repo secret, variable, label, managed file, runner), also
 #             with another estate's repository carrying the same blocks, which
 #             must not reach estate gh's render;
+#   personal  the fixture with its git block replaced by a personal account's
+#             (git.kind is not "org"), once with git.plan unset and once on
+#             "pro": the private repository's environment is skipped with the
+#             account named in the reason, or rendered;
 #   negative  the fixture plus support plus one bad declaration, each of which
 #             must fail evaluation with the message of the validation that
 #             refuses it ("expect", an extended regular expression pinned to
@@ -41,6 +45,8 @@ def w(name, lines):
 w("support", d["support"])
 w("positive", d["positive"])
 w("isolation", d["isolation"]["module"])
+for c in d["personal"]:
+    w("personal-" + c["name"], c["module"])
 for c in d["negative"]:
     w("neg-" + c["name"], c["module"])
     # A tenant source: <dir>/fleet/default.nix, the layout lib.mkFleet reads.
@@ -77,6 +83,20 @@ else
   tail -n 40 "$TMP/positive.err" >&2
   fail "positive: evaluation"
 fi
+
+# personal: a non-organisation estate, plan unset and plan "pro"
+while read -r name; do
+  if render "personal-$name" "personal-$name"; then
+    python3 "$ROOT/tests/github.py" "$TMP/personal-$name.json" --personal "$name" --cases "$CASES" >&2 || fail "personal $name"
+  else
+    tail -n 40 "$TMP/personal-$name.err" >&2
+    fail "personal $name: evaluation"
+  fi
+done < <(python3 -c '
+import json, sys
+for c in json.load(open(sys.argv[1], encoding="utf-8"))["personal"]:
+    print(c["name"])
+' "$CASES")
 
 # negative: each must fail to evaluate, name the offender, and not leak a value.
 while IFS=$'\t' read -r name expect noecho tenant; do

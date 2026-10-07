@@ -34,13 +34,14 @@
 #                               collaborators, some git.actions blocks
 #   fleet_skipped_rulesets      rulesets above git.plan
 #   fleet_skipped_environments  environments of a private repository on plan
-#                               "free"
+#                               "free" (an organisation or a personal account)
 #   fleet_skipped_org_secrets   organisation secrets that select a private
 #                               repository on plan "free" (the whole secret is
 #                               dropped, and its sops data is not read)
 #   fleet_runners               repos.<estate>.<key>.runners: data for a host
 #                               module, never a resource
-# An unset git.plan is "free".
+# An unset git.plan is "free". The plans are free < pro < team < enterprise;
+# "pro" is a personal account's plan (GitHub Pro), never an organisation's.
 {
   lib,
   fleet,
@@ -135,12 +136,32 @@ let
   # Actions secrets are organisation resources: without an organisation none
   # is rendered, so its value is not read either.
   # An unset git.plan is "free": a paid organisation must say so to keep its
-  # private repositories' environments and its organisation secrets.
+  # private repositories' environments and its organisation secrets, and a
+  # personal account on GitHub Pro must say "pro" to keep the environments.
   plan = g.plan or "free";
+  # free < pro < team < enterprise. "pro" is the paid plan of a personal
+  # account; an organisation is on free, team or enterprise.
+  rank = {
+    free = 0;
+    pro = 1;
+    team = 2;
+    enterprise = 3;
+  };
+  rankOf =
+    p: rank.${p} or (throw "${where}: plan \"${toString p}\" is not one of free, pro, team, enterprise");
+  planRank =
+    if isOrg && plan == "pro" then
+      throw "${where}.plan: \"pro\" is a personal account's plan; an organisation (kind = \"org\") is on free, team or enterprise"
+    else
+      rankOf plan;
+  # What the reasons in locals call the owner of the plan.
+  account = if isOrg then "the organisation" else "the account";
   # A private repository on GitHub Free cannot use organisation secrets, and
-  # cannot have environments. Anything not public counts as private.
+  # cannot have environments; the second holds for a personal account too
+  # (environments in a private repository need GitHub Pro there), so it is
+  # not tied to isOrg. Anything not public counts as private.
   isPrivate = k: (repos.${k}.visibility or "private") != "public";
-  freePlan = plan == "free";
+  freePlan = planRank == rank.free;
   allOrgSecrets = lib.optionalAttrs isOrg (g.actions.secrets or { });
   orgSecretPrivateRepos =
     s:
@@ -388,15 +409,8 @@ let
   }) (flat repoRunners);
 
   # ---- rulesets ----------------------------------------------------------
-  rank = {
-    free = 0;
-    team = 1;
-    enterprise = 2;
-  };
   rulesets = g.rulesets or { };
-  rankOf =
-    p: rank.${p} or (throw "${where}: plan \"${toString p}\" is not one of free, team, enterprise");
-  allowed = lib.filterAttrs (_: rs: rankOf (rs.requiresPlan or "free") <= rankOf plan) rulesets;
+  allowed = lib.filterAttrs (_: rs: rankOf (rs.requiresPlan or "free") <= planRank) rulesets;
   skipped = lib.filterAttrs (n: _: !(allowed ? ${n})) rulesets;
   renderRuleset = n: rs: {
     name = n;
@@ -477,7 +491,7 @@ in
       n: rs: "${n}: requires plan ${rs.requiresPlan}, the organisation is on ${plan}"
     ) skipped;
     fleet_skipped_environments = map (
-      x: "${x.k}.${x.env}: private repository, environments need a paid plan, the organisation is on ${plan}"
+      x: "${x.k}.${x.env}: private repository, environments need a paid plan, ${account} is on ${plan}"
     ) envSkipped;
     fleet_skipped_org_secrets = lib.mapAttrsToList (
       n: s:

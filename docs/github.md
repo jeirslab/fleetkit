@@ -25,9 +25,9 @@ estate repo.
 | `github_team`, `github_team_members`, `github_team_repository` | `git.teams`; membership is authoritative |
 | `github_actions_organization_permissions` | `git.actions` |
 | `github_actions_organization_secret` | each `git.actions.secrets` entry; `plaintext_value` is a `${data.sops_file...}` reference, `visibility = "selected"` with `selected_repository_ids` referencing the rendered repositories. Not rendered at all when `git.plan` is `free` or unset and any selected repository is private |
-| `github_organization_ruleset` | each ruleset whose `requiresPlan` is satisfied by `git.plan` (`free` < `team` < `enterprise`) |
+| `github_organization_ruleset` | each ruleset whose `requiresPlan` is satisfied by `git.plan` (`free` < `pro` < `team` < `enterprise`; a ruleset that required `team` still requires `team`) |
 | `locals.fleet_skipped_rulesets` | rulesets not rendered because the plan is too low, with the reason |
-| `locals.fleet_skipped_environments` | environments not rendered (private repository on a Free organisation), with the reason |
+| `locals.fleet_skipped_environments` | environments not rendered (private repository, the organisation or the personal account is on Free), with the reason, which names the owner of the plan: `the organisation is on free` when `git.kind == "org"`, `the account is on free` otherwise |
 | `locals.fleet_skipped_org_secrets` | organisation secrets not rendered (Free plan, a selected repository is private), with the reason and the repositories |
 | `locals.fleet_runners` | the runners declared in `repos.<estate>.<key>.runners` (`repository`, `name`, `labels`, `on`); report data only. `on` is a guest of the repository's own estate (see below) |
 | `locals.fleet_forks` | repositories that are forks |
@@ -112,8 +112,8 @@ its own backend configuration. Any `lib` argument is supplied by the kit.
   `locals.fleet_unrendered` when present.
 - Rulesets above the organisation's plan: they would fail at apply, so they
   are skipped and listed in `locals.fleet_skipped_rulesets`.
-- Environments of a private repository on a Free organisation, and
-  organisation secrets that select a private repository on Free: GitHub does
+- Environments of a private repository on a Free organisation or a Free
+  personal account, and organisation secrets that select a private repository on Free: GitHub does
   not provide them there, so they are skipped and reported in
   `locals.fleet_skipped_environments` / `locals.fleet_skipped_org_secrets`.
   Use repository-level secrets and variables instead; see "The plan decides
@@ -131,17 +131,33 @@ its own backend configuration. Any `lib` argument is supplied by the kit.
 
 ## The plan decides what is rendered
 
-`git.plan` is `free`, `team` or `enterprise`. **An unset `git.plan` is
-treated as `free`.** Besides rulesets with a `requiresPlan`, the plan now
-also decides two more things, so an organisation on a paid plan must set
-`git.plan = "team"` or `"enterprise"` to keep them:
+`git.plan` is `free`, `pro`, `team` or `enterprise`, in that order. **An
+unset `git.plan` is treated as `free`.** Any other value is an evaluation
+error. `pro` is the plan of a personal account (GitHub Pro); an estate with
+`git.kind = "org"` that sets it is an evaluation error, because an
+organisation is on `free`, `team` or `enterprise`.
 
-- every environment of a repository that is not `public`;
+Besides rulesets with a `requiresPlan`, the plan now also decides two more
+things, so an organisation on a paid plan must set `git.plan = "team"` or
+`"enterprise"` to keep them:
+
+- every environment of a repository that is not `public`. This rule does not
+  depend on `git.kind`: it applies to a personal account too (an estate whose
+  `git.kind` is not `"org"`). GitHub offers environments to a personal
+  account on Free for public repositories only, and for private ones from
+  GitHub Pro. A personal account on Pro must therefore set
+  `git.plan = "pro"` to keep the environments of its private repositories;
+  with the plan unset they are skipped, and the reason reads `the account is
+  on free`;
 - every organisation secret whose `repos` selects at least one repository
   that is not `public`. The whole secret is dropped, for the public
   repositories in its selection as well, because a secret is one resource
   with one repository list. Narrowing `repos` to public repositories keeps
   it.
+
+Organisation secrets, like every organisation resource, are rendered only
+when `git.kind == "org"`, so the second rule never concerns a personal
+account.
 
 Each omission is listed with its reason in `locals.fleet_skipped_environments`
 or `locals.fleet_skipped_org_secrets`.
@@ -189,6 +205,43 @@ bumps the kit, before its first plan:
    there; the model's `environments.<env>.branches` may stay declared, it is
    reported in `locals.fleet_unrendered` and renders nothing.
 
+### A tenant: two repositories, a fixed order
+
+The steps above assume one repository holds both the declaration and the
+kit lock. A tenant splits them (`docs/tenants.md`): the tenant repository
+declares `repos.<tenant>.*` and the estate's `git` block, the lab repository
+evaluates that declaration with the lab's kit lock, renders the Terraform
+and holds the state. Each repository locks fleetkit on its own, so the
+change crosses two repositories and its order matters:
+
+1. **Bump the kit in both repositories first.** Bump the fleetkit lock in
+   the lab repository and in the tenant repository. The lab change that
+   bumps the lock also carries step 2 above, the state-removal step: the
+   `import` blocks for the dropped addresses are deleted and the addresses
+   are taken out of state without destroy (`tofu state rm`, or `removed`
+   blocks with `destroy = false`), before that change's first plan. The
+   tenant declares nothing new yet.
+2. **Only then merge the tenant change** that declares the replacements
+   (`repos.<tenant>.<key>.actions.secrets.<NAME>.sourceRef`,
+   `actions.variables`, `labels`, `files`, `runners`), and after it update
+   the tenant input in the lab (`nix flake update <tenant>`). The
+   replacements plan as additions there.
+
+Both wrong orders fail, differently:
+
+- A tenant that declares the new options while the reader is still locked
+  to the old kit is an evaluation error: the option
+  `fleet.repos.<tenant>.<key>.actions` "does not exist". The lab cannot
+  evaluate the tenant at all until its own lock is bumped, which is why the
+  tenant change waits for step 1.
+- A lab that bumps the kit first, as step 1 requires, drops the tenant's
+  private-repository environments and its organisation secrets from the
+  rendered Terraform before any replacement is declared. That window is
+  expected. It is safe only because the state-removal step is in the same
+  lab change: without it the first plan after the bump proposes to destroy
+  what the tenant's pipelines still read. Between the two steps the old
+  secrets and environments stay on GitHub, unmanaged, and keep working.
+
 ## Adopting an existing organisation
 
 An organisation that already exists is adopted, not recreated. In the estate
@@ -203,10 +256,15 @@ imports resources or manages state.
 `tests/github.sh` renders a small fixture (`tests/fixtures/gh-mini/`) and
 `tests/github.py` verifies every resource type and argument against the
 pinned provider schema, that every resource name is a legal Terraform name,
-the expected addresses, the skipped ruleset, that no
+the expected addresses, the skipped ruleset, that both branches of the
+skipped environment stay in `locals.fleet_unrendered`, that no
 credential is a literal and that every repository has `archive_on_destroy`.
 `tests/cases-github.json` holds the negative cases: one refused declaration
 per rule above, each pinned to the message of the validation that refuses it.
+Its `personal` entries render the fixture as a personal account
+(`git.kind` not `"org"`), once with `git.plan` unset (the private
+repository's environment is skipped, the reason names the account) and once
+on `pro` (it is rendered).
 It runs under the `fidelity` gate in `tools/gates.sh`.
 
 ## Three rules the renderer keeps

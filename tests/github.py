@@ -3,6 +3,7 @@
 against the pinned integrations/github schema.
 
   github.py RENDERED.json [--schema FILE] [--full --cases tests/cases-github.json]
+  github.py RENDERED.json --personal NAME [--cases tests/cases-github.json]
 
 Fails (exit 1, problems on stderr) when:
   - a resource type is not in the schema, or an argument / nested block name
@@ -14,7 +15,9 @@ Fails (exit 1, problems on stderr) when:
   - the private repository's environment (organisation on Free) or the
     organisation Actions secret (a selected repository is private) is
     rendered, or is not reported in a locals.fleet_skipped_* with a reason
-    naming the plan; any environment deployment policy is rendered;
+    naming the plan; any environment deployment policy is rendered; a branch
+    of the skipped environment (ENV_BRANCHES) is missing from
+    locals.fleet_unrendered;
   - the ruleset is rendered, or is not listed in locals.fleet_skipped_rulesets;
   - a credential or secret value (app_auth fields, token, plaintext_value) is
     not a ${data.sops_file...} reference, or names a data.sops_file that is not
@@ -27,6 +30,12 @@ labels and managed file are rendered with the pinned schema's argument names,
 the secret value is a sops reference, the runner appears in locals and not as
 a resource, and nothing of the other estate's repository (the case file's
 isolation.absent) is rendered.
+With --personal NAME (the fixture with the git block of the case file's
+"personal" entry NAME, an estate whose git.kind is not "org"): the rendered
+environments and locals.fleet_skipped_environments are exactly the entry's
+"environments" and "skipped_environments" (the reason names the account, not
+an organisation), no organisation resource is rendered, and the skipped
+environment's branches stay in locals.fleet_unrendered.
 Evaluation only; no network.
 """
 import argparse
@@ -48,6 +57,7 @@ CREDENTIAL_KEYS = {"id", "installation_id", "pem_file", "token", "plaintext_valu
 
 REPOS = {"app": "app", "site": "site-public", "mirror": "mirror"}
 LOGINS = {"alice-example": "admin", "bob-example": "member", "carol-example": "member"}
+ENV_BRANCHES = ["main", "release/1.x"]
 SECRET_FILE = "secrets/gh.json"
 
 
@@ -55,11 +65,11 @@ def as_list(v):
     return v if isinstance(v, list) else [v]
 
 
-def check(doc, schema, full=None):
+def check_schema(doc, schema):
+    """Every name is a legal Terraform name; every type and argument is in the schema."""
     problems = []
     schemas = schema["resource_schemas"]
     resources = doc.get("resource", {})
-    locs = doc.get("locals", {})
 
     for kind in ("resource", "data"):
         for rtype, instances in doc.get(kind, {}).items():
@@ -79,6 +89,24 @@ def check(doc, schema, full=None):
             lc = body.get("lifecycle")
             if lc is not None and (not isinstance(lc, dict) or not lc):
                 problems.append(f"{where}: empty or malformed lifecycle must be dropped")
+    return problems
+
+
+def check_env_branches(locs):
+    """Both branches of app.prod are listed, whether the environment is rendered or skipped."""
+    unrendered = locs.get("fleet_unrendered") or []
+    return [
+        f"locals.fleet_unrendered does not list environment_branch:app.prod:{b}"
+        " (an environment's branches stay listed, a skipped environment's too)"
+        for b in ENV_BRANCHES
+        if f"environment_branch:app.prod:{b}" not in unrendered
+    ]
+
+
+def check(doc, schema, full=None):
+    problems = check_schema(doc, schema)
+    resources = doc.get("resource", {})
+    locs = doc.get("locals", {})
 
     prov = doc.get("provider", {}).get("github")
     if not isinstance(prov, dict):
@@ -129,8 +157,7 @@ def check(doc, schema, full=None):
     if full and "environment_branch:site.live:main" not in (locs.get("fleet_unrendered") or []):
         problems.append("locals.fleet_unrendered does not list environment_branch:site.live:main")
     # A skipped environment's branches are still declared and still unrendered.
-    if "environment_branch:app.prod:main" not in (locs.get("fleet_unrendered") or []):
-        problems.append("locals.fleet_unrendered does not list environment_branch:app.prod:main (a skipped environment's branches stay listed)")
+    problems += check_env_branches(locs)
     if "github_repository_environment_deployment_policy" in resources:
         problems.append("github_repository_environment_deployment_policy is rendered")
     skipped_text = {
@@ -309,22 +336,57 @@ def check_full(doc, cases, all_skipped):
     return problems
 
 
+def check_personal(doc, schema, case):
+    """An estate whose git.kind is not "org": environments follow the plan, nothing organisational."""
+    problems = check_schema(doc, schema)
+    resources = doc.get("resource", {})
+    locs = doc.get("locals", {})
+
+    envs = sorted(resources.get("github_repository_environment", {}))
+    if envs != sorted(case["environments"]):
+        problems.append(f"github_repository_environment is {envs}, not {sorted(case['environments'])}")
+    skipped = locs.get("fleet_skipped_environments")
+    if skipped != case["skipped_environments"]:
+        problems.append(
+            f"locals.fleet_skipped_environments is {skipped}, not {case['skipped_environments']}"
+        )
+    if "organisation" in json.dumps(skipped):
+        problems.append("locals.fleet_skipped_environments calls a personal account an organisation")
+    problems += check_env_branches(locs)
+    for rtype in resources:
+        if "organization" in rtype or rtype in ("github_membership", "github_team", "github_team_members", "github_team_repository"):
+            problems.append(f"{rtype}: an organisation resource is rendered for an estate that is not an organisation")
+    if set(resources.get("github_repository", {})) != set(REPOS):
+        problems.append(f"github_repository is {sorted(resources.get('github_repository', {}))}, not {sorted(REPOS)}")
+    token = doc.get("provider", {}).get("github", {}).get("token")
+    if not isinstance(token, str) or not SOPS_REF.match(token):
+        problems.append("provider.github.token is not a ${data.sops_file...} reference")
+    return problems
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("rendered")
     ap.add_argument("--schema", default=SCHEMA)
     ap.add_argument("--full", action="store_true", help="also check the new blocks of the positive case")
+    ap.add_argument("--personal", metavar="NAME", help="check the render of the case file's personal entry NAME")
     ap.add_argument("--cases", default=f"{ROOT}/tests/cases-github.json")
     a = ap.parse_args()
     with open(a.schema, encoding="utf-8") as f:
         schema = json.load(f)[PROVIDER]
     with open(a.rendered, encoding="utf-8") as f:
         doc = json.load(f)
-    full = None
-    if a.full:
+    cases = None
+    if a.full or a.personal:
         with open(a.cases, encoding="utf-8") as f:
-            full = json.load(f)
-    problems = check(doc, schema, full)
+            cases = json.load(f)
+    if a.personal:
+        case = next((c for c in cases["personal"] if c["name"] == a.personal), None)
+        if case is None:
+            sys.exit(f"github.py: no personal case '{a.personal}' in {a.cases}")
+        problems = check_personal(doc, schema, case)
+    else:
+        problems = check(doc, schema, cases if a.full else None)
     for p in problems:
         print(f"FAIL {p}", file=sys.stderr)
     sys.exit(1 if problems else 0)
