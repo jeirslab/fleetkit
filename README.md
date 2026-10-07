@@ -30,6 +30,9 @@ outputs = { fleetkit, xgcs, ... }: {
 - `lib.mkGithubTerraform` renders an estate's organisation and repositories as
   a `main.tf.json` attrset for the GitHub provider; see `docs/github.md`. The
   kit never runs tofu.
+- Experimental (this branch): `lib.mkPulumi` / `lib.mkGithubPulumi` render the
+  same stacks as Pulumi YAML programs through Pulumi's terraform-provider
+  bridge at the pinned versions; see `docs/pulumi.md`.
 - `providers/` pinned provider schemas the guest model is checked against.
 - `docs/` the model's decisions: `guest-model.md`, `guest-provider-map.md`,
   `deploy.md`, `tenants.md`, `schema-todo.md` (the inventory of untyped blocks).

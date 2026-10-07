@@ -31,6 +31,43 @@
         # { fleet; estate; } -> the estate's GitHub repositories and organisation
         # as an attrset for builtins.toJSON into main.tf.json.
         mkGithubTerraform = args: import ./lib/github.nix ({ inherit (nixpkgs) lib; } // args);
+        # Experimental: the same renders as Pulumi YAML programs (builtins.toJSON
+        # into Pulumi.yaml), through Pulumi's terraform-provider bridge at the
+        # pinned provider versions. See docs/pulumi.md.
+        # { tf; project; description ? null; } -> a Pulumi YAML program.
+        toPulumi = args: import ./lib/pulumi.nix ({ inherit (nixpkgs) lib; } // args);
+        # { fleet; estate; adopt ? false; } -> mkTerraform's render as a Pulumi
+        # program. adopt = true sets options.import on every guest and pool
+        # (bpg import ids <node>/<vmid> and <pool_id>), for moving an estate
+        # that is already deployed onto Pulumi without recreating it.
+        mkPulumi =
+          {
+            adopt ? false,
+            ...
+          }@args:
+          import ./lib/pulumi.nix {
+            inherit (nixpkgs) lib;
+            tf = import ./lib/terraform.nix ({ inherit (nixpkgs) lib; } // removeAttrs args [ "adopt" ]);
+            project = "${args.estate}-guests";
+            adopt = nixpkgs.lib.optionalAttrs adopt (
+              let
+                guest = _: a: "${a.node_name}/${toString a.vm_id}";
+              in
+              {
+                proxmox_virtual_environment_container = guest;
+                proxmox_virtual_environment_vm = guest;
+                proxmox_virtual_environment_pool = _: a: a.pool_id;
+              }
+            );
+          };
+        # { fleet; estate; } -> mkGithubTerraform's render as a Pulumi program.
+        mkGithubPulumi =
+          args:
+          import ./lib/pulumi.nix {
+            inherit (nixpkgs) lib;
+            tf = import ./lib/github.nix ({ inherit (nixpkgs) lib; } // args);
+            project = "${args.estate}-github";
+          };
       };
 
       # The schema's own description of itself, from a model with no data

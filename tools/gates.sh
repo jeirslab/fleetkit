@@ -70,6 +70,10 @@ fidelity=pass
 python3 tests/guest_fidelity.py --gate >&2 || fidelity=fail
 bash tests/terraform.sh >&2 || fidelity=fail
 bash tests/github.sh >&2 || fidelity=fail
+# Experimental: the same renders as Pulumi programs, against the pinned
+# Pulumi schemas (tests/pulumi.sh; offline). tests/pulumi_preview.sh is the
+# networked end-to-end check and is not a gate.
+bash tests/pulumi.sh >&2 || fidelity=fail
 log "fidelity: $fidelity"
 
 ok=false
