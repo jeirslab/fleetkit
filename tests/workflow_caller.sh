@@ -283,7 +283,7 @@ for name in names:
         w = step["with"]
         ok = (
             str(step.get("uses", "")).startswith("actions/checkout@")
-            and w.get("token") == "${{ secrets.token }}"
+            and w.get("token") == "${{ secrets.source_token }}"
             and w.get("repository") == "${{ inputs.repository }}"
             and w.get("persist-credentials") is False
         )

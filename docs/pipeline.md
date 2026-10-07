@@ -74,6 +74,8 @@ and `deploy`, its pull request).
 | `tofu-apply` | deploy runner | the above plus `pull_request` and `ungated_authors`; optional `base_branch`. `sha` must be the merge commit of `pull_request` | `token`: also reads the pull request |
 | `deploy` | deploy runner | same as `tofu-apply` | same |
 
+The five runner workflows also take an optional secret `source_token`, read by nothing but the checkout of a private source repository (see "The job split").
+
 `repository` and `sha` name the repository and commit under check: the tenant
 pull request's head commit for the three checks, the merge commit for
 `tofu-apply` and `deploy`. The status is reported there. `command` is what
@@ -119,19 +121,19 @@ What is true of the token and the command, precisely:
   job that has it there runs on the command's runner. Nothing the command
   writes to `$GITHUB_ENV` or `$GITHUB_PATH`, and no process it leaves behind,
   meets a step that holds the token.
-- The `run` job does use the token once, when `repository` is not the
-  caller's: as the `with: token` of the checkout that reads it, which a
-  private tenant repository needs. The checkout action uses it before the
-  command starts and does not persist it (`persist-credentials: false`), so
-  it is not in `.git/config`, not in a file of the workspace and not in the
-  command's environment.
-- That use means the secret is still delivered to the runner that executes
-  the command, inside the runner's own process. The workflows take one
-  secret for both purposes, so it is the same token that writes statuses.
-  Scope it to the repository under check and to what these workflows need
-  (read contents, write commit statuses; read pull requests for `tofu-apply`
-  and `deploy`), and treat the command's runner as able to see a token of
-  that scope if the runner itself is compromised. When `repository` is the
+- The `run` job never receives `token`. When `repository` is not the
+  caller's and is private, the checkout that reads it uses a second, optional
+  secret, `source_token`: a read-only token (contents read on that one
+  repository). The checkout action uses it before the command starts and
+  does not persist it (`persist-credentials: false`), so it is not in
+  `.git/config`, not in a file of the workspace and not in the command's
+  environment.
+- `source_token` is still delivered to the runner that executes the command,
+  inside the runner's own process, so treat that runner as able to read the
+  source repository if the runner itself is compromised. It cannot write a
+  status or anything else. With a GitHub App, mint the two tokens separately
+  (the installation-token action takes a permission set per token).
+  When `repository` is the
   caller's own, the `run` job does not use the token at all.
 
 ### What the command runs in
