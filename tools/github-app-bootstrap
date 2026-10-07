@@ -19,23 +19,37 @@ Create flow (GitHub "Registering a GitHub App from a manifest"):
      app_id, app_slug, app_pem, client_id, client_secret and webhook_secret
      are stored under --key-prefix.
   4. One `sops set --value-stdin FILE '["a"]["b"]["key"]'` per key: the value
-     goes on stdin only, never in argv, the environment or a temp file of ours.
+     goes on stdin only, never in argv or the environment. Every key is
+     attempted even if one fails.
   5. Prints the App's slug, id, html_url and install URL. Never the pem,
      client_secret or webhook_secret.
+
+Not losing the one-time credentials:
+  - Before the local page is served (so before anything reaches GitHub) the
+    tool runs `sops decrypt FILE` with the output discarded. That proves the
+    file is a sops file and the caller's key opens it, which is what `sops
+    set` needs. It also checks the file and the rescue directory are writable.
+    If any of that fails it exits there.
+  - If something still fails after the code was exchanged (a `sops set`
+    fails, the response is cut short or unusable), whatever GitHub returned is
+    written to a new file, mode 0600, in --rescue-dir (default: the sops
+    file's directory). That file is PLAINTEXT. The tool names it, lists which
+    keys were and were not stored, and exits non-zero. Import the missing
+    keys, then shred the file (docs/github-app-bootstrap.md).
 
 --record-installation reads app_id and app_pem from the sops file, signs a
 short-lived RS256 JWT with `openssl dgst -sha256 -sign` (key on stdin), lists
 GET /app/installations and writes `installation_id` for the org/user.
 
-The sops file must already exist (and match a creation rule in .sops.yaml);
-the tool refuses otherwise rather than let sops invent one. --key-prefix is
-split on '.' or '/' into the sops path. --tiers has no meaning for a manifest
-passed as a JSON file (the tiers live in the manifest the caller supplies), so
-it is not offered. Stdlib only; needs `sops` and, for --record-installation,
-`openssl`.
+The sops file must already exist and be decryptable with the caller's key (the
+preflight above); the tool does not create one. --key-prefix is split on '.'
+or '/' into the sops path. The manifest is whatever JSON file the caller
+passes; docs/github-app-bootstrap.md gives the command that renders one from
+the kit. Stdlib only; needs `sops` and, for --record-installation, `openssl`.
 """
 import argparse
 import html
+import http.client
 import http.server
 import json
 import os
@@ -55,11 +69,97 @@ import webbrowser
 ORG_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")
 KEYS = ("app_id", "app_slug", "app_pem", "client_id", "client_secret", "webhook_secret")
 PREFIX_RE = re.compile(r"^[A-Za-z0-9_-]+(?:[./][A-Za-z0-9_-]+)*$")
+CMD_TIMEOUT = 300  # seconds for one sops or openssl call (a key may need a passphrase or a touch)
 
 
 def die(msg, code=2):
     print(f"github-app-bootstrap: {msg}", file=sys.stderr)
     sys.exit(code)
+
+
+class CmdError(Exception):
+    """A command could not be run at all, or did not finish."""
+
+
+def run_cmd(argv, stdin=None, stdout=subprocess.DEVNULL):
+    """Run a command; return (returncode, stdout bytes, stderr text). stdin is
+    bytes or None. Raises CmdError if it cannot be started or does not finish."""
+    try:
+        r = subprocess.run(argv, input=stdin, stdin=None if stdin is not None else subprocess.DEVNULL,
+                           stdout=stdout, stderr=subprocess.PIPE, timeout=CMD_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise CmdError(f"'{argv[0]}' did not finish within {CMD_TIMEOUT} s") from None
+    except OSError as e:
+        raise CmdError(f"cannot run '{argv[0]}': {e.strerror or e}") from None
+    return r.returncode, r.stdout or b"", (r.stderr or b"").decode("utf-8", "replace")
+
+
+def scrub(text, values=()):
+    """A command's stderr, shortened, with any of `values` removed from it."""
+    for v in values:
+        for part in [v] + v.splitlines():
+            if len(part) >= 6:
+                text = text.replace(part, "[redacted]")
+    return " ".join(text.split())[:400]
+
+
+def preflight(a, rescue_dir=None):
+    """Prove, before anything reaches GitHub, that the sops file can be opened
+    with the caller's key and written, and that the rescue directory works."""
+    if not os.path.isfile(a.sops_file):
+        die(f"sops file {a.sops_file} does not exist; create it with sops first (the tool does not create one)")
+    if not os.access(a.sops_file, os.R_OK | os.W_OK):
+        die(f"sops file {a.sops_file} is not readable and writable by you")
+    try:
+        rc, _, err = run_cmd([a.sops, "decrypt", a.sops_file])
+    except CmdError as e:
+        die(f"preflight: {e}; nothing was sent to GitHub")
+    if rc != 0:
+        die(f"preflight: `sops decrypt {a.sops_file}` failed (exit {rc}): {scrub(err)}\n"
+            "  The file must be a sops-encrypted file that your key can decrypt, or the App's "
+            "credentials could not be stored.\n  Nothing was sent to GitHub.")
+    if rescue_dir is not None and not (os.path.isdir(rescue_dir) and os.access(rescue_dir, os.W_OK | os.X_OK)):
+        die(f"rescue directory {rescue_dir} is not a writable directory; name one with --rescue-dir")
+
+
+def write_rescue(raw, rescue_dir):
+    """Write the bytes GitHub returned to a new 0600 file; return its path or
+    None. Never prints the content."""
+    name = f"github-app-rescue-{time.strftime('%Y%m%dT%H%M%S')}-{secrets.token_hex(3)}.decrypted.json"
+    for d in dict.fromkeys([rescue_dir, tempfile.gettempdir()]):
+        path = os.path.join(d, name)
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        except OSError:
+            continue
+        try:
+            with os.fdopen(fd, "wb") as f:
+                os.fchmod(f.fileno(), 0o600)
+                f.write(raw)
+                f.flush()
+                os.fsync(f.fileno())
+            return path
+        except OSError:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+    return None
+
+
+def die_rescued(raw, rescue_dir, what):
+    """Exit non-zero after the exchange, keeping what GitHub returned."""
+    path = write_rescue(raw, rescue_dir)
+    lines = [what]
+    if path:
+        lines += [f"  What GitHub returned was written to {path} (mode 0600).",
+                  "  That file is PLAINTEXT and may hold the App's private key, client secret and webhook secret.",
+                  "  GitHub will not show them again. Import the missing keys into the sops file, then",
+                  f"  destroy it: shred -u {path}   (docs/github-app-bootstrap.md, \"If storing fails\")"]
+    else:
+        lines += [f"  It could NOT be written to {rescue_dir} or {tempfile.gettempdir()} either, so the credentials are lost.",
+                  "  Delete the App on GitHub (Developer settings, GitHub Apps, Advanced) and run this again."]
+    die("\n".join(lines), 1)
 
 
 def load_manifest(path):
@@ -94,26 +194,52 @@ def form_page(owner, is_user, manifest, state, github):
     ).encode()
 
 
-def convert(code, api):
+def convert(code, a, owner):
+    """Exchange the code. Returns (values, html_url, raw response bytes). Once
+    any part of a response body has arrived it is never discarded: every
+    failure from then on goes through die_rescued."""
     req = urllib.request.Request(
-        f"{api}/app-manifests/{code}/conversions", data=b"", method="POST",
+        f"{a.api}/app-manifests/{code}/conversions", data=b"", method="POST",
         headers={"Accept": "application/vnd.github+json",
                  "X-GitHub-Api-Version": "2022-11-28",
                  "User-Agent": "fleetkit-github-app-bootstrap"})
+    where = f"{a.github}/settings/apps" if a.user else f"{a.github}/organizations/{owner}/settings/apps"
+    unknown = (f"\n  No usable response arrived, so the code may or may not have been spent: the App may or may not exist.\n"
+               f"  Look at {where}. If the App is listed there its credentials can no longer be fetched:\n"
+               "  delete it (Advanced, Delete GitHub App) and run this again. If it is not listed, just run this again.")
+    raw = b""
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            body = json.load(r)
+        with urllib.request.urlopen(req, timeout=a.http_timeout) as r:
+            # read1 returns what has arrived, so a stall keeps the part we have.
+            while chunk := r.read1(65536):
+                raw += chunk
     except urllib.error.HTTPError as e:
-        die(f"code exchange failed: HTTP {e.code} (codes expire after one hour and work once)")
-    except (urllib.error.URLError, ValueError) as e:
-        die(f"code exchange failed: {e}")
-    out = {"app_id": str(body.get("id", "")), "app_slug": body.get("slug", ""),
-           "app_pem": body.get("pem", ""), "client_id": body.get("client_id", ""),
-           "client_secret": body.get("client_secret", ""),
-           "webhook_secret": body.get("webhook_secret", "")}
+        if e.code >= 500:
+            die(f"code exchange failed: HTTP {e.code}.{unknown}", 1)
+        die(f"code exchange refused: HTTP {e.code} (codes expire after one hour and work once); no App credentials were issued", 1)
+    except (OSError, http.client.HTTPException) as e:
+        # URLError and TimeoutError are OSErrors.
+        reason = getattr(e, "reason", None) or e
+        if raw:
+            die_rescued(raw, a.rescue_dir, f"code exchange failed part way through the response ({type(e).__name__}); "
+                        "the code is spent and the response is incomplete.")
+        die(f"code exchange failed: {reason or type(e).__name__}.{unknown}", 1)
+    try:
+        body = json.loads(raw)
+        if not isinstance(body, dict):
+            raise ValueError
+    except ValueError:
+        if raw:
+            die_rescued(raw, a.rescue_dir, "code exchange returned something that is not a JSON object; the code is spent.")
+        die(f"code exchange returned an empty response.{unknown}", 1)
+    text = lambda k: body[k] if isinstance(body.get(k), str) else ""
+    out = {"app_id": str(body.get("id") or ""), "app_slug": text("slug"),
+           "app_pem": text("pem"), "client_id": text("client_id"),
+           "client_secret": text("client_secret"),
+           "webhook_secret": text("webhook_secret")}
     if not out["app_id"] or not out["app_pem"] or not out["app_slug"]:
-        die("code exchange response lacks id, slug or pem")
-    return out, body.get("html_url", "")
+        die_rescued(raw, a.rescue_dir, "code exchange response lacks id, slug or pem; the code is spent and nothing was stored.")
+    return out, text("html_url"), raw
 
 
 def wait_for_code(owner, is_user, manifest, state, github, port, timeout):
@@ -149,7 +275,10 @@ def wait_for_code(owner, is_user, manifest, state, github, port, timeout):
             else:
                 self._send(404, b"not found")
 
-    srv = http.server.HTTPServer(("127.0.0.1", port), H)
+    try:
+        srv = http.server.HTTPServer(("127.0.0.1", port), H)
+    except OSError as e:
+        die(f"cannot listen on 127.0.0.1:{port}: {e.strerror or e}; nothing was sent to GitHub")
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = f"http://127.0.0.1:{srv.server_port}/"
     result["url"] = url
@@ -161,21 +290,41 @@ def sops_path(prefix, key):
 
 
 def store(sops, sops_file, prefix, values):
+    """`sops set` every key, whatever happens to the others. Returns
+    (names stored, {name not stored: reason}); reasons never hold a value."""
+    stored, failed = [], {}
+    secret_values = [v for v in values.values() if isinstance(v, str)]
+    interrupted = False
     for key, value in values.items():
-        r = subprocess.run([sops, "set", "--value-stdin", sops_file, sops_path(prefix, key)],
-                           input=json.dumps(value), stdout=subprocess.DEVNULL,
-                           stderr=subprocess.PIPE, text=True)
-        if r.returncode != 0:
-            # sops stderr names files and keys, not values.
-            die(f"sops set {key} failed ({r.returncode}): {r.stderr.strip()[:400]}", 1)
+        if interrupted:
+            failed[key] = "not attempted (interrupted)"
+            continue
+        try:
+            rc, _, err = run_cmd([sops, "set", "--value-stdin", sops_file, sops_path(prefix, key)],
+                                 stdin=json.dumps(value).encode())
+        except CmdError as e:
+            failed[key] = str(e)
+            continue
+        except KeyboardInterrupt:
+            interrupted = True
+            failed[key] = "interrupted"
+            continue
+        if rc == 0:
+            stored.append(key)
+        else:
+            failed[key] = f"sops set exit {rc}: {scrub(err, secret_values)}"
+    return stored, failed
 
 
 def read_key(sops, sops_file, prefix, key):
-    r = subprocess.run([sops, "decrypt", "--extract", sops_path(prefix, key), sops_file],
-                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    if r.returncode != 0:
-        die(f"sops decrypt {key} failed ({r.returncode}): {r.stderr.strip()[:400]}", 1)
-    return r.stdout
+    try:
+        rc, out, err = run_cmd([sops, "decrypt", "--extract", sops_path(prefix, key), sops_file],
+                               stdout=subprocess.PIPE)
+    except CmdError as e:
+        die(f"reading {key}: {e}", 1)
+    if rc != 0:
+        die(f"sops decrypt {key} failed ({rc}): {scrub(err)}", 1)
+    return out.decode("utf-8", "replace")
 
 
 def b64u(b):
@@ -188,14 +337,19 @@ def make_jwt(openssl, app_id, pem):
     pay = b64u(json.dumps({"iat": now - 60, "exp": now + 540, "iss": app_id}).encode())
     signing_input = f"{head}.{pay}"
     # The key goes on stdin; the signing input is not secret.
-    with tempfile.NamedTemporaryFile("w", prefix="ghapp-jwt-") as f:
-        f.write(signing_input)
-        f.flush()
-        r = subprocess.run([openssl, "dgst", "-sha256", "-sign", "/dev/stdin", f.name],
-                           input=pem.encode(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if r.returncode != 0 or not r.stdout:
-        die(f"openssl signing failed ({r.returncode})", 1)
-    return f"{signing_input}.{b64u(r.stdout)}"
+    try:
+        with tempfile.NamedTemporaryFile("w", prefix="ghapp-jwt-") as f:
+            f.write(signing_input)
+            f.flush()
+            rc, sig, _ = run_cmd([openssl, "dgst", "-sha256", "-sign", "/dev/stdin", f.name],
+                                 stdin=pem.encode(), stdout=subprocess.PIPE)
+    except CmdError as e:
+        die(f"signing the App JWT: {e}", 1)
+    except OSError as e:
+        die(f"signing the App JWT: cannot write the signing input: {e.strerror or e}", 1)
+    if rc != 0 or not sig:
+        die(f"openssl signing failed ({rc})", 1)
+    return f"{signing_input}.{b64u(sig)}"
 
 
 def record_installation(a, owner, prefix):
@@ -210,22 +364,28 @@ def record_installation(a, owner, prefix):
             headers={"Accept": "application/vnd.github+json", "Authorization": f"Bearer {jwt}",
                      "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "fleetkit-github-app-bootstrap"})
         try:
-            with urllib.request.urlopen(req, timeout=30) as r:
+            with urllib.request.urlopen(req, timeout=a.http_timeout) as r:
                 items = json.load(r)
         except urllib.error.HTTPError as e:
             die(f"listing installations failed: HTTP {e.code}", 1)
-        except (urllib.error.URLError, ValueError) as e:
-            die(f"listing installations failed: {e}", 1)
+        except (OSError, http.client.HTTPException, ValueError) as e:
+            # URLError and TimeoutError are OSErrors.
+            die(f"listing installations failed: {getattr(e, 'reason', None) or e or type(e).__name__}", 1)
+        if not isinstance(items, list):
+            die("listing installations failed: the response is not a list", 1)
         if not items:
             break
         for it in items:
-            if str((it.get("account") or {}).get("login", "")).lower() == owner.lower():
+            if isinstance(it, dict) and str((it.get("account") or {}).get("login", "")).lower() == owner.lower():
                 found = it
                 break
         page += 1
     if found is None:
         die(f"the App is not installed on {owner}; install it first (docs/github-app-bootstrap.md)", 1)
-    store(a.sops, a.sops_file, prefix, {"installation_id": str(found["id"])})
+    _, failed = store(a.sops, a.sops_file, prefix, {"installation_id": str(found["id"])})
+    if failed:
+        # Not a secret, and it can be fetched again: no rescue file.
+        die(f"installation_id {found['id']} for {owner} was found but not stored: {failed['installation_id']}", 1)
     print(f"Recorded installation_id {found['id']} for {owner} under {prefix} in {a.sops_file}.")
 
 
@@ -235,13 +395,16 @@ def main():
     g.add_argument("--org")
     g.add_argument("--user", help="register on a personal account")
     ap.add_argument("--manifest", help="App manifest JSON file (not needed with --record-installation)")
-    ap.add_argument("--sops-file", required=True, help="existing sops file to write")
+    ap.add_argument("--sops-file", required=True, help="existing sops file to write; your key must decrypt it")
+    ap.add_argument("--rescue-dir", help="where the exchange response is kept, as a PLAINTEXT 0600 file, if it "
+                    "cannot all be stored (default: the sops file's directory)")
     ap.add_argument("--key-prefix", required=True, help="dotted or slashed path the keys are written under")
     ap.add_argument("--record-installation", action="store_true")
     ap.add_argument("--sops", default="sops", help="sops command")
     ap.add_argument("--openssl", default="openssl", help="openssl command")
     ap.add_argument("--github", default="https://github.com", help=argparse.SUPPRESS)
     ap.add_argument("--api", default="https://api.github.com", help=argparse.SUPPRESS)
+    ap.add_argument("--http-timeout", type=float, default=30, help=argparse.SUPPRESS)
     ap.add_argument("--port", type=int, default=0)
     ap.add_argument("--timeout", type=int, default=3000, help="seconds to wait for the callback")
     ap.add_argument("--no-browser", action="store_true", help="print the local URL instead of opening it")
@@ -254,14 +417,19 @@ def main():
         die(f"invalid key prefix {a.key_prefix!r}")
     if shutil.which(a.sops) is None:
         die(f"'{a.sops}' not found")
-    if not os.path.isfile(a.sops_file):
-        die(f"sops file {a.sops_file} does not exist; create it with sops first (so its creation rule applies)")
     if a.record_installation:
+        if shutil.which(a.openssl) is None:
+            die(f"'{a.openssl}' not found (needed to sign the App JWT)")
+        preflight(a)
         record_installation(a, owner, a.key_prefix)
         return
     if not a.manifest:
         die("--manifest is required unless --record-installation")
     manifest = load_manifest(a.manifest)
+    a.rescue_dir = os.path.abspath(a.rescue_dir or os.path.dirname(os.path.abspath(a.sops_file)))
+    # Last point at which failing costs nothing: after this GitHub hands out
+    # credentials exactly once.
+    preflight(a, a.rescue_dir)
     state = secrets.token_urlsafe(24)
 
     srv, done, res = wait_for_code(owner, bool(a.user), manifest, state, a.github, a.port, a.timeout)
@@ -273,8 +441,14 @@ def main():
             die("timed out waiting for GitHub's redirect", 1)
     finally:
         srv.shutdown()
-    values, html_url = convert(res["code"], a.api)
-    store(a.sops, a.sops_file, a.key_prefix, values)
+    values, html_url, raw = convert(res["code"], a, owner)
+    stored, failed = store(a.sops, a.sops_file, a.key_prefix, values)
+    if failed:
+        die_rescued(raw, a.rescue_dir,
+                    f"the App '{values['app_slug']}' (id {values['app_id']}) now exists on GitHub, but not all of its "
+                    f"credentials were stored under {a.key_prefix} in {a.sops_file}.\n"
+                    f"  stored: {', '.join(stored) or 'none'}\n"
+                    "  NOT stored:\n" + "\n".join(f"    {k}: {why}" for k, why in failed.items()))
     print(f"slug: {values['app_slug']}\nid: {values['app_id']}\nhtml_url: {html_url}\n"
           f"install: https://github.com/apps/{values['app_slug']}/installations/new")
 
