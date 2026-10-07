@@ -9,9 +9,19 @@ on:
   workflow_call:
     inputs:
       runs_on:
-        description: JSON list of runner labels, e.g. '["self-hosted","nix"]'.
+        description: >-
+          JSON list of runner labels, e.g. '["self-hosted","nix"]': where the command runs. No job
+          on this runner is given the status token in its environment.
         type: string
         required: true
+      report_runs_on:
+        description: >-
+          Optional. JSON list of runner labels for the jobs that hold the token and do nothing but
+          call the GitHub API (statuses, the author gate where there is one). Must not be the runner
+          that executes the command.
+        type: string
+        required: false
+        default: '["ubuntu-latest"]'
       repository:
         description: >-
           owner/name of the repository the pull request was merged in: the gate reads it and the
@@ -49,21 +59,31 @@ on:
       source_path:
         description: >-
           Optional. Directory, relative to the workspace root, that repository is checked out into
-          when it is not the caller's repository. Not the workspace root itself.
+          when it is not the caller's repository. Not the workspace root itself: an empty value,
+          ".", an absolute path and any ".." component are refused.
         type: string
         required: false
         default: tenant
     secrets:
       token:
         description: >-
-          Token that can read repository and its pull requests and write commit statuses. Only the
-          gate, the status steps and the source checkout use it; the command never sees it.
+          Token that can read repository and its pull requests and write commit statuses. The gate
+          job and the report job hold it, on report_runs_on. In the job that runs the command only
+          the checkout of a source repository other than the caller's uses it, to read; no step
+          there has it in its environment.
         required: true
+# Three jobs, so that no step of the job that runs the command has the token in its environment
+# (code under check could otherwise write to GITHUB_ENV / GITHUB_PATH or leave a process behind and
+# take it from a later step): `gate` and `report` hold the token and run on report_runs_on; `run` runs the command on
+# runs_on with no token in any step's environment.
 permissions:
   contents: read
 jobs:
-  run:
-    runs-on: ${{ fromJSON(inputs.runs_on) }}
+  gate:
+    runs-on: ${{ fromJSON(inputs.report_runs_on) }}
+    outputs:
+      ungated: ${{ steps.gate.outputs.ungated }}
+      reason: ${{ steps.gate.outputs.reason }}
     env:
       REPO: ${{ inputs.repository }}
       SHA: ${{ inputs.sha }}
@@ -78,8 +98,9 @@ jobs:
             -f description="checking author gate" -f target_url="$TARGET_URL"
       # The gate is the kit's action at the very commit this workflow file was called at
       # (job.workflow_sha), never a branch: the caller's SHA pin covers the gate too. It is checked
-      # out before, and apart from, the repositories the command works on. An empty or non-commit value
-      # would make the checkout fall back to a branch, so it is refused first.
+      # out in this job, which never checks out or runs anything of the repositories the command
+      # works on. An empty or non-commit value would make the checkout fall back to a branch, so it
+      # is refused first.
       # fromJSON(toJSON(job)): actionlint releases that predate job.workflow_* reject the plain form.
       - name: kit commit of this workflow
         env:
@@ -117,18 +138,60 @@ jobs:
           gh api -X POST "repos/$REPO/statuses/$SHA" -f state=success -f context="$CONTEXT" \
             -f description="GATED: $REASON; nothing was run" \
             -f target_url="$TARGET_URL"
+  # Runs only when the gate job succeeded and said ungated. A gate that failed, was cancelled or
+  # said gated leaves this job skipped.
+  run:
+    needs: gate
+    if: needs.gate.outputs.ungated == 'true'
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    env:
+      REPO: ${{ inputs.repository }}
+      SHA: ${{ inputs.sha }}
+      CONTEXT: deploy
+      TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: validate source_path
+        env:
+          SOURCE_PATH: ${{ inputs.source_path }}
+        run: |
+          bad=""
+          case "$SOURCE_PATH" in
+            "") bad="is empty" ;;
+            /*) bad="is an absolute path" ;;
+            *$'\n'*) bad="contains a newline" ;;
+          esac
+          if [ -z "$bad" ]; then
+            real=0
+            IFS=/ read -ra parts <<<"$SOURCE_PATH"
+            for c in "${parts[@]}"; do
+              case "$c" in
+                ..) bad="has a .. component" ;;
+                "" | .) ;;
+                *) real=1 ;;
+              esac
+            done
+            if [ -z "$bad" ] && [ "$real" = 0 ]; then bad="is the workspace root (.)"; fi
+          fi
+          if [ -n "$bad" ]; then
+            echo "source_path '$SOURCE_PATH' $bad; it must be a directory below the workspace root, e.g. tenant" >&2
+            exit 1
+          fi
       # The workspace is the caller's repository (where the command lives), at the caller's commit;
       # when the caller is itself the repository under check, at the commit under check. The job's
       # own token reads it. No credential is left in .git/config for the command to find.
       - name: check out the caller's repository
-        if: steps.gate.outputs.ungated == 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.repository == github.repository && inputs.sha || '' }}
           persist-credentials: false
       # A repository other than the caller's is the command's input, not its workspace.
+      # This `with: token` is the only use of secrets.token in this job: it is needed to read a
+      # private source (tenant) repository. Here it is read access; the caller must scope the token
+      # to the repository under check (read, and the commit statuses the other jobs write), nothing
+      # wider. The checkout action uses it before the command starts and persist-credentials: false
+      # keeps it out of .git/config; no step of this job has it in its environment.
       - name: check out the source repository
-        if: steps.gate.outputs.ungated == 'true' && inputs.repository != github.repository
+        if: inputs.repository != github.repository
         uses: actions/checkout@v4
         with:
           repository: ${{ inputs.repository }}
@@ -137,26 +200,43 @@ jobs:
           token: ${{ secrets.token }}
           persist-credentials: false
       - name: run
-        if: steps.gate.outputs.ungated == 'true'
         env:
           COMMAND: ${{ inputs.command }}
           FLEET_SOURCE_REPOSITORY: ${{ inputs.repository }}
           FLEET_SOURCE_SHA: ${{ inputs.sha }}
           FLEET_SOURCE_PATH: ${{ inputs.repository != github.repository && format('{0}/{1}', github.workspace, inputs.source_path) || '' }}
         run: bash -c "$COMMAND"
+  report:
+    needs: [gate, run]
+    if: always()
+    runs-on: ${{ fromJSON(inputs.report_runs_on) }}
+    permissions: {}
+    env:
+      REPO: ${{ inputs.repository }}
+      SHA: ${{ inputs.sha }}
+      CONTEXT: deploy
+      TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      # Gate job failed or was cancelled: error. Gate said gated: the gate job already reported
+      # GATED, nothing more to say. Otherwise the result of the run job.
       - name: status final
-        if: always() && steps.gate.outputs.ungated == 'true'
         env:
           GH_TOKEN: ${{ secrets.token }}
-          JOB_STATUS: ${{ job.status }}
+          GATE_RESULT: ${{ needs.gate.result }}
+          UNGATED: ${{ needs.gate.outputs.ungated }}
+          RUN_RESULT: ${{ needs.run.result }}
         run: |
-          if [ "$JOB_STATUS" = success ]; then state=success; desc="passed"; else state=failure; desc="failed or cancelled"; fi
+          if [ "$GATE_RESULT" != success ]; then
+            state=error; desc="author gate could not decide; nothing was run"
+          elif [ "$UNGATED" != true ]; then
+            echo "gated: the gate job reported the status; nothing was run"
+            exit 0
+          else
+            case "$RUN_RESULT" in
+              success) state=success; desc="passed" ;;
+              failure | cancelled) state=failure; desc="failed or cancelled" ;;
+              *) state=error; desc="the gate was open but the command did not run" ;;
+            esac
+          fi
           gh api -X POST "repos/$REPO/statuses/$SHA" -f state="$state" -f context="$CONTEXT" \
             -f description="$desc" -f target_url="$TARGET_URL"
-      - name: status gate error
-        if: failure() && steps.gate.outcome != 'success'
-        env:
-          GH_TOKEN: ${{ secrets.token }}
-        run: |
-          gh api -X POST "repos/$REPO/statuses/$SHA" -f state=error -f context="$CONTEXT" \
-            -f description="author gate could not decide; nothing was run" -f target_url="$TARGET_URL"
