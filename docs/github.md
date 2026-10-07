@@ -33,6 +33,15 @@ estate repo.
 | `locals.fleet_forks` | repositories that are forks |
 | `locals.fleet_unrendered` | what the kit cannot render (see below) |
 
+## Estate text is never a template
+
+Terraform reads every string in `main.tf.json` as a template. Text the estate
+supplies (a managed file's path, content and commit message, an Actions
+variable's value, a label's name and description) is rendered with `${` and
+`%{` escaped (`$${`, `%%{`). A workflow file keeps its `${{ ... }}`
+expressions, and no value can turn into a reference to another part of the
+render, such as a secret. Only the kit's own expressions are templates.
+
 ## Resource addresses
 
 The address of a repository is `github_repository.<repo key>`, the key under

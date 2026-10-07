@@ -351,6 +351,22 @@ let
   # The resource name is "<repo key>_<item>", which does not say where the
   # key ends: repository "app" with "B_C" and repository "app_B" with "C" are
   # the same string. A clash is reported with the two parts apart.
+  # Terraform reads every string of main.tf.json as a template. Text an
+  # estate supplies (a file's content, a variable's value, a label, a commit
+  # message) is escaped, so a workflow's ''${{ ... }} survives and no value can
+  # become a reference to something else in the render, a secret included.
+  # Only the kit's own expressions (sopsRef, resource references) are
+  # templates.
+  tfText =
+    lib.replaceStrings
+      [
+        "\${"
+        "%{"
+      ]
+      [
+        "$\${"
+        "%%{"
+      ];
   perRepoLabel = kind: x: "repository \"${x.k}\" ${kind} \"${x.n}\"";
   repoActionsSecrets = named "repository Actions secrets" (
     map (x: {
@@ -370,7 +386,7 @@ let
       value = {
         repository = repoName x.k;
         variable_name = x.n;
-        value = x.v;
+        value = tfText x.v;
       };
     }) (flat repoVariables)
   );
@@ -380,10 +396,12 @@ let
       label = perRepoLabel "label" x;
       value = {
         repository = repoName x.k;
-        name = x.n;
+        name = tfText x.n;
         inherit (x.v) color;
       }
-      // lib.optionalAttrs ((x.v.description or null) != null) { inherit (x.v) description; };
+      // lib.optionalAttrs ((x.v.description or null) != null) {
+        description = tfText x.v.description;
+      };
     }) (flat repoLabels)
   );
   repositoryFiles = named "repository files" (
@@ -392,12 +410,12 @@ let
       label = perRepoLabel "file" x;
       value = {
         repository = repoName x.k;
-        file = x.n;
-        inherit (x.v) content;
+        file = tfText x.n;
+        content = tfText x.v.content;
         overwrite_on_create = x.v.overwrite or true;
       }
       // lib.optionalAttrs ((x.v.branch or null) != null) { inherit (x.v) branch; }
-      // lib.optionalAttrs ((x.v.message or null) != null) { commit_message = x.v.message; };
+      // lib.optionalAttrs ((x.v.message or null) != null) { commit_message = tfText x.v.message; };
     }) (flat repoFiles)
   );
   # Terraform cannot register a runner: report the declared ones only.

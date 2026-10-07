@@ -274,6 +274,12 @@ def check_full(doc, cases, all_skipped):
         if "value" in b or "encrypted_value" in b or "value_encrypted" in b:
             problems.append(f"github_actions_secret.{n}: renders a value argument besides plaintext_value")
 
+    # A value that looks like a Terraform reference or directive stays text.
+    for n, b in only(resources, "github_actions_variable", variable_name="REF_LOOKALIKE"):
+        if b.get("value") != "$${github_repository.app.name} %%{ if true }x%%{ endif }":
+            problems.append(f"github_actions_variable.{n}: estate text is not escaped: {b.get('value')!r}")
+    if len(only(resources, "github_actions_variable", variable_name="REF_LOOKALIKE")) != 1:
+        problems.append("expected one github_actions_variable REF_LOOKALIKE")
     hits = only(resources, "github_actions_variable", variable_name="DEPLOY_TARGET")
     if len(hits) != 1:
         problems.append(f"expected one github_actions_variable DEPLOY_TARGET, found {len(hits)}")
@@ -305,8 +311,10 @@ def check_full(doc, cases, all_skipped):
         problems.append(f"expected one github_repository_file .github/workflows/signal.yml, found {len(files)}")
     for n, b in files:
         where = f"github_repository_file.{n}"
-        if b.get("content") != "name: signal\non: push\njobs: {}\n":
-            problems.append(f"{where}: content differs from the declared text")
+        # Declared with a workflow expression, ${{ github.ref }}. Terraform
+        # reads JSON strings as templates, so it must be rendered escaped.
+        if b.get("content") != "name: signal\non: push\nenv:\n  REF: $${{ github.ref }}\njobs: {}\n":
+            problems.append(f"{where}: content is not the declared text with ${{ escaped: {b.get('content')!r}")
         if b.get("branch") not in (None, "main"):  # omitted means the default branch
             problems.append(f"{where}: branch is '{b.get('branch')}', not the default branch 'main'")
         if b.get("commit_message") != "Manage signal workflow":
