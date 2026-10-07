@@ -13,13 +13,16 @@ on:
         type: string
         required: true
       repository:
-        description: owner/name of the repository to check out and to report the status on.
+        description: >-
+          owner/name of the repository the pull request was merged in: the gate reads it and the
+          status is reported on it. When it is not the caller's repository it is also checked out
+          into source_path, as an input for the command.
         type: string
         required: true
       sha:
         description: >-
-          Commit to check out and to report the status on. Must be the merge commit of pull_request
-          (40 hex), or the gate stays closed.
+          Commit of repository to act on and to report the status on. Must be the merge commit of
+          pull_request (40 hex), or the gate stays closed.
         type: string
         required: true
       pull_request:
@@ -36,12 +39,25 @@ on:
         required: false
         default: ""
       command:
-        description: Command to run in the checkout (the lab's own tool).
+        description: >-
+          Command to run in the workspace root, which is the caller's repository (the lab's own
+          tool). It gets FLEET_SOURCE_REPOSITORY, FLEET_SOURCE_SHA and FLEET_SOURCE_PATH (absolute
+          path of the source_path checkout, or empty when repository is the caller's own and the
+          workspace is already at sha), and no token: deploy credentials come from the runner host.
         type: string
         required: true
+      source_path:
+        description: >-
+          Optional. Directory, relative to the workspace root, that repository is checked out into
+          when it is not the caller's repository. Not the workspace root itself.
+        type: string
+        required: false
+        default: tenant
     secrets:
       token:
-        description: Token that can read the repository and its pull requests and write commit statuses.
+        description: >-
+          Token that can read repository and its pull requests and write commit statuses. Only the
+          gate, the status steps and the source checkout use it; the command never sees it.
         required: true
 permissions:
   contents: read
@@ -49,19 +65,20 @@ jobs:
   run:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
     env:
-      GH_TOKEN: ${{ secrets.token }}
       REPO: ${{ inputs.repository }}
       SHA: ${{ inputs.sha }}
       CONTEXT: deploy
       TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: status pending
+        env:
+          GH_TOKEN: ${{ secrets.token }}
         run: |
           gh api -X POST "repos/$REPO/statuses/$SHA" -f state=pending -f context="$CONTEXT" \
             -f description="checking author gate" -f target_url="$TARGET_URL"
       # The gate is the kit's action at the very commit this workflow file was called at
       # (job.workflow_sha), never a branch: the caller's SHA pin covers the gate too. It is checked
-      # out before, and apart from, the repository the command runs in. An empty or non-commit value
+      # out before, and apart from, the repositories the command works on. An empty or non-commit value
       # would make the checkout fall back to a branch, so it is refused first.
       # fromJSON(toJSON(job)): actionlint releases that predate job.workflow_* reject the plain form.
       - name: kit commit of this workflow
@@ -94,25 +111,43 @@ jobs:
       - name: status gated
         if: steps.gate.outputs.ungated != 'true'
         env:
+          GH_TOKEN: ${{ secrets.token }}
           REASON: ${{ steps.gate.outputs.reason }}
         run: |
           gh api -X POST "repos/$REPO/statuses/$SHA" -f state=success -f context="$CONTEXT" \
             -f description="GATED: $REASON; nothing was run" \
             -f target_url="$TARGET_URL"
-      - uses: actions/checkout@v4
+      # The workspace is the caller's repository (where the command lives), at the caller's commit;
+      # when the caller is itself the repository under check, at the commit under check. The job's
+      # own token reads it. No credential is left in .git/config for the command to find.
+      - name: check out the caller's repository
         if: steps.gate.outputs.ungated == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.repository == github.repository && inputs.sha || '' }}
+          persist-credentials: false
+      # A repository other than the caller's is the command's input, not its workspace.
+      - name: check out the source repository
+        if: steps.gate.outputs.ungated == 'true' && inputs.repository != github.repository
+        uses: actions/checkout@v4
         with:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.sha }}
+          path: ${{ inputs.source_path }}
           token: ${{ secrets.token }}
+          persist-credentials: false
       - name: run
         if: steps.gate.outputs.ungated == 'true'
         env:
           COMMAND: ${{ inputs.command }}
+          FLEET_SOURCE_REPOSITORY: ${{ inputs.repository }}
+          FLEET_SOURCE_SHA: ${{ inputs.sha }}
+          FLEET_SOURCE_PATH: ${{ inputs.repository != github.repository && format('{0}/{1}', github.workspace, inputs.source_path) || '' }}
         run: bash -c "$COMMAND"
       - name: status final
         if: always() && steps.gate.outputs.ungated == 'true'
         env:
+          GH_TOKEN: ${{ secrets.token }}
           JOB_STATUS: ${{ job.status }}
         run: |
           if [ "$JOB_STATUS" = success ]; then state=success; desc="passed"; else state=failure; desc="failed or cancelled"; fi
@@ -120,6 +155,8 @@ jobs:
             -f description="$desc" -f target_url="$TARGET_URL"
       - name: status gate error
         if: failure() && steps.gate.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.token }}
         run: |
           gh api -X POST "repos/$REPO/statuses/$SHA" -f state=error -f context="$CONTEXT" \
             -f description="author gate could not decide; nothing was run" -f target_url="$TARGET_URL"

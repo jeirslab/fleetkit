@@ -15,9 +15,17 @@ estate name: all of it arrives as an input or a secret from the caller.
 2. **Checks, on a checks runner with no deploy credentials.** The lab
    repository's callers run `check-flake`, `nixos-build` and `tofu-plan`. They
    run on runners selected by the caller (`runs-on`, a JSON list of labels).
-   These runners hold no deploy credentials and no decrypt keys. Each
-   workflow reports a commit status on the commit it was asked about, using a
+   The workspace is the lab repository, because the command that does the
+   checking is the lab's own tool; the tenant repository is checked out beside
+   it, at the pull request's commit, as an input the command evaluates (see
+   [What the command runs in](#what-the-command-runs-in)). Each workflow
+   reports a commit status on the tenant commit it was asked about, using a
    token the caller passes, so the result appears on the tenant pull request.
+   The checks runner evaluates tenant code from a pull request nobody has
+   reviewed yet. It must therefore hold no credential beyond the status token:
+   no deploy credentials and no decrypt keys. The status token itself is given
+   only to the steps that report the status and to the checkout of the tenant
+   repository, which does not keep it; the command never sees it.
 3. **Merge.** A person merges the tenant pull request.
 4. **Apply and deploy, on the deploy runner, gated by author.** After the
    merge, `tofu-apply` and `deploy` run on the deploy runner. Both start with
@@ -26,14 +34,17 @@ estate name: all of it arrives as an input or a secret from the caller.
    the caller's ungated list, and the commit it was asked to run with the
    merge commit. If either login is not on the list, or the commit is not that
    pull request's merge commit, the job reports a success status described as
-   GATED and runs nothing: the checkout and the command are skipped. A person
-   then runs the step by hand. `check-flake`, `nixos-build` and `tofu-plan`
+   GATED and runs nothing: the checkouts and the command are skipped. A person
+   then runs the step by hand. When the gate is open, the command runs in the
+   lab repository with the tenant repository at the merge commit beside it,
+   as in the checks. `check-flake`, `nixos-build` and `tofu-plan`
    never deploy and do not use the gate.
 
 ```
 tenant PR --> tenant-signal --> lab callers --> check-flake / nixos-build / tofu-plan
-                                                  (checks runner, statuses back to the PR)
-merge --> author-gate --> tofu-apply, deploy   (deploy runner)
+                                                  (checks runner: lab workspace, tenant commit
+                                                   beside it, statuses back to the PR)
+merge --> author-gate --> tofu-apply, deploy   (deploy runner: lab workspace, merge commit beside it)
 ```
 
 ## What each workflow takes
@@ -41,23 +52,61 @@ merge --> author-gate --> tofu-apply, deploy   (deploy runner)
 All are `on: workflow_call`. Every input and secret is declared; none is read
 from the environment implicitly. Input names use underscores. Every workflow
 takes a `runs_on` input (a JSON list of runner labels, for example
-`["self-hosted","nix"]`, read with `fromJSON`) and a secret `token`, which
-reports the commit status and, where noted, reads the repository.
+`["self-hosted","nix"]`, read with `fromJSON`) and a secret `token`. What the
+token is for differs: in `tenant-signal` it only sends the dispatch to the lab
+repository, and that workflow reports no status; in the other five it reports
+the commit status and reads the repository under check (and, in `tofu-apply`
+and `deploy`, its pull request).
 
 | Workflow | Where it runs | Inputs | Secret |
 | -------- | ------------- | ------ | ------ |
 | `tenant-signal` | tenant repository | `lab_repository`, `tenant_repository`, `pull_request`, `sha`, `runs_on`; optional `event_type` (default `tenant-signal`) | `token`: may create a `repository_dispatch` on the lab repository |
-| `check-flake` | checks runner | `runs_on`, `repository`, `sha`, `command` | `token`: reads the repository, writes commit statuses |
+| `check-flake` | checks runner | `runs_on`, `repository`, `sha`, `command`; optional `source_path` (default `tenant`) | `token`: reads `repository`, writes commit statuses on it |
 | `nixos-build` | checks runner | same as `check-flake` | same |
 | `tofu-plan` | checks runner | same as `check-flake` | same |
 | `tofu-apply` | deploy runner | the above plus `pull_request` and `ungated_authors`; optional `base_branch`. `sha` must be the merge commit of `pull_request` | `token`: also reads the pull request |
 | `deploy` | deploy runner | same as `tofu-apply` | same |
 
-`repository` and `sha` name the repository and commit to check out and to
-report the status on. `command` is what runs in the checkout; the kit does not
-choose it, so the lab's own tool stays in the lab. The status context is the
-workflow's name. Read the `workflow_call` block at the top of each file for
-the exact descriptions.
+`repository` and `sha` name the repository and commit under check: the tenant
+pull request's head commit for the three checks, the merge commit for
+`tofu-apply` and `deploy`. The status is reported there. `command` is what
+runs; the kit does not choose it, so the lab's own tool stays in the lab. The
+status context is the workflow's name. Read the `workflow_call` block at the
+top of each file for the exact descriptions.
+
+### What the command runs in
+
+These five workflows are called from the lab repository, and `command` is the
+lab's tool (for example `tools/fleet check`). So the workspace is the
+caller's repository, not `repository`:
+
+- **The caller is not `repository`** (the lab checking a tenant). The
+  workspace is the caller's repository at the commit the calling workflow
+  runs at, read with the job's own token. `repository` is checked out at
+  `sha` into `source_path` (a directory under the workspace root, `tenant`
+  unless the caller says otherwise) with `token`.
+- **The caller is `repository`** (the lab checking its own change). The
+  workspace is that repository at `sha`. Nothing else is checked out and
+  `source_path` is unused.
+
+No checkout leaves a credential in `.git/config`. `token` is not widened to
+read anything but `repository`; the caller's repository is read with the
+job's own token.
+
+`command` runs with `bash -c` in the workspace root and receives:
+
+| Variable | Value |
+| -------- | ----- |
+| `FLEET_SOURCE_REPOSITORY` | `repository` (owner/name) |
+| `FLEET_SOURCE_SHA` | `sha` |
+| `FLEET_SOURCE_PATH` | absolute path of the `source_path` checkout; empty when the caller is `repository` and the workspace itself is at `sha` |
+
+The lab's command uses these to point its tenant flake input at the checked
+out commit (for example `--override-input <tenant> "path:$FLEET_SOURCE_PATH"`
+when the variable is not empty). The command receives no token and no other
+secret from the workflow. The checks need none; `tofu-apply` and `deploy`
+take their deploy credentials from the runner host (see below), not from
+GitHub.
 
 ### The author gate
 
@@ -81,7 +130,7 @@ reports an error status and runs nothing.
 The pull request number and the commit can reach the lab from the tenant
 signal, which the tenant repository sends, so neither is trusted on its own.
 A number only selects which pull request the API is asked about. The commit
-is the one `tofu-apply` and `deploy` check out and run, and the gate binds it
+is the one `tofu-apply` and `deploy` check out and act on, and the gate binds it
 to that pull request: without the binding, a sender could name any old pull
 request merged by an ungated author together with a commit nobody ungated
 wrote or merged. With it, the only commit that passes is the one the ungated
@@ -127,7 +176,8 @@ readable only by jobs that run there. Therefore only the deploy runner, which
 the author gate protects, can decrypt deploy credentials. Checks runners
 cannot, and a workflow on a hosted runner cannot. The secrets a caller does
 pass are the status token and similar narrow tokens, never a decrypt key and
-never a credential able to deploy from a checks runner.
+never a credential able to deploy from a checks runner. The workflows pass
+none of them on to `command`.
 
 ## The estate declares its callers as managed files
 
@@ -161,6 +211,11 @@ must be quoted (`"with" = { ... };`); unquoted it is a syntax error. The kit rep
 overridden. The result is text; the kit renders it and never writes it. As with
 every managed file, plan and apply stay in the estate repository, and the
 text is escaped so that `${{ ... }}` expressions survive Terraform.
+
+This caller lives in the lab repository and checks the lab's own commit, so
+`repository` is the caller's own and the workspace is at `sha`. A caller that
+checks a tenant passes the tenant's `repository` and `sha` instead (taken
+from the signal) and finds the tenant checkout at `$FLEET_SOURCE_PATH`.
 
 Declaring the callers for a real estate, the runner hosts, and dispatching
 anything are outside the kit.

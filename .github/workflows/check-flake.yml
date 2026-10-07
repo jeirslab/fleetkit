@@ -1,5 +1,6 @@
 name: check-flake
-# Reusable. Runs the caller's command (flake evaluation checks) on a tenant repository commit.
+# Reusable. Runs the caller's command (flake evaluation checks) from the caller's repository, about a commit
+# of the repository under check (a tenant repository, or the caller's own).
 # Reports a commit status (context "check-flake") on the given repository and commit: pending at start,
 # success or failure at the end.
 on:
@@ -10,20 +11,35 @@ on:
         type: string
         required: true
       repository:
-        description: owner/name of the repository to check out and to report the status on.
+        description: >-
+          owner/name of the repository under check: the status is reported on it. When it is not the
+          caller's repository it is also checked out into source_path, as an input for the command.
         type: string
         required: true
       sha:
-        description: Commit to check out and to report the status on.
+        description: Commit of repository under check; the status is reported on it.
         type: string
         required: true
       command:
-        description: Command to run in the checkout (the lab's own tool, e.g. tools/fleet check).
+        description: >-
+          Command to run in the workspace root, which is the caller's repository (the lab's own
+          tool, e.g. tools/fleet check). It gets FLEET_SOURCE_REPOSITORY, FLEET_SOURCE_SHA and
+          FLEET_SOURCE_PATH (absolute path of the source_path checkout, or empty when repository is
+          the caller's own and the workspace is already at sha), and no token.
         type: string
         required: true
+      source_path:
+        description: >-
+          Optional. Directory, relative to the workspace root, that repository is checked out into
+          when it is not the caller's repository. Not the workspace root itself.
+        type: string
+        required: false
+        default: tenant
     secrets:
       token:
-        description: Token that can read the repository and write commit statuses on it.
+        description: >-
+          Token that can read repository and write commit statuses on it. Only the status steps and
+          the source checkout use it; the command never sees it.
         required: true
 permissions:
   contents: read
@@ -31,28 +47,46 @@ jobs:
   run:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
     env:
-      GH_TOKEN: ${{ secrets.token }}
       REPO: ${{ inputs.repository }}
       SHA: ${{ inputs.sha }}
       CONTEXT: check-flake
       TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: status pending
+        env:
+          GH_TOKEN: ${{ secrets.token }}
         run: |
           gh api -X POST "repos/$REPO/statuses/$SHA" -f state=pending -f context="$CONTEXT" \
             -f description="running" -f target_url="$TARGET_URL"
-      - uses: actions/checkout@v4
+      # The workspace is the caller's repository (where the command lives), at the caller's commit;
+      # when the caller is itself the repository under check, at the commit under check. The job's
+      # own token reads it. No credential is left in .git/config for the command to find.
+      - name: check out the caller's repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.repository == github.repository && inputs.sha || '' }}
+          persist-credentials: false
+      # A repository other than the caller's is the command's input, not its workspace.
+      - name: check out the source repository
+        if: inputs.repository != github.repository
+        uses: actions/checkout@v4
         with:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.sha }}
+          path: ${{ inputs.source_path }}
           token: ${{ secrets.token }}
+          persist-credentials: false
       - name: run
         env:
           COMMAND: ${{ inputs.command }}
+          FLEET_SOURCE_REPOSITORY: ${{ inputs.repository }}
+          FLEET_SOURCE_SHA: ${{ inputs.sha }}
+          FLEET_SOURCE_PATH: ${{ inputs.repository != github.repository && format('{0}/{1}', github.workspace, inputs.source_path) || '' }}
         run: bash -c "$COMMAND"
       - name: status final
         if: always()
         env:
+          GH_TOKEN: ${{ secrets.token }}
           JOB_STATUS: ${{ job.status }}
         run: |
           if [ "$JOB_STATUS" = success ]; then state=success; desc="passed"; else state=failure; desc="failed or cancelled"; fi
