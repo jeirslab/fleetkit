@@ -1,7 +1,7 @@
 name: tofu-plan
 # Reusable. Runs the caller's command (the lab's tofu plan step) from the caller's repository, about a commit
 # of the repository under check (a tenant repository, or the caller's own).
-# Reports a commit status (context "tofu-plan") on the given repository and commit: pending at start,
+# Reports a commit status (context "tofu-plan/<stack>", one per stack) on the given repository and commit: pending at start,
 # success or failure at the end.
 on:
   workflow_call:
@@ -14,12 +14,19 @@ on:
         required: true
       report_runs_on:
         description: >-
-          Optional. JSON list of runner labels for the jobs that hold the token and do nothing but
-          call the GitHub API (statuses, the author gate where there is one). Must not be the runner
-          that executes the command.
+          JSON list of runner labels for the jobs that hold the status token and do nothing but
+          call the GitHub API (statuses, the author gate where there is one). Normally a
+          GitHub-hosted runner. Never the labels of the runner that executes the command.
         type: string
-        required: false
-        default: '["ubuntu-latest"]'
+        required: true
+      stack:
+        description: >-
+          Name of the stack this run is about, e.g. xgcs/github. It is part of the status context
+          ("tofu-plan/<stack>"), so two stacks on one commit report separately, and the command
+          gets it as FLEET_STACK. Only A-Z a-z 0-9 . _ / - ; not empty, no leading /, no "..": anything
+          else is refused before a status is reported.
+        type: string
+        required: true
       repository:
         description: >-
           owner/name of the repository under check: the status is reported on it. When it is not the
@@ -33,9 +40,10 @@ on:
       command:
         description: >-
           Command to run in the workspace root, which is the caller's repository (the lab's own
-          tool, e.g. tools/fleet check). It gets FLEET_SOURCE_REPOSITORY, FLEET_SOURCE_SHA and
-          FLEET_SOURCE_PATH (absolute path of the source_path checkout, or empty when repository is
-          the caller's own and the workspace is already at sha), and no token.
+          tool, e.g. tools/fleet check). It gets FLEET_STACK, FLEET_SOURCE_REPOSITORY,
+          FLEET_SOURCE_SHA and FLEET_SOURCE_PATH (absolute path of the source_path checkout, or
+          empty when repository is the caller's own and the workspace is already at sha), and no
+          token.
         type: string
         required: true
       source_path:
@@ -49,14 +57,16 @@ on:
     secrets:
       token:
         description: >-
-          Token that can read repository and write commit statuses on it. The jobs that report the
-          status hold it, on report_runs_on. It is never present in the job that runs the command.
+          Token that can write commit statuses on repository. The jobs that report the status hold
+          it, on report_runs_on. It is never present in the job that runs the command; the source
+          checkout there uses source_token.
         required: true
       source_token:
         description: >-
           Read-only token for a private source repository other than the caller's (contents read on
-          that repository, nothing else). Used only by the checkout in the job that runs the
-          command. Not needed when repository is the caller's own or is public.
+          repository, nothing else). Used only by the checkout in the job that runs the command.
+          Not needed when repository is the caller's own or is public: the checkout then uses the
+          job's own token, which has contents read and nothing else.
         required: false
 # Three jobs, so that no step of the job that runs the command has the token in its environment
 # (code under check could otherwise write to GITHUB_ENV / GITHUB_PATH or leave a process behind and
@@ -71,9 +81,27 @@ jobs:
     env:
       REPO: ${{ inputs.repository }}
       SHA: ${{ inputs.sha }}
-      CONTEXT: tofu-plan
+      CONTEXT: tofu-plan/${{ inputs.stack }}
       TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
+      # Before any status: the stack is part of the status context. Refused here, nothing is
+      # reported under a name the caller did not mean.
+      - name: validate stack
+        env:
+          STACK: ${{ inputs.stack }}
+        run: |
+          LC_ALL=C
+          bad=""
+          case "$STACK" in
+            "") bad="is empty" ;;
+            /*) bad="starts with /" ;;
+            *..*) bad="contains .." ;;
+            *[!A-Za-z0-9._/-]*) bad="has a character other than A-Z a-z 0-9 . _ / -" ;;
+          esac
+          if [ -n "$bad" ]; then
+            echo "stack '$STACK' $bad; it must name a stack, e.g. xgcs/github" >&2
+            exit 1
+          fi
       - name: status pending
         env:
           GH_TOKEN: ${{ secrets.token }}
@@ -86,7 +114,7 @@ jobs:
     env:
       REPO: ${{ inputs.repository }}
       SHA: ${{ inputs.sha }}
-      CONTEXT: tofu-plan
+      CONTEXT: tofu-plan/${{ inputs.stack }}
       TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: validate source_path
@@ -125,8 +153,9 @@ jobs:
           persist-credentials: false
       # A repository other than the caller's is the command's input, not its workspace.
       # The only secret in this job, and not the one that writes statuses: source_token is a
-      # separate, read-only token for fetching a private source repository. It is used by the
-      # checkout action before the command runs and is not persisted in the checkout.
+      # separate, read-only token for fetching a private source repository. Without it the job's
+      # own token is used (contents read only), which is enough for a public repository. Either
+      # is used by the checkout action before the command runs and is not persisted in the checkout.
       - name: check out the source repository
         if: inputs.repository != github.repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -134,13 +163,14 @@ jobs:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.sha }}
           path: ${{ inputs.source_path }}
-          token: ${{ secrets.source_token }}
+          token: ${{ secrets.source_token || github.token }}
           persist-credentials: false
       - name: run
         env:
           COMMAND: ${{ inputs.command }}
           FLEET_SOURCE_REPOSITORY: ${{ inputs.repository }}
           FLEET_SOURCE_SHA: ${{ inputs.sha }}
+          FLEET_STACK: ${{ inputs.stack }}
           FLEET_SOURCE_PATH: ${{ inputs.repository != github.repository && format('{0}/{1}', github.workspace, inputs.source_path) || '' }}
         run: bash -c "$COMMAND"
   report:
@@ -151,9 +181,27 @@ jobs:
     env:
       REPO: ${{ inputs.repository }}
       SHA: ${{ inputs.sha }}
-      CONTEXT: tofu-plan
+      CONTEXT: tofu-plan/${{ inputs.stack }}
       TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
+      # Checked again here, because this job runs even when the first one failed: the stack is
+      # part of the status context, and nothing is reported under a refused one.
+      - name: validate stack
+        env:
+          STACK: ${{ inputs.stack }}
+        run: |
+          LC_ALL=C
+          bad=""
+          case "$STACK" in
+            "") bad="is empty" ;;
+            /*) bad="starts with /" ;;
+            *..*) bad="contains .." ;;
+            *[!A-Za-z0-9._/-]*) bad="has a character other than A-Z a-z 0-9 . _ / -" ;;
+          esac
+          if [ -n "$bad" ]; then
+            echo "stack '$STACK' $bad; it must name a stack, e.g. xgcs/github" >&2
+            exit 1
+          fi
       - name: status final
         env:
           GH_TOKEN: ${{ secrets.token }}

@@ -16,12 +16,11 @@ on:
         required: true
       report_runs_on:
         description: >-
-          Optional. JSON list of runner labels for the jobs that hold the token and do nothing but
-          call the GitHub API (statuses, the author gate where there is one). Must not be the runner
-          that executes the command.
+          JSON list of runner labels for the jobs that hold the status token and do nothing but
+          call the GitHub API (statuses, the author gate where there is one). Normally a
+          GitHub-hosted runner. Never the labels of the runner that executes the command.
         type: string
-        required: false
-        default: '["ubuntu-latest"]'
+        required: true
       repository:
         description: >-
           owner/name of the repository the pull request was merged in: the gate reads it and the
@@ -67,16 +66,16 @@ on:
     secrets:
       token:
         description: >-
-          Token that can read repository and its pull requests and write commit statuses. The gate
-          job and the report job hold it, on report_runs_on. In the job that runs the command only
-          the checkout of a source repository other than the caller's uses it, to read; no step
-          there has it in its environment.
+          Token that can write commit statuses on repository and read its pull requests. The gate
+          job and the report job hold it, on report_runs_on. It is never present in the job that
+          runs the command; the source checkout there uses source_token.
         required: true
       source_token:
         description: >-
           Read-only token for a private source repository other than the caller's (contents read on
-          that repository, nothing else). Used only by the checkout in the job that runs the
-          command. Not needed when repository is the caller's own or is public.
+          repository, nothing else). Used only by the checkout in the job that runs the command.
+          Not needed when repository is the caller's own or is public: the checkout then uses the
+          job's own token, which has contents read and nothing else.
         required: false
 # Three jobs, so that no step of the job that runs the command has the token in its environment
 # (code under check could otherwise write to GITHUB_ENV / GITHUB_PATH or leave a process behind and
@@ -192,8 +191,9 @@ jobs:
           persist-credentials: false
       # A repository other than the caller's is the command's input, not its workspace.
       # The only secret in this job, and not the one that writes statuses: source_token is a
-      # separate, read-only token for fetching a private source repository. It is used by the
-      # checkout action before the command runs and is not persisted in the checkout.
+      # separate, read-only token for fetching a private source repository. Without it the job's
+      # own token is used (contents read only), which is enough for a public repository. Either
+      # is used by the checkout action before the command runs and is not persisted in the checkout.
       - name: check out the source repository
         if: inputs.repository != github.repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -201,7 +201,7 @@ jobs:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.sha }}
           path: ${{ inputs.source_path }}
-          token: ${{ secrets.source_token }}
+          token: ${{ secrets.source_token || github.token }}
           persist-credentials: false
       - name: run
         env:

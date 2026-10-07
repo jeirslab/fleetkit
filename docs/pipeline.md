@@ -23,9 +23,10 @@ estate name: all of it arrives as an input or a secret from the caller.
    token the caller passes, so the result appears on the tenant pull request.
    The checks runner evaluates tenant code from a pull request nobody has
    reviewed yet. It must therefore hold no deploy credentials and no decrypt
-   keys. The status token is not in the job that runs the command at all,
-   except as the read credential of the tenant checkout: the statuses are
-   reported by separate jobs on another runner (see
+   keys. The status token is not in the job that runs the command at all: the
+   statuses are reported by separate jobs on another runner, and the tenant
+   checkout reads with a second, read-only token (`source_token`) or, for a
+   public tenant repository, with the job's own (see
    [The job split](#the-job-split-where-the-token-is)).
 3. **Merge.** A person merges the tenant pull request.
 4. **Apply and deploy, on the deploy runner, gated by author.** After the
@@ -55,34 +56,57 @@ checks or deploy runner.
 
 All are `on: workflow_call`. Every input and secret is declared; none is read
 from the environment implicitly. Input names use underscores. Every workflow
-takes a `runs_on` input (a JSON list of runner labels, for example
+takes a required `runs_on` input (a JSON list of runner labels, for example
 `["self-hosted","nix"]`, read with `fromJSON`) and a secret `token`. The five
-that run a command also take the optional `report_runs_on`, a JSON list in the
-same form, default `["ubuntu-latest"]`: the runner of the jobs that hold the
-token. What the
-token is for differs: in `tenant-signal` it only sends the dispatch to the lab
-repository, and that workflow reports no status; in the other five it reports
-the commit status and reads the repository under check (and, in `tofu-apply`
-and `deploy`, its pull request).
+that run a command also take a required `report_runs_on`, a JSON list in the
+same form: the runner of the jobs that hold the token. Neither has a default,
+so no kit workflow names a runner; every `runs-on` is a `fromJSON` of one of
+these two inputs. A caller normally passes `'["ubuntu-latest"]'` as
+`report_runs_on` and must never pass the labels of the runner that executes
+the command. What the token is for differs: in `tenant-signal` it only sends
+the dispatch to the lab repository, and that workflow reports no status; in
+the other five it writes the commit status on the repository under check
+(and, in `tofu-apply` and `deploy`, reads its pull request). It does not read
+the repository's contents: that is `source_token`.
 
-| Workflow | Where it runs | Inputs | Secret |
-| -------- | ------------- | ------ | ------ |
+| Workflow | Where it runs | Inputs | Secrets and what each needs |
+| -------- | ------------- | ------ | --------------------------- |
 | `tenant-signal` | tenant repository | `lab_repository`, `tenant_repository`, `pull_request`, `sha`, `runs_on`; optional `event_type` (default `tenant-signal`) | `token`: may create a `repository_dispatch` on the lab repository |
-| `check-flake` | checks runner | `runs_on`, `repository`, `sha`, `command`; optional `source_path` (default `tenant`) and `report_runs_on` (default `["ubuntu-latest"]`) | `token`: reads `repository`, writes commit statuses on it |
-| `nixos-build` | checks runner | same as `check-flake` | same |
-| `tofu-plan` | checks runner | same as `check-flake` | same |
-| `tofu-apply` | deploy runner | the above plus `pull_request` and `ungated_authors`; optional `base_branch`. `sha` must be the merge commit of `pull_request` | `token`: also reads the pull request |
-| `deploy` | deploy runner | same as `tofu-apply` | same |
+| `check-flake` | checks runner | `runs_on`, `report_runs_on`, `repository`, `sha`, `command`; optional `source_path` (default `tenant`) | `token`: commit statuses write on `repository`. Optional `source_token`: contents read on `repository` |
+| `nixos-build` | checks runner | same as `check-flake` | same as `check-flake` |
+| `tofu-plan` | checks runner | same as `check-flake` plus `stack` | same as `check-flake` |
+| `tofu-apply` | deploy runner | same as `tofu-plan` plus `pull_request` and `ungated_authors`; optional `base_branch`. `sha` must be the merge commit of `pull_request` | `token`: commit statuses write and pull requests read on `repository`. Optional `source_token`: contents read on `repository` |
+| `deploy` | deploy runner | same as `tofu-apply` without `stack` | same as `tofu-apply` |
 
-The five runner workflows also take an optional secret `source_token`, read by nothing but the checkout of a private source repository (see "The job split").
+`source_token` is read by nothing but the checkout of the source repository
+in the job that runs the command. It is needed when `repository` is private
+and is not the caller's own. When the caller leaves it out, that checkout
+uses the job's own token, which has contents read and nothing else and can
+fetch a public repository (see
+[The job split](#the-job-split-where-the-token-is)).
 
 `repository` and `sha` name the repository and commit under check: the tenant
 pull request's head commit for the three checks, the merge commit for
 `tofu-apply` and `deploy`. The status is reported there. `command` is what
-runs; the kit does not choose it, so the lab's own tool stays in the lab. The
-status context is the workflow's name. Read the `workflow_call` block at the
-top of each file for the exact descriptions. "Where it runs" in the table is
-where the command runs (`runs_on`).
+runs; the kit does not choose it, so the lab's own tool stays in the lab.
+Read the `workflow_call` block at the top of each file for the exact
+descriptions. "Where it runs" in the table is where the command runs
+(`runs_on`).
+
+### Status contexts and the stack
+
+The status context of `check-flake`, `nixos-build` and `deploy` is the
+workflow's name. `tofu-plan` and `tofu-apply` run once per stack, so their
+context is `tofu-plan/<stack>` and `tofu-apply/<stack>`: the required input
+`stack` (for example `xgcs/github`) is part of every status those two
+workflows post (pending, final, GATED, the gate error). Two stacks planned
+or applied on one commit therefore report side by side and do not overwrite
+each other. The command gets the same value as `FLEET_STACK`.
+
+`stack` is checked before any status is posted, in every job that posts one:
+it must not be empty, may hold only `A-Z a-z 0-9 . _ / -`, must not start
+with `/` and must not contain `..`. Anything else fails the run with a
+message and no status is reported.
 
 ### The job split: where the token is
 
@@ -97,10 +121,10 @@ command has the token in its environment:
 | Workflow | Job | Runs on | Holds `token` | Does |
 | -------- | --- | ------- | ------------- | ---- |
 | `check-flake`, `nixos-build`, `tofu-plan` | `pending` | `report_runs_on` | yes | posts the pending status |
-| | `run` (needs `pending`) | `runs_on` | only the source checkout's `with: token` | checkouts, then the command |
+| | `run` (needs `pending`) | `runs_on` | no (`source_token` for the source checkout only) | checkouts, then the command |
 | | `report` (needs both, always runs) | `report_runs_on` | yes | posts the final status from the result of `run` |
 | `tofu-apply`, `deploy` | `gate` | `report_runs_on` | yes | pending status, fetches the author gate at the pinned kit commit, runs it, posts GATED when it says gated |
-| | `run` (needs `gate`, only when the gate said ungated) | `runs_on` | only the source checkout's `with: token` | checkouts, then the command |
+| | `run` (needs `gate`, only when the gate said ungated) | `runs_on` | no (`source_token` for the source checkout only) | checkouts, then the command |
 | | `report` (needs both, always runs) | `report_runs_on` | yes | final status, or the gate error |
 
 The final status follows the result of `run`: `success` when it succeeded,
@@ -111,9 +135,11 @@ although it should have (the pending status could not be posted). In
 second status: the gate job already said GATED.
 
 `report_runs_on` is where the token-holding jobs run. They only call the
-GitHub API, so a GitHub-hosted runner is the default. It must not be the
-runner that executes the command: a job there would put the token back within
-reach of whatever the command left behind on that machine.
+GitHub API, so a GitHub-hosted runner is the normal choice
+(`'["ubuntu-latest"]'`); the caller says so, the kit has no default. It must
+never be the labels of the runner that executes the command: a job there
+would put the token back within reach of whatever the command left behind on
+that machine.
 
 What is true of the token and the command, precisely:
 
@@ -128,13 +154,18 @@ What is true of the token and the command, precisely:
   does not persist it (`persist-credentials: false`), so it is not in
   `.git/config`, not in a file of the workspace and not in the command's
   environment.
+- When the caller passes no `source_token`, that checkout uses the job's own
+  token instead (`secrets.source_token || github.token`). The workflows give
+  the job contents read and nothing else, so this fetches a public
+  `repository` and fails on a private one the caller's repository cannot
+  read. It is the only place the job's own token is named in the `run` job.
 - `source_token` is still delivered to the runner that executes the command,
   inside the runner's own process, so treat that runner as able to read the
   source repository if the runner itself is compromised. It cannot write a
   status or anything else. With a GitHub App, mint the two tokens separately
   (the installation-token action takes a permission set per token).
-  When `repository` is the
-  caller's own, the `run` job does not use the token at all.
+  When `repository` is the caller's own, the source checkout is skipped and
+  the `run` job uses neither secret.
 
 ### What the command runs in
 
@@ -146,16 +177,18 @@ caller's repository, not `repository`:
   workspace is the caller's repository at the commit the calling workflow
   runs at, read with the job's own token. `repository` is checked out at
   `sha` into `source_path` (a directory under the workspace root, `tenant`
-  unless the caller says otherwise) with `token`. The `run` job first
+  unless the caller says otherwise) with `source_token`, or with the job's
+  own token when the caller passes none. The `run` job first
   refuses a `source_path` that is empty, `.`, an absolute path or has a `..`
   component, so the checkout cannot land on or outside the workspace root.
 - **The caller is `repository`** (the lab checking its own change). The
   workspace is that repository at `sha`. Nothing else is checked out and
   `source_path` is unused.
 
-No checkout leaves a credential in `.git/config`. `token` is not widened to
-read anything but `repository`; the caller's repository is read with the
-job's own token.
+No checkout leaves a credential in `.git/config`. `token` reads no
+repository contents and is not in this job; `source_token` needs contents
+read on `repository` and nothing else; the caller's repository is read with
+the job's own token.
 
 `command` runs with `bash -c` in the workspace root and receives:
 
@@ -164,6 +197,7 @@ job's own token.
 | `FLEET_SOURCE_REPOSITORY` | `repository` (owner/name) |
 | `FLEET_SOURCE_SHA` | `sha` |
 | `FLEET_SOURCE_PATH` | absolute path of the `source_path` checkout; empty when the caller is `repository` and the workspace itself is at `sha` |
+| `FLEET_STACK` | `stack`; in `tofu-plan` and `tofu-apply` only |
 
 The lab's command uses these to point its tenant flake input at the checked
 out commit (for example `--override-input <tenant> "path:$FLEET_SOURCE_PATH"`
@@ -244,8 +278,9 @@ workflow run in that repository and is copied to GitHub; a key on the host is
 readable only by jobs that run there. Therefore only the deploy runner, which
 the author gate protects, can decrypt deploy credentials. Checks runners
 cannot, and a workflow on a hosted runner cannot. The secrets a caller does
-pass are the status token and similar narrow tokens, never a decrypt key and
-never a credential able to deploy from a checks runner. The workflows pass
+pass are the status token, the read-only source token and similar narrow
+tokens, never a decrypt key and never a credential able to deploy from a
+checks runner. The workflows pass
 none of them on to `command`, and keep the status token out of the job that
 runs it (see [The job split](#the-job-split-where-the-token-is)).
 
@@ -266,8 +301,9 @@ repos.myestate.lab.files.".github/workflows/check-flake.yml".content =
     on = { pull_request = { }; };
     "with" = {
       runs_on = builtins.toJSON [ "self-hosted" "checks" ]; # a string holding a JSON list
+      report_runs_on = builtins.toJSON [ "ubuntu-latest" ]; # never the labels of runs_on
       repository = "myorg/lab";
-      sha = "\${{ github.sha }}";
+      sha = "\${{ github.event.pull_request.head.sha }}";
       command = "tools/fleet check";
     };
     secrets.token = "\${{ secrets.CHECK_TOKEN }}";
@@ -283,9 +319,15 @@ every managed file, plan and apply stay in the estate repository, and the
 text is escaped so that `${{ ... }}` expressions survive Terraform.
 
 This caller lives in the lab repository and checks the lab's own commit, so
-`repository` is the caller's own and the workspace is at `sha`. A caller that
+`repository` is the caller's own and the workspace is at `sha`. On a
+`pull_request` event `sha` is the pull request's head commit
+(`github.event.pull_request.head.sha`), not `github.sha`: that one is
+GitHub's temporary test-merge commit, and a status reported on it does not
+show on the pull request. A caller that
 checks a tenant passes the tenant's `repository` and `sha` instead (taken
-from the signal) and finds the tenant checkout at `$FLEET_SOURCE_PATH`.
+from the signal) and finds the tenant checkout at `$FLEET_SOURCE_PATH`; for a
+private tenant it also passes `secrets.source_token`. A caller of `tofu-plan`
+or `tofu-apply` adds `stack`.
 
 Declaring the callers for a real estate, the runner hosts, and dispatching
 anything are outside the kit.

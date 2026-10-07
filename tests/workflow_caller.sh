@@ -9,7 +9,9 @@
 # .github/actions must parse as YAML with yq from the flake's pinned nixpkgs;
 # a parser that cannot be had fails the test. The five workflows that run a
 # caller's command are checked for the job split that keeps the status token
-# out of the job running it. Also runs actionlint over every
+# out of the job running it; tofu-plan and tofu-apply for the stack in every
+# status context; every reusable workflow for runner labels that come from
+# inputs only. Also runs actionlint over every
 # workflow file in .github/workflows that has `workflow_call`: the one on
 # PATH, else the one from the pinned nixpkgs; if neither can be had it prints
 # an explicit SKIPPED line (never a silent pass).
@@ -149,6 +151,7 @@ elif ! grep -Eq '^    uses: "jeirslab/fleetkit/\.github/workflows/[^@/"]+\.yml@[
   echo "workflow_caller: the example in docs/pipeline.md rendered no pinned uses line" >&2
   status=fail
 else
+  printf '%s' "$out" >"$TMP/doc-caller.yml"
   echo "workflow_caller: docs/pipeline.md example evaluates" >&2
 fi
 
@@ -194,10 +197,14 @@ fi
 
 # The five workflows that run a caller's command keep the status token out of
 # the job that runs it: `run` has no token in any environment, its only secret
-# reference is the source checkout's `with.token` (credentials not persisted),
-# every job that does hold the token runs on report_runs_on, and in tofu-apply
-# and deploy `run` waits for the gate job's verdict. The source_path check of
-# each `run` job is executed against good and bad paths.
+# reference is the source checkout's `with.token` (source_token, or the job's
+# own read-only token when the caller passes none; credentials not persisted),
+# every job that does hold the token runs on report_runs_on (a required input,
+# no default), and in tofu-apply and deploy `run` waits for the gate job's
+# verdict. The source_path check of each `run` job is executed against good and
+# bad paths. tofu-plan and tofu-apply take a required `stack`: every job that
+# posts a status validates it first (the check is executed), every status
+# context is "<workflow>/<stack>", and the command gets FLEET_STACK.
 RUNNERS=(check-flake nixos-build tofu-plan tofu-apply deploy)
 split=ok
 : >"$TMP/split.err"
@@ -219,6 +226,8 @@ import json, os, subprocess, sys
 
 tmp, names = sys.argv[1], sys.argv[2:]
 GATED = {"tofu-apply", "deploy"}
+STACKED = {"tofu-plan", "tofu-apply"}
+SOURCE_TOKENS = ("${{ secrets.source_token }}", "${{ secrets.source_token || github.token }}")
 REPORT_ON = "${{ fromJSON(inputs.report_runs_on) }}"
 RUN_ON = "${{ fromJSON(inputs.runs_on) }}"
 errors = []
@@ -250,9 +259,11 @@ for name in names:
     doc = json.load(open(f"{tmp}/{name}.json"))
     err = lambda m: errors.append(f"{name}: {m}")
     jobs = doc.get("jobs", {})
-    inp = doc["on"]["workflow_call"]["inputs"].get("report_runs_on")
-    if not inp or inp.get("required") or inp.get("default") != '["ubuntu-latest"]':
-        err("input report_runs_on must be optional with default '[\"ubuntu-latest\"]'")
+    inputs = doc["on"]["workflow_call"]["inputs"]
+    for rn in ("runs_on", "report_runs_on"):
+        inp = inputs.get(rn)
+        if not inp or inp.get("required") is not True or "default" in inp:
+            err(f"input {rn} must be required and have no default (no runner label in the kit)")
     for m in env_problems(doc.get("env"), "workflow"):
         err(m)
     want_jobs = {"gate", "run", "report"} if name in GATED else {"pending", "run", "report"}
@@ -283,13 +294,14 @@ for name in names:
         w = step["with"]
         ok = (
             str(step.get("uses", "")).startswith("actions/checkout@")
-            and w.get("token") == "${{ secrets.source_token }}"
+            and w.get("token") in SOURCE_TOKENS
             and w.get("repository") == "${{ inputs.repository }}"
             and w.get("persist-credentials") is False
         )
     if not ok:
-        err("job run: secret references must be exactly the source checkout's with.token, with "
-            f"persist-credentials: false; found at {['.'.join(map(str, p)) for p in refs]}")
+        err("job run: the only secret reference must be the source checkout's with.token, being "
+            "secrets.source_token (optionally '|| github.token'), with persist-credentials: false; "
+            f"found at {['.'.join(map(str, p)) for p in refs]}")
     for i, step in enumerate(run["steps"]):
         if "uses" not in step:
             continue
@@ -324,6 +336,52 @@ for name in names:
             err("job run must need pending")
         if "if" in run:
             err("job run must not be conditional")
+    # Status contexts. In tofu-plan and tofu-apply the context carries the stack, in every job
+    # that posts a status, and such a job validates the stack before its first status call.
+    stack = inputs.get("stack")
+    if name in STACKED:
+        want_context = name + "/${{ inputs.stack }}"
+        if not stack or stack.get("required") is not True or stack.get("type") != "string" or "default" in stack:
+            err("input stack must be a required string with no default")
+        cmd = [s for s in run["steps"] if s.get("env", {}).get("COMMAND") == "${{ inputs.command }}"]
+        if not cmd or any(s["env"].get("FLEET_STACK") != "${{ inputs.stack }}" for s in cmd):
+            err("job run must export FLEET_STACK: ${{ inputs.stack }} to the command")
+    else:
+        want_context = name
+        if stack is not None or any("inputs.stack" in s for _, s in strings(jobs)):
+            err("unexpected stack input or reference")
+    posted = 0
+    for jn, job in jobs.items():
+        calls = [(i, s) for i, s in enumerate(job["steps"]) if "/statuses/" in str(s.get("run", ""))]
+        if not calls:
+            continue
+        posted += len(calls)
+        if job.get("env", {}).get("CONTEXT") != want_context:
+            err(f"job {jn}: status context must be {want_context}")
+        for i, s in calls:
+            script = s["run"]
+            if script.count("/statuses/") != script.count('-f context="$CONTEXT"'):
+                err(f"job {jn} step {i}: a status call does not use the job's CONTEXT")
+            if "CONTEXT" in s.get("env", {}):
+                err(f"job {jn} step {i}: overrides CONTEXT")
+        if name in STACKED:
+            first = job["steps"][0]
+            if first.get("env", {}).get("STACK") != "${{ inputs.stack }}" or "if" in first or "uses" in first:
+                err(f"job {jn} must validate stack, unconditionally, as its first step")
+                continue
+            cases = [("xgcs/github", True), ("a", True), ("a.b_c-d/e", True), ("", False),
+                     ("/a", False), ("..", False), ("a/../b", False), ("a..b", False), ("a b", False),
+                     ("a\nb", False), ("a;b", False), ("a$b", False), ("\u00e9", False), ('a"b', False),
+                     ("a*", False), ("a\\b", False)]
+            for value, good in cases:
+                r = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", first["run"]],
+                                   env=dict(os.environ, STACK=value), capture_output=True, text=True)
+                if (r.returncode == 0) != good:
+                    err(f"job {jn}: stack {value!r}: expected {'accept' if good else 'refuse'}, got exit {r.returncode}")
+                elif not good and "stack" not in r.stderr:
+                    err(f"job {jn}: stack {value!r}: refused without a message")
+    if posted < (3 if name in GATED else 2):
+        err(f"found {posted} status call(s), expected at least {3 if name in GATED else 2}")
     # source_path is validated before any checkout; run the check itself.
     idx = [i for i, s in enumerate(run["steps"]) if s.get("env", {}).get("SOURCE_PATH") == "${{ inputs.source_path }}"]
     uses = [i for i, s in enumerate(run["steps"]) if "uses" in s]
@@ -350,8 +408,85 @@ fi
 echo "workflow_caller: job split (no token in the job that runs the command) on ${#RUNNERS[@]} file(s): $split" >&2
 [[ $split == ok ]] || status=fail
 
-# actionlint over the reusable workflows: the one on PATH, else the pinned one.
+# No runner label in a reusable workflow: every runs-on is exactly a
+# fromJSON(inputs.<name>) expression, that input is required and has no
+# default, and no input default names a runner. The docs/pipeline.md example is
+# checked against the workflow it calls: only declared inputs and secrets, every
+# required input present, and never github.sha on a pull_request trigger.
 mapfile -t REUSABLE < <(grep -l 'workflow_call' "$ROOT"/.github/workflows/*.yml 2>/dev/null)
+labels=ok
+: >"$TMP/labels.err"
+if [[ -z $NIXPKGS ]] || ((${#REUSABLE[@]} == 0)); then
+  echo "workflow_caller: runner labels FAIL: no pinned nixpkgs for yq, or no reusable workflow" >&2
+  labels=fail
+else
+  mkdir -p "$TMP/reusable"
+  for f in "${REUSABLE[@]}" "$TMP/doc-caller.yml"; do
+    [[ -f $f ]] || continue
+    if ! nix shell "$NIXPKGS#yq-go" -c yq -o=json '.' "$f" >"$TMP/reusable/$(basename "${f%.yml}").json" 2>>"$TMP/labels.err"; then
+      echo "workflow_caller: runner labels FAIL: cannot read ${f#"$ROOT"/}" >&2
+      labels=fail
+    fi
+  done
+  cat "$TMP/labels.err" >&2
+fi
+if [[ $labels == ok ]]; then
+  python3 - "$TMP/reusable" <<'PY' >&2 || labels=fail
+import json, os, re, sys
+
+d = sys.argv[1]
+errors = []
+docs = {f[:-5]: json.load(open(os.path.join(d, f))) for f in sorted(os.listdir(d)) if f.endswith(".json")}
+example = docs.pop("doc-caller", None)
+RUNS_ON = re.compile(r"\$\{\{ fromJSON\(inputs\.([A-Za-z_][A-Za-z0-9_]*)\) \}\}")
+LABEL = re.compile(r"ubuntu|windows|macos|self-hosted|runner|\[", re.I)
+for name, doc in docs.items():
+    inputs = doc["on"]["workflow_call"].get("inputs", {})
+    for jn, job in doc.get("jobs", {}).items():
+        m = RUNS_ON.fullmatch(job["runs-on"]) if isinstance(job.get("runs-on"), str) else None
+        if not m:
+            errors.append(f"{name}: job {jn}: runs-on is {job.get('runs-on')!r}, not a fromJSON(inputs.<name>) expression")
+        elif m[1] not in inputs or inputs[m[1]].get("required") is not True or "default" in inputs[m[1]]:
+            errors.append(f"{name}: job {jn}: runner input {m[1]} must be declared, required and without a default")
+    for iname, inp in inputs.items():
+        if "default" in inp and (iname.endswith("runs_on") or LABEL.search(str(inp["default"]))):
+            errors.append(f"{name}: input {iname} has a default that names a runner: {inp['default']!r}")
+if example is None:
+    errors.append("the docs/pipeline.md example was not rendered")
+else:
+    call = example["jobs"]["call"]
+    m = re.fullmatch(r".+/\.github/workflows/([^@/]+)\.yml@[0-9a-f]{40}", call["uses"])
+    target = docs.get(m[1]) if m else None
+    if target is None:
+        errors.append(f"docs/pipeline.md example: calls {call['uses']}, not a reusable workflow of the kit")
+    else:
+        wc = target["on"]["workflow_call"]
+        inputs, secrets = wc.get("inputs", {}), wc.get("secrets", {})
+        given, given_secrets = call.get("with", {}), call.get("secrets", {})
+        for k in given:
+            if k not in inputs:
+                errors.append(f"docs/pipeline.md example: passes {k}, not an input of {m[1]}")
+        for k, v in inputs.items():
+            if v.get("required") is True and k not in given:
+                errors.append(f"docs/pipeline.md example: required input {k} of {m[1]} is missing")
+        for k in given_secrets:
+            if k not in secrets:
+                errors.append(f"docs/pipeline.md example: passes secret {k}, not a secret of {m[1]}")
+        for k, v in secrets.items():
+            if v.get("required") is True and k not in given_secrets:
+                errors.append(f"docs/pipeline.md example: required secret {k} of {m[1]} is missing")
+        if "pull_request" in example.get("on", {}) and any("github.sha" in str(v) for v in given.values()):
+            errors.append("docs/pipeline.md example: github.sha on pull_request is the test-merge commit; "
+                          "use github.event.pull_request.head.sha")
+for e in errors:
+    print("workflow_caller: runner labels FAIL " + e)
+sys.exit(1 if errors else 0)
+PY
+fi
+echo "workflow_caller: runner labels (inputs only, no default) and the documented example on ${#REUSABLE[@]} reusable file(s): $labels" >&2
+[[ $labels == ok ]] || status=fail
+
+# actionlint over the reusable workflows: the one on PATH, else the pinned one.
 ACTIONLINT=()
 if command -v actionlint >/dev/null 2>&1; then
   ACTIONLINT=(actionlint)
