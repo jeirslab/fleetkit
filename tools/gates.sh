@@ -65,11 +65,13 @@ log "lint: $lint"
 # Every guest option path is mapped to a provider argument that exists in the
 # pinned bpg/proxmox schema (docs/guest-provider-map.md), and so is the
 # terraform rendered from the fixture (tests/terraform.sh), and the GitHub
-# terraform against the pinned integrations/github schema (tests/github.sh).
+# terraform against the pinned integrations/github schema (tests/github.sh); the
+# GitHub App bootstrap tool runs against a fake API and sops.
 fidelity=pass
 python3 tests/guest_fidelity.py --gate >&2 || fidelity=fail
 bash tests/terraform.sh >&2 || fidelity=fail
 bash tests/github.sh >&2 || fidelity=fail
+python3 tests/github_app_bootstrap.py >&2 || fidelity=fail
 log "fidelity: $fidelity"
 
 ok=false

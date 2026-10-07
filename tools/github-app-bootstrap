@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""Register a GitHub App on an organization from a manifest file and store its
+credentials in that organization's sops file, without printing them.
+
+  tools/github-app-bootstrap --org ORG --manifest app.json --sops-file secrets/github.yaml
+
+Flow (GitHub "Registering a GitHub App from a manifest"):
+  1. A local page on 127.0.0.1 POSTs the manifest to
+     https://github.com/organizations/ORG/settings/apps/new?state=...  The
+     operator confirms (and may rename) the App in the browser.
+  2. GitHub redirects to http://127.0.0.1:PORT/callback?code=...&state=...
+     The state must match; the code is valid for one hour.
+  3. The code is exchanged at POST /app-manifests/{code}/conversions (no
+     authentication) for the App id and private key (pem).
+  4. `sops edit` stores both in --sops-file. The values travel only in the
+     environment of the editor process, never on a command line, in a file
+     that is not sops's own temporary one, or on stdout/stderr.
+
+The webhook secret and client secret in the response are discarded; the
+manifest should not enable a webhook. Installing the App on the organization's
+repositories is a separate manual step (docs/github-app-bootstrap.md).
+Stdlib only; needs `sops` (override with --sops) and the sops file's creation
+rule (.sops.yaml) so the operator's key can write it.
+"""
+import argparse
+import html
+import http.server
+import json
+import os
+import re
+import secrets
+import shlex
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import threading
+import urllib.error
+import urllib.request
+import webbrowser
+
+ORG_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")
+KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+EDIT_ENV = "FLEETKIT_GHAPP_EDIT"  # JSON {key: value} for the editor helper only
+
+
+def die(msg, code=2):
+    print(f"github-app-bootstrap: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def load_manifest(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            m = json.load(f)
+    except (OSError, ValueError) as e:
+        die(f"cannot read manifest {path}: {e}")
+    if not isinstance(m, dict):
+        die("manifest must be a JSON object")
+    for field in ("name", "url", "default_permissions"):
+        if not m.get(field):
+            die(f"manifest lacks required field '{field}'")
+    if not isinstance(m["default_permissions"], dict):
+        die("manifest default_permissions must be an object")
+    for perm, level in m["default_permissions"].items():
+        if level not in ("read", "write", "admin"):
+            die(f"manifest permission '{perm}' has invalid level {level!r}")
+    if m.get("hook_attributes", {}).get("active"):
+        die("manifest enables a webhook; this tool discards the webhook secret")
+    return m
+
+
+def form_page(org, manifest, state, github):
+    action = f"{github}/organizations/{org}/settings/apps/new?state={state}"
+    return (
+        "<!doctype html><meta charset=utf-8><title>Register GitHub App</title>"
+        f"<form id=f method=post action=\"{html.escape(action, quote=True)}\">"
+        f"<input type=hidden name=manifest value=\"{html.escape(json.dumps(manifest), quote=True)}\">"
+        f"<p>Registering <b>{html.escape(manifest['name'])}</b> on "
+        f"<b>{html.escape(org)}</b>.</p><button>Continue to GitHub</button></form>"
+        "<script>document.getElementById('f').submit()</script>"
+    ).encode()
+
+
+def convert(code, api):
+    req = urllib.request.Request(
+        f"{api}/app-manifests/{code}/conversions", data=b"", method="POST",
+        headers={"Accept": "application/vnd.github+json",
+                 "X-GitHub-Api-Version": "2022-11-28",
+                 "User-Agent": "fleetkit-github-app-bootstrap"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            body = json.load(r)
+    except urllib.error.HTTPError as e:
+        die(f"code exchange failed: HTTP {e.code} (codes expire after one hour and work once)")
+    except (urllib.error.URLError, ValueError) as e:
+        die(f"code exchange failed: {e}")
+    if not body.get("id") or not body.get("pem"):
+        die("code exchange response lacks id or pem")
+    return str(body["id"]), body["pem"], body.get("slug", "")
+
+
+def wait_for_code(org, manifest, state, github, port, timeout):
+    """Serve the form and the callback on 127.0.0.1; return the code."""
+    result = {}
+    done = threading.Event()
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _send(self, status, body, ctype="text/html"):
+            self.send_response(status)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            from urllib.parse import urlparse, parse_qs
+            u = urlparse(self.path)
+            if u.path == "/":
+                m = dict(manifest, redirect_url=f"http://127.0.0.1:{self.server.server_port}/callback")
+                self._send(200, form_page(org, m, state, github))
+            elif u.path == "/callback":
+                q = parse_qs(u.query)
+                if q.get("state", [""])[0] != state or not q.get("code"):
+                    self._send(400, b"state mismatch or missing code")
+                    return
+                result["code"] = q["code"][0]
+                self._send(200, b"Registered. You can close this tab.")
+                done.set()
+            else:
+                self._send(404, b"not found")
+
+    srv = http.server.HTTPServer(("127.0.0.1", port), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{srv.server_port}/"
+    result["url"] = url
+    return srv, done, result
+
+
+def apply_edit(path):
+    """Editor helper run by `sops edit`: merge EDIT_ENV values into the file."""
+    values = json.loads(os.environ[EDIT_ENV])
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    stripped = text.lstrip()
+    if stripped.startswith("{"):
+        data = json.loads(text)
+        data.update(values)
+        out = json.dumps(data, indent=2) + "\n"
+    else:
+        keep, skipping = [], False
+        for line in text.splitlines():
+            m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):", line)
+            if m:
+                skipping = m.group(1) in values
+            elif skipping and line.strip() and not line[0].isspace():
+                skipping = False
+            if not skipping:
+                keep.append(line)
+        out = "\n".join(keep).rstrip("\n")
+        out = (out + "\n" if out else "")
+        for k, v in values.items():
+            if "\n" in v:
+                out += f"{k}: |\n" + "".join(f"  {l}\n" for l in v.splitlines())
+            else:
+                out += f"{k}: {json.dumps(v)}\n"
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(out)
+
+
+def store(sops, sops_file, values):
+    with tempfile.TemporaryDirectory(prefix="ghapp-") as d:
+        wrapper = os.path.join(d, "editor")
+        with open(wrapper, "w") as f:
+            f.write(f"#!/bin/sh\nexec {shlex.quote(sys.executable)} "
+                    f"{shlex.quote(os.path.abspath(__file__))} --apply-edit \"$1\"\n")
+        os.chmod(wrapper, stat.S_IRWXU)
+        env = dict(os.environ, EDITOR=wrapper, **{EDIT_ENV: json.dumps(values)})
+        r = subprocess.run([sops, "edit", sops_file], env=env,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    if r.returncode != 0:
+        # sops stderr names files and keys, not values.
+        die(f"sops edit failed ({r.returncode}): {r.stderr.strip()[:400]}", 1)
+
+
+def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "--apply-edit":
+        apply_edit(sys.argv[2])
+        return
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--org", required=True)
+    ap.add_argument("--manifest", required=True, help="App manifest JSON file")
+    ap.add_argument("--sops-file", required=True, help="the org's sops file to write")
+    ap.add_argument("--id-key", default="github_app_id")
+    ap.add_argument("--key-key", default="github_app_private_key")
+    ap.add_argument("--sops", default="sops", help="sops command")
+    ap.add_argument("--github", default="https://github.com", help=argparse.SUPPRESS)
+    ap.add_argument("--api", default="https://api.github.com", help=argparse.SUPPRESS)
+    ap.add_argument("--port", type=int, default=0)
+    ap.add_argument("--timeout", type=int, default=3000, help="seconds to wait for the callback")
+    ap.add_argument("--no-browser", action="store_true", help="print the local URL instead of opening it")
+    a = ap.parse_args()
+
+    if not ORG_RE.match(a.org):
+        die(f"invalid organization name {a.org!r}")
+    for k in (a.id_key, a.key_key):
+        if not KEY_RE.match(k):
+            die(f"invalid key name {k!r}")
+    if shutil.which(a.sops) is None:
+        die(f"'{a.sops}' not found")
+    manifest = load_manifest(a.manifest)
+    state = secrets.token_urlsafe(24)
+
+    srv, done, res = wait_for_code(a.org, manifest, state, a.github, a.port, a.timeout)
+    print(f"Open {res['url']} and confirm the App on GitHub.", file=sys.stderr)
+    if not a.no_browser:
+        webbrowser.open(res["url"])
+    try:
+        if not done.wait(a.timeout):
+            die("timed out waiting for GitHub's redirect", 1)
+    finally:
+        srv.shutdown()
+    app_id, pem, slug = convert(res["code"], a.api)
+    store(a.sops, a.sops_file, {a.id_key: app_id, a.key_key: pem})
+    print(f"Stored {a.id_key} and {a.key_key} in {a.sops_file}"
+          + (f" (App '{slug}')" if slug else "") + ". Next: install the App on the "
+          "organization's repositories (docs/github-app-bootstrap.md).", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
