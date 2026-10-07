@@ -219,6 +219,24 @@
         "{ lib, ... }: { fleet.estates.gh.git.plan = lib.mkForce \"pro\"; }"
       ],
       "noecho": false
+    },
+    {
+      "name": "secret-name-github-prefix-lowercase",
+      "description": "the reserved prefix in lower case; GitHub compares names without regard to case",
+      "expect": "fleet\\.repos\\.gh\\.app\\.actions\\.secrets\\.github_token: \"github_token\" is not a valid Actions secret name \\(letters, digits and underscores, not starting with a digit, not starting with GITHUB_\\)",
+      "module": [
+        "_: { fleet.repos.gh.app.actions.secrets.github_token.sourceRef = \"sops:gh/gh#repo-token\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "variable-names-differ-only-in-case",
+      "description": "two variables of one repository whose names differ only in case are one variable on GitHub",
+      "expect": "fleet\\.repos\\.gh\\.app\\.actions\\.variables: \"FOO\", \"Foo\" are the same name on GitHub \\(names differ only in case\\)",
+      "module": [
+        "_: { fleet.repos.gh.app.actions.variables = { Foo = \"a\"; FOO = \"b\"; }; }"
+      ],
+      "noecho": false
     }
   ],
   "personal": [

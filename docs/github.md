@@ -69,6 +69,7 @@ starts with the option path (`fleet.repos.<estate>.<key>...`):
 | `actions.secrets.<NAME>` | the name is letters, digits and `_`, does not start with a digit and does not start with `GITHUB_` (GitHub reserves that prefix) |
 | `actions.secrets.<NAME>.sourceRef` | a `sops:` reference that a declared secrets file of the same estate provides; a value that is not a `sops:` reference is refused without being echoed |
 | `actions.variables.<NAME>` | the same name rule as a secret |
+| `actions.secrets`, `actions.variables` | names are compared without regard to case, as GitHub does: the `GITHUB_` prefix is refused in any case, and two names of one repository that differ only in case are refused |
 | `labels.<name>.color` | exactly six hex digits, no leading `#` |
 | `files.<path>` | the path is relative to the repository root: not empty, no leading `/`, no `..` component |
 | `runners.<name>.labels` | at least one label |
@@ -209,14 +210,14 @@ bumps the kit, before its first plan:
 
 The steps above assume one repository holds both the declaration and the
 kit lock. A tenant splits them (`docs/tenants.md`): the tenant repository
-declares `repos.<tenant>.*` and the estate's `git` block, the lab repository
-evaluates that declaration with the lab's kit lock, renders the Terraform
-and holds the state. Each repository locks fleetkit on its own, so the
-change crosses two repositories and its order matters:
+declares `repos.<tenant>.*` and the estate's `git` block, and the lab
+repository evaluates that declaration with the lab's kit lock, renders the
+Terraform and holds the state. The tenant repository is a plain source
+input and has no kit lock of its own, so the only lock that moves is the
+lab's, and the order across the two repositories matters:
 
-1. **Bump the kit in both repositories first.** Bump the fleetkit lock in
-   the lab repository and in the tenant repository. The lab change that
-   bumps the lock also carries step 2 above, the state-removal step: the
+1. **Bump the kit in the lab repository first.** The lab change that bumps
+   the fleetkit lock also carries step 2 above, the state-removal step: the
    `import` blocks for the dropped addresses are deleted and the addresses
    are taken out of state without destroy (`tofu state rm`, or `removed`
    blocks with `destroy = false`), before that change's first plan. The
@@ -233,7 +234,8 @@ Both wrong orders fail, differently:
   to the old kit is an evaluation error: the option
   `fleet.repos.<tenant>.<key>.actions` "does not exist". The lab cannot
   evaluate the tenant at all until its own lock is bumped, which is why the
-  tenant change waits for step 1.
+  tenant change waits for step 1. (A tenant repository that also locks the
+  kit for its own checks bumps that lock in the same tenant change.)
 - A lab that bumps the kit first, as step 1 requires, drops the tenant's
   private-repository environments and its organisation secrets from the
   rendered Terraform before any replacement is declared. That window is

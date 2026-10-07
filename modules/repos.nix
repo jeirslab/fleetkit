@@ -210,7 +210,39 @@ let
   );
 
   # Repo-level Actions secrets, variables, labels, files and runners.
-  nameOk = n: builtins.match "[A-Za-z_][A-Za-z0-9_]*" n != null && !(lib.hasPrefix "GITHUB_" n);
+  # GitHub compares Actions secret and variable names without regard to case,
+  # so the reserved prefix and duplicates are checked the same way.
+  nameOk =
+    n: builtins.match "[A-Za-z_][A-Za-z0-9_]*" n != null && !(lib.hasPrefix "GITHUB_" (lib.toUpper n));
+  caseClashes =
+    names:
+    lib.attrValues (
+      lib.filterAttrs (_: v: builtins.length v > 1) (lib.groupBy lib.toUpper names)
+    );
+  perRepoCase = lib.concatLists (
+    lib.mapAttrsToList (
+      estate: rs:
+      lib.concatLists (
+        lib.mapAttrsToList (
+          n: r:
+          lib.concatMap
+            (
+              kind:
+              map (clash: {
+                assertion = false;
+                message = "fleet.repos.${estate}.${n}.actions.${kind}: ${
+                  lib.concatMapStringsSep ", " (x: "\"${x}\"") clash
+                } are the same name on GitHub (names differ only in case)";
+              }) (caseClashes (lib.attrNames r.actions.${kind}))
+            )
+            [
+              "secrets"
+              "variables"
+            ]
+        ) rs
+      )
+    ) config.fleet.repos
+  );
   perRepoGithub = lib.concatLists (
     lib.mapAttrsToList (
       estate: rs:
@@ -316,5 +348,5 @@ in
     default = { };
   };
 
-  config.assertions = estateKeys ++ perRepo ++ perRepoGithub ++ duplicates;
+  config.assertions = estateKeys ++ perRepo ++ perRepoGithub ++ perRepoCase ++ duplicates;
 }
