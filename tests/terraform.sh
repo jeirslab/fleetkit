@@ -4,7 +4,9 @@
 # that an estate whose guests are on two sites does not render. The estate
 # "gaps" uses every option added for adopting existing guests (idmap, no
 # console block, no pool, pool comment, scsi hardware, EFI disk, cloud-init
-# drive slot and upgrade, clone and description under ignore_changes); each
+# drive slot and upgrade, clone and description under ignore_changes); the
+# estate "quiet" uses adoption.unrecorded (what an import does not record,
+# under ignore_changes or not; fleet.report.unrecordedIgnored); each
 # case of tests/cases-guests.json is that fixture plus one bad declaration,
 # which must fail evaluation with the message of the validation that refuses
 # it ("expect", an extended regular expression). Evaluation only. Prints one
@@ -23,7 +25,7 @@ render() { # estate [module] -> $TMP/<estate>.json, or the error in $TMP/<estate
 }
 
 status=pass
-for estate in mini tenant bare gaps; do
+for estate in mini tenant bare gaps quiet; do
   if render "$estate"; then
     python3 "$ROOT/tests/terraform.py" "$TMP/$estate.json" --estate "$estate" >&2 || status=fail
   else
@@ -88,6 +90,26 @@ if ! out=$(nix eval --impure --json "$ROOT#lib" --apply "l: (l.fleet {
     modules = [ $ROOT/tests/fixtures/tf-mini $TMP/rawidmap.nix ];
   }).report.lxcExtraConfIdmap" 2>"$TMP/rawidmap.err") || [[ $out != '{"gaps/conf":["lxc.idmap: u 0 100000 65536"]}' ]]; then
   echo "FAIL report.lxcExtraConfIdmap: ${out:-$(tail -n 5 "$TMP/rawidmap.err")}" >&2
+  status=fail
+fi
+
+# The guests whose unrecorded arguments are ignored, and which arguments: the
+# three that take the estate's adoption.unrecorded = "ignore", not the two
+# that set it back to "apply", and no guest of an estate that sets nothing.
+want='{"quiet/ct":["cpu","memory","vm_id","console"],"quiet/machine":["cpu","memory","scsi_hardware","agent","operating_system","efi_disk"],"quiet/mixed":["cpu","memory","vm_id","console"]}'
+if ! out=$(nix eval --impure --json "$ROOT#lib" --apply "l: (l.fleet {
+    modules = [ $ROOT/tests/fixtures/tf-mini ];
+  }).report.unrecordedIgnored" 2>"$TMP/unrecorded.err") || [[ $out != "$want" ]]; then
+  echo "FAIL report.unrecordedIgnored: ${out:-$(tail -n 5 "$TMP/unrecorded.err")}" >&2
+  status=fail
+fi
+# A guest's own "ignore" where the estate says nothing, and a guest's "apply"
+# over the estate's "ignore", as the report sees them.
+printf '%s\n' '_: { fleet.guests.gaps.conf.adoption.unrecorded = "ignore"; fleet.guests.quiet.ct.adoption.unrecorded = "apply"; }' >"$TMP/layers.nix"
+if ! out=$(nix eval --impure --json "$ROOT#lib" --apply "l: builtins.attrNames (l.fleet {
+    modules = [ $ROOT/tests/fixtures/tf-mini $TMP/layers.nix ];
+  }).report.unrecordedIgnored" 2>"$TMP/layers.err") || [[ $out != '["gaps/conf","quiet/machine","quiet/mixed"]' ]]; then
+  echo "FAIL report.unrecordedIgnored (layers): ${out:-$(tail -n 5 "$TMP/layers.err")}" >&2
   status=fail
 fi
 

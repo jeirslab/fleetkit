@@ -231,7 +231,9 @@ def adopt_cmd(ctx: click.Context, estate: str, stacks: tuple[str, ...], resource
     For each resource with an adoption id that is not in state yet: `import`
     (the declaration equals the live resource), `import+update` with what
     differs (live and declared), `import+unrecorded` (the import does not
-    record some properties: still an update, a reboot of a guest), `absent`
+    record some properties: still an update, a reboot of a guest),
+    `import+local` (a guest that differs only in its provider-local timeouts:
+    nothing is sent to the hypervisor, no reboot, nothing to accept), `absent`
     (it does not exist: a deploy will create it), `secret` (not adopted unless
     named with --resource), `duplicate` (its id is in state under another
     name, in any stack of the estate, or twice in this run: refused). --apply

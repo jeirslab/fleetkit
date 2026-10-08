@@ -29,7 +29,9 @@
 # twice in one cluster fails unless allowlisted with a reason),
 # fleet.report.guestOptionPaths (every modelled guest option path, for the
 # fidelity test), fleet.report.lxcExtraConfIdmap (guests whose raw lxc.conf
-# lines carry an id mapping the provider would own) and
+# lines carry an id mapping the provider would own),
+# fleet.report.unrecordedIgnored (guests with adoption.unrecorded = "ignore"
+# and the provider arguments that puts under ignore_changes) and
 # fleet.estates.<estate>.guestDefaults.
 { lib, config, ... }:
 let
@@ -103,6 +105,10 @@ let
     protect = nullable types.bool "Terraform lifecycle.prevent_destroy (meta-argument, not a provider argument). Effective default false.";
     protection = nullable types.bool "protection (both kinds): the Proxmox protection flag.";
     ignoreChanges = nullable (types.listOf types.str) "Terraform lifecycle.ignore_changes (meta-argument): provider argument names whose drift is ignored after create.";
+    adoption.unrecorded = nullable (types.enum [
+      "ignore"
+      "apply"
+    ]) "What happens to the provider arguments an import of an existing guest does not record. apply (the effective default): nothing is rendered for them, so an adoption carries an update in place for them, which reboots the guest. ignore: they are added to lifecycle.ignore_changes (container: cpu, memory, vm_id, console; vm: cpu, memory, scsi_hardware, agent, operating_system, efi_disk), the adoption is free of a reboot, and changes to them are not applied to the guest until this is apply again, which reboots it once. Listed in fleet.report.unrecordedIgnored.";
     startOnBoot = nullable types.bool "container start_on_boot / vm on_boot.";
     started = nullable types.bool "started (both kinds).";
     startup = {
@@ -228,6 +234,38 @@ let
     "megasas"
     "pvscsi"
   ];
+
+  # Provider arguments an import of an existing guest does not record, per
+  # kind: what adoption.unrecorded = "ignore" adds to lifecycle.ignore_changes
+  # (docs/guest-model.md, "Adoption without a reboot", has the evidence).
+  #   lxc  seen on a real container (fleetkit#61): the import had no cpu,
+  #        memory or vm_id, and a console only when it is not the provider's
+  #        default.
+  #   vm   from the provider source at v0.115.0, not observed
+  #        (proxmoxtf/resource/vm/vm.go, vmReadCustom): cpu, memory, agent,
+  #        operating_system and efi_disk are set only when a live value
+  #        differs from the provider's default, scsi_hardware only when the
+  #        VM's config has a scsihw line. vm_id is always set there.
+  unrecordedArgs = {
+    lxc = [
+      "cpu"
+      "memory"
+      "vm_id"
+      "console"
+    ];
+    vm = [
+      "cpu"
+      "memory"
+      "scsi_hardware"
+      "agent"
+      "operating_system"
+      "efi_disk"
+    ];
+  };
+  # The arguments of that list a guest has under ignore_changes for it.
+  unrecordedIgnoredOf =
+    estate: g:
+    if ((effective estate g).adoption.unrecorded or null) == "ignore" then unrecordedArgs.${g.kind} else [ ];
 
   # Knob paths that exist for one kind only.
   lxcOnlyKnobs = [
@@ -716,9 +754,13 @@ let
       #   description  for a container with lxcExtraConf: the companion's
       #                "# BEGIN/END" marker lines are comment lines of the
       #                conf file, which Proxmox returns as description text.
+      #   adoption.unrecorded = "ignore": what an import does not record
+      #                (unrecordedArgs), so that adopting the guest carries no
+      #                update for it.
       autoIgnored =
         optional (clone != null) "clone"
-        ++ optional (isLxc && g.lxcExtraConf != null && g.lxcExtraConf != [ ]) "description";
+        ++ optional (isLxc && g.lxcExtraConf != null && g.lxcExtraConf != [ ]) "description"
+        ++ unrecordedIgnoredOf estate g;
       cloneArgs = if clone == null then null else {
         vm_id = clone.vmid;
         datastore_id = lastSeg clone.datastore;
@@ -1620,8 +1662,30 @@ in
           dropped. lifecycle: prevent_destroy / ignore_changes (Terraform
           meta-arguments; ignore_changes also holds what the kit ignores by
           itself: clone on a guest that declares one, description on a
-          container with lxcExtraConf). companions.lxc_extra_conf: raw
-          lxc.conf lines.
+          container with lxcExtraConf, and what an import does not record on
+          a guest with adoption.unrecorded = "ignore").
+          companions.lxc_extra_conf: raw lxc.conf lines.
+        '';
+      };
+      unrecordedIgnored = mkOption {
+        type = types.attrsOf (types.listOf types.str);
+        readOnly = true;
+        default = builtins.listToAttrs (
+          concatMap (
+            { estate, g, ... }:
+            optional (unrecordedIgnoredOf estate g != [ ]) {
+              name = g.id;
+              value = unrecordedIgnoredOf estate g;
+            }
+          ) allGuests
+        );
+        description = ''
+          Derived, read-only: per guest id with adoption.unrecorded =
+          "ignore" (its own, or the estate's guestDefaults), the provider
+          arguments that puts under lifecycle.ignore_changes. A change to one
+          of them in the model is NOT applied to that guest while it is
+          listed here; setting adoption.unrecorded = "apply" on the guest
+          applies them again, with one reboot.
         '';
       };
       lxcExtraConfIdmap = mkOption {

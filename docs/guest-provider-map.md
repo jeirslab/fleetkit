@@ -34,8 +34,11 @@ name.
 
 `lifecycle.ignore_changes` holds `ignoreChanges` plus what the kit adds by
 itself: `clone` for a guest with `source.clone`, `description` for a
-container with `lxcExtraConf` (the two extra `meta` lines below; the reasons
-are in `guest-model.md`, "Adopting existing guests").
+container with `lxcExtraConf`, and, for a guest whose layered
+`adoption.unrecorded` is `"ignore"`, the arguments an import does not record
+(container: `cpu`, `memory`, `vm_id`, `console`; vm: `cpu`, `memory`,
+`scsi_hardware`, `agent`, `operating_system`, `efi_disk`). The extra `meta`
+lines below; the reasons are in `guest-model.md`, "Adopting existing guests".
 
 Not a guest option, so not in the list: the pool's comment,
 `fleet.estates.<estate>.pools.proxmox.<pool>.comment` =>
@@ -61,6 +64,7 @@ both: effectivePool => pool_id
 meta: protect => lifecycle.prevent_destroy
 both: protection => protection
 meta: ignoreChanges => lifecycle.ignore_changes
+meta: adoption.unrecorded => lifecycle.ignore_changes
 lxc: startOnBoot => start_on_boot
 vm: startOnBoot => on_boot
 both: started => started

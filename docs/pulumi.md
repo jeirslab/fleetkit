@@ -500,6 +500,36 @@ fleetkit adopt homelab --apply --accept-absent new-ct   # new-ct really does not
 fleetkit adopt homelab --resource deploy-token --apply   # a secret: only when named
 ```
 
+**Adopting a guest without rebooting it.** An import does not record some
+arguments of a guest (a container's `cpu`, `memory`, `vmId` and default
+`console`), so its adoption carries an update for them, and a reboot, even
+when every value matches. The recipe that avoids it:
+
+```nix
+# the estate, once (or per guest: fleet.guests.<estate>.<guest>.adoption.unrecorded)
+fleet.estates.homelab.guestDefaults.adoption.unrecorded = "ignore";
+```
+
+```sh
+nix eval --json .#fleet.report.unrecordedIgnored   # which guests, which arguments
+fleetkit adopt homelab                             # the report: import, or import+local
+fleetkit adopt homelab --apply                     # no --accept-update, no reboot
+fleetkit preview homelab                           # all same
+```
+
+The switch puts those arguments under `ignoreChanges` in the **real** program
+(the one every deploy runs; ignoring them only in the temporary adoption
+program would leave the update for the next deploy). What is then left of a
+container's adoption is `timeoutStart`, a provider-local setting: status
+`import+local`, applied with the import. Any other difference is still
+`import+update` or `import+unrecorded` and still needs the declaration fixed
+or `--accept-update`. The cost is in `guest-model.md` ("Adoption without a
+reboot"): the engine applies no change to those arguments on such a guest
+until it is set back to `adoption.unrecorded = "apply"`, and that deploy
+reboots it once. Seen on a real container (2026-10-08, [issue 61]): no task on
+the node, no reboot, the next preview (also with `--refresh`) all `same`. For
+a VM the list is from the provider source and was not run.
+
 Each stack exposes `adoptIds` (`{ <resource key> = <provider import id>; }`)
 and `adoptUnresolved` (`{ <resource key> = <why no id>; }`) beside its
 `program`; `--id KEY=ID` adds or overrides an id. A kit that does not expose
@@ -553,7 +583,8 @@ them yet adopts only by `--id`.
    |---|---|
    | `import` | the declaration equals the live resource |
    | `import+update` | it differs: importing it also updates it in place (a guest reboots) |
-   | `import+unrecorded` | the only differences are properties the import did not record, so no live value is known and the engine plans an update for them anyway. For a container that update still **reboots** it, even if every value matches; the report and the refusal say so, and `--accept-update` is still required. Known cases for bpg containers and VMs: `cpu`, `memory`, `vmId`, `timeoutStart`, `scsiHardware` |
+   | `import+unrecorded` | the only differences are properties the import did not record, so no live value is known and the engine plans an update for them anyway. For a container that update still **reboots** it, even if every value matches; the report and the refusal say so, and `--accept-update` is still required. Known cases for bpg containers and VMs: `cpu`, `memory`, `vmId`, `timeoutStart`, `scsiHardware`. `adoption.unrecorded = "ignore"` in the model takes them out of the difference (above) |
+   | `import+local` | a container or VM whose **only** differences are provider-local settings, its `timeout*` properties: the provider keeps them in state and sends no change to the hypervisor (no task on the node, no reboot). Needs no `--accept-update`, the report says so (`note`), and it is applied with the import. One other property in the difference and it is `import+update` or `import+unrecorded` as before |
    | `import+secret` | a GitHub secret named with `--resource`: its value cannot be read back, so adopting it writes the declared value. Naming it is the acceptance |
    | `secret` | a secret that was not named: listed, not adopted (`--resource KEY`) |
    | `absent` | the engine says, in exactly its own words and nothing besides, that nothing exists by this id: `resource '<id>' does not exist` (`Preview failed: ` before it), with the `import failed` of the step. "Does not exist; a deploy will create it". Not in the import set. For a resource that is no guest: not an error, exit 0. **For a guest, `--apply` refuses** unless the key is named with `--accept-absent KEY`: a guest that does exist, on another node or under another vmid, would be created a second time by the next deploy. (This used to be any message containing `does not exist`, `not found` or `404`: bpg's `Configuration file 'nodes/pve2/lxc/105.conf' does not exist` for a container that lives on another node, a proxy's `404 page not found` and a missing provider binary were all reported as absent, ok.) |
@@ -597,6 +628,29 @@ them yet adopts only by `--id`.
    It is what a person or an agent reads to make the declaration match what
    is there.
 
+   **Provider-local** is a fixed list per resource type
+   (`cli/fleetkit_cli/guests.py`, `LOCAL_PROPERTIES`), matched on the type and
+   on the top-level property of every path in the difference; an update for
+   which the engine names no property is never local. Container:
+   `timeoutClone`, `timeoutCreate`, `timeoutDelete`, `timeoutStart`,
+   `timeoutUpdate`. VM: `timeoutClone`, `timeoutCreate`, `timeoutMigrate`,
+   `timeoutMoveDisk`, `timeoutReboot`, `timeoutShutdownVm`, `timeoutStartVm`,
+   `timeoutStopVm`. No other guest type, no other resource. From the provider
+   source at v0.115.0: neither `containerUpdate` (`container.go`) nor
+   `vmUpdate` (`vm.go`) tests any of them with `HasChange`; both build the
+   config request from the other arguments and skip it when it is empty
+   (`containerUpdate`: "timeouts ... (provider-local) don't trigger an
+   empty-body PUT"; `vmUpdate`: `if !updateBody.IsEmpty()`). The values bound
+   the provider's own waiting (`context.WithTimeout`) and are the `timeout` of
+   a start, shutdown or reboot it makes for another reason; `timeout_start`
+   (container) and `timeout_move_disk` (VM) are deprecated and read nowhere.
+   The update still reads the guest (its config, its status), which changes
+   nothing. Seen for a container's `timeoutStart` only; the VM's are from
+   source (`vmReadCustom` fills all eight in at import, so a VM has such a
+   difference only when the model declares one, which the kit does not
+   render). `tests/guest_types.py` (a gate) holds the list against the pinned
+   provider: every `timeout*` property of the two types, nothing else.
+
    `--resource`, `--id`, `--accept-update` and `--accept-absent` take a
    resource key. A key that two of the selected stacks have is refused as
    ambiguous: run one stack (`--stack`).
@@ -604,7 +658,8 @@ them yet adopts only by `--id`.
 6. With `--apply`, refusals, all before anything is applied in any stack:
    - a resource that would be `import+update` or `import+unrecorded` and is
      not named with `--accept-update KEY`. For a guest the update is a reboot,
-     and the message says so. Fix the declaration, or accept the update;
+     and the message says so. Fix the declaration, or accept the update. An
+     `import+local` resource is not refused: there is nothing to accept;
    - a plan that holds anything but `import`, `update` and `same`: any create,
      replace or delete, of the resource or of something targeted with it (a
      dependency that is not in state yet). The one exception is the `create`
@@ -781,7 +836,11 @@ put a TLS proxy in front of anything but loopback.
   gone afterwards (also when the engine raises, and on SIGTERM / SIGHUP /
   SIGINT), sweeps what a kill left, reports a `false` live value with both
   sides, reports an absent resource as `absent` and the rest completely,
-  classes unrecorded properties and secrets, and fails when the preview after
+  classes unrecorded properties and secrets, applies a difference in
+  provider-local settings only (`import+local`) without an acceptance and
+  refuses it as before when another property differs too, for the listed
+  properties of the two guest types only (twelve hand mutations of that
+  classification are each caught), and fails when the preview after
   the adoption still differs or deletes a guest. Thirty-five hand mutations
   of the fixes for the plan binding, the cancel, protect, the run directories
   and the duplicate-id check are each caught.
@@ -804,7 +863,8 @@ put a TLS proxy in front of anything but loopback.
   lock left and reported; the engine's `detailedDiff` reaching the plan (the
   kubernetes provider rendering YAML to a directory).
 - `tests/guest_types.py` (gate) and `cli/tests/test_guests.py`: the type lists
-  against the pinned provider's name map: every token in exactly one list,
+  and the provider-local properties against the pinned provider's name map:
+  every token in exactly one list,
   none stale, and the gate itself failing on a name map with one more type.
 - `cli/tests/test_review2.py` (fake engine, and no engine) and
   `cli/tests/test_real_review2.py` (the real engine, offline), for what the
@@ -897,6 +957,21 @@ live on a throwaway guest:
   value, which is right too. Check: adopt a throwaway container declared
   exactly as it is; expect `import+unrecorded` naming those paths, and
   `--accept-update` rebooting it once.
+- **`adoption.unrecorded = "ignore"` on a VM, and on a container whose cpu or
+  memory is not the provider's default.** The container list was seen on one
+  container; the VM list (`cpu`, `memory`, `scsiHardware`, `agent`,
+  `operatingSystem`, `efiDisk`) and the conditions under which either read
+  records a block are from the source. Check: a throwaway VM (running, 1 core,
+  512 MiB, no agent, no `scsihw` line) and a throwaway container with 2 cores,
+  each declared as it is with `adoption.unrecorded = "ignore"`; `fleetkit
+  adopt` must report `import` (the container: `import+local` with
+  `timeoutStart` only), `--apply` must leave no task on the node
+  (`pvenode task list`) and the guest's uptime unbroken, and `fleetkit preview --refresh`
+  must be all `same`. Then set `"apply"` on it: the preview must name exactly
+  the ignored properties, and the deploy reboots it once.
+- **`import+local` on a VM.** The VM's eight timeouts are from the source.
+  Check: declare `timeoutStartVm` on a throwaway VM by hand (a Pulumi.nix
+  stack), adopt it; expect `import+local` and no task on the node.
 - **How the provider says "does not exist".** `absent` is an error on the
   resource that matches `does not exist`, `not found` or `404` (the engine's
   own `resource '<id>' does not exist` among them); the message is kept in
@@ -1017,6 +1092,14 @@ know fails evaluation.
   an `options.ignoreChanges` of the same length whose paths start at an input
   property (`clone`, `description`, `operatingSystem`); `outputs` must be the
   render's locals; a string, number or boolean of the wrong type fails.
+  The estate `quiet` (`adoption.unrecorded`) is rendered both ways: a
+  container and a VM that take the estate's `"ignore"` carry exactly the
+  arguments of their kind under `ignore_changes` / `ignoreChanges` (each a
+  name of the pinned schema), a container that already ignores `cpu` gets it
+  once, a container and a VM set back to `"apply"` carry none, and
+  `fleet.report.unrecordedIgnored` lists the three; a value other than the two
+  fails evaluation. The renders of `mini`, `tenant`, `bare` and `gaps` are
+  byte for byte what they were before the option existed.
 - `tests/pulumi_preview.sh` (networked, not a gate): `pulumi install` and
   `pulumi preview` of the mini estate with a file backend and a throwaway age
   key. It plans all four resources plus the provider as creates, decrypts the
@@ -1072,6 +1155,10 @@ a private repository this environment could not fetch).
   are written into `/etc/pve/lxc/<vmid>.conf` by hand. The guests concerned are
   the stack's `outputs.fleet_unrendered_companions`; their `description` is
   under `ignoreChanges`. See `guest-model.md`, "Adopting existing guests".
+- **What an import does not record.** A guest with `adoption.unrecorded =
+  "ignore"` carries those arguments in `options.ignoreChanges`: adopted
+  without a reboot, and not updated for them until it is `"apply"` again
+  (`guest-model.md`, "Adoption without a reboot").
 - **`clone` on an adopted guest.** An import records no `clone`, and every
   member of the block forces a replacement, so a guest that declares
   `source.clone` carries `clone` in `options.ignoreChanges`: used at create,

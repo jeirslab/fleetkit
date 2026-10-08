@@ -8,8 +8,11 @@ vm / container / lxc must be a guest or in NOT_GUESTS, never in OTHER_TYPES;
 and every token listed there must exist in the provider. A provider bump that
 adds a type fails here until it is decided, instead of leaving the guard open
 for it (and the guard itself refuses a proxmox type it does not know).
-Offline; exit 0 iff it holds. (cli/tests/test_guests.py is the same check
-inside the package build.)
+LOCAL_PROPERTIES (what `fleetkit adopt` applies without an acceptance) is,
+for each of its two guest types, exactly the `timeout*` properties the pinned
+provider has for that type: a bump that adds or renames one fails here until
+it is decided. Offline; exit 0 iff it holds. (cli/tests/test_guests.py is the
+same check inside the package build.)
 
   guest_types.py [NAMES_DIR]    the directory of the name maps (default: the repo's)"""
 import json
@@ -39,6 +42,16 @@ bad += [f"twice: {t} is in {a} and in {b}" for a in SETS for b in SETS if a < b 
 bad += [f"no reason: {t}" for t, why in NOT.items() if len(why) <= 20]
 if set(ns["GATED_TYPES"]) != set(GUESTS) | set(HA) or set(ns["KNOWN_TYPES"]) != listed:
     bad.append("GATED_TYPES / KNOWN_TYPES are not the unions of the lists")
+LOCAL = ns["LOCAL_PROPERTIES"]
+by_token = {r["token"]: r for f in files for r in json.loads(f.read_text())["resources"].values()}
+for token, props in sorted(LOCAL.items()):
+    if token not in GUESTS or token not in by_token:
+        bad.append(f"local: {token} is not a guest type of the pinned provider")
+        continue
+    have = {v["n"] for k, v in by_token[token]["f"].items() if k.startswith("timeout")}
+    if have != set(props):
+        bad.append(f"local: {token}: the provider's timeout properties are {sorted(have)}, "
+                   f"LOCAL_PROPERTIES has {sorted(props)}")
 for line in bad:
     print(f"guest_types: FAIL {line}", file=sys.stderr)
 print(json.dumps({"guest_types": "fail" if bad else "pass", "tokens": len(every), "guest_like": len(tokens),

@@ -21,21 +21,25 @@
      resource), `import+update` (with each differing property, live and
      declared), `import+unrecorded` (the import did not record some
      properties, so the engine plans an update for them: a reboot of a
-     guest), `absent` (the engine says that nothing exists by this id, in
-     exactly its own words: a deploy will create it; for a guest that is a
-     refusal of --apply unless accepted, since a guest that does exist
-     elsewhere would be created a second time), or the provider's error (any
-     other failure, whatever its text says). A resource that fails stops the engine before it has
-     compared the others, so the preview is run again without it until the
-     rest is complete;
-  4. with apply: refused if a resource would be updated and is not accepted, or
-     if the plan holds anything but import / update / same. Otherwise the
-     temporary program is applied with the same targets, bound to the update
-     plan of that preview, the temporary dir is removed, and a preview of the
-     real program must show every adopted resource as `same` and no delete or
-     replace of any guest or of anything that was adopted; and a preview of
-     every other stack of the estate that has state must not delete or
-     replace anything that holds an adopted id.
+     guest), `import+local` (a guest that differs only in provider-local
+     settings, its timeouts: the provider sends no change to the hypervisor,
+     so no reboot and nothing to accept), `absent` (the engine says that
+     nothing exists by this id, in exactly its own words: a deploy will
+     create it; for a guest that is a refusal of --apply unless accepted,
+     since a guest that does exist elsewhere would be created a second
+     time), or the provider's error (any other failure, whatever its text
+     says). A resource that fails stops the engine before it has compared
+     the others, so the preview is run again without it until the rest is
+     complete;
+  4. with apply: refused if a resource would be updated and is not accepted
+     (an `import+local` one needs no acceptance), or if the plan holds
+     anything but import / update / same. Otherwise the temporary program is
+     applied with the same targets, bound to the update plan of that preview,
+     the temporary dir is removed, and a preview of the real program must
+     show every adopted resource as `same` and no delete or replace of any
+     guest or of anything that was adopted; and a preview of every other
+     stack of the estate that has state must not delete or replace anything
+     that holds an adopted id.
 
 The temporary dir is removed on every way out (SIGTERM and SIGHUP included:
 main.py turns them into a cancel), and one a kill left behind is swept by the
@@ -55,6 +59,7 @@ from typing import Any, Optional
 
 from . import backends, guard, infra, render
 from .events import Cancelled, Emitter
+from .guests import LOCAL_PROPERTIES
 from .settings import Settings
 
 # Engine ops an adoption may contain.
@@ -77,8 +82,15 @@ SECRET_TYPES = frozenset({
 # Properties of a bpg container or VM that its import is known not to record
 # (seen on real guests): the engine then plans an update for them whatever
 # the declaration says. Named in the report; the classification itself is by
-# data (no live value in what the import read).
+# data (no live value in what the import read). A guest with
+# adoption.unrecorded = "ignore" in the model renders them under
+# ignoreChanges and has no such difference; what is then left, timeoutStart,
+# is provider-local (guests.LOCAL_PROPERTIES): `import+local`.
 KNOWN_UNRECORDED = ("cpu", "memory", "vmId", "timeoutStart", "scsiHardware")
+
+LOCAL_NOTE = ("differs only in provider-local settings: the provider keeps them in state and sends no "
+              "change to the hypervisor (no task on the node, no reboot); applied with the import, "
+              "nothing to accept")
 
 # The engine's words when the provider's read of an import id returns nothing:
 # "resource '<id>' does not exist" ("Preview failed: " before it in a preview),
@@ -232,6 +244,12 @@ class Estate:
         return {m: rs for m, rs in self.states().items() if m != n}
 
 
+def _local(type_: str, path: str) -> bool:
+    """Whether `path` is (inside) a provider-local property of a guest of this
+    type: by the guest's type and the property's top-level name, nothing else."""
+    return re.split(r"[.\[]", path, maxsplit=1)[0] in LOCAL_PROPERTIES.get(type_, ())
+
+
 def _diff(ev: Emitter, entry: dict[str, Any], declared: dict[str, Any]) -> list[dict[str, Any]]:
     """Each differing property: its path, the live value and the declared one,
     whenever the engine gave them (a false, a 0 and an empty value are values;
@@ -295,6 +313,10 @@ def _resource(ev: Emitter, p: guard.Plan, program: dict[str, Any], key: str, urn
         if type_ in SECRET_TYPES:
             return {**r, "status": "import+secret", "diff": diff,
                     "note": "a secret's value cannot be read back: adopting it writes the declared value"}
+        if diff and all(_local(type_, d["path"]) for d in diff):
+            # Every differing property is one the provider only keeps in
+            # state. One other property in the diff, and it is not this.
+            return {**r, "status": "import+local", "diff": diff, "note": LOCAL_NOTE}
         if diff and all(d["kind"] == "unrecorded" for d in diff):
             return {**r, "status": "import+unrecorded", "diff": diff}
         return {**r, "status": "import+update", "diff": diff}
@@ -388,9 +410,10 @@ def run(s: Settings, estate: str, ev: Emitter, stacks: list[str] | None = None,
                 if work_n:
                     work[n] = work_n
             _across_stacks(report)
-            # A secret named with --resource is accepted by being named.
+            # A secret named with --resource is accepted by being named; an
+            # update of provider-local settings only has nothing to accept.
             accept |= {r["key"] for out in report["stacks"].values() for r in out["resources"]
-                       if r["status"] == "import+secret"}
+                       if r["status"] in ("import+secret", "import+local")}
             _judge(report, accept, gone)
             if apply and report["ok"] and work:
                 for n, w in work.items():
@@ -673,8 +696,10 @@ def text(report: dict[str, Any]) -> list[str]:
             guest = r["type"] in guard.GUEST_TYPES
             if status == "import":
                 out.append(f"  {r['key']}: import {r['id']}  ({r['type']}): clean, the declaration equals the live resource")
-            elif status in ("import+update", "import+unrecorded", "import+secret"):
+            elif status in ("import+update", "import+unrecorded", "import+secret", "import+local"):
                 head = {"import+update": "+ update: the declaration differs",
+                        "import+local": "+ provider-local settings only: no change is sent to the hypervisor, "
+                                        "no reboot, no --accept-update needed",
                         "import+unrecorded": "+ update of what the import does not record"
                                              + (": it REBOOTS the guest" if guest else ""),
                         "import+secret": "+ write of the secret: its value cannot be read back"}[status]
