@@ -44,7 +44,8 @@ class Emitter:
             e = _redact(e, secrets)
         self._sink(e)
 
-    def redact(self, text: str) -> str:
+    def redact(self, text: Any) -> Any:
+        """`text` (a string, or any JSON-able value) without the registered secrets."""
         with self._lock:
             secrets = list(self._secrets)
         return _redact(text, secrets)

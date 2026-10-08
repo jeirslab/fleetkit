@@ -133,6 +133,11 @@ class JobManager:
         except Exception as e:  # noqa: BLE001 - every failure is reported on the job
             # The message of a failing tool can carry a decrypted secret too.
             j.error = j.emitter.redact(f"{type(e).__name__}: {e}")
+            # A refused deploy (guard.GuardError) still says what it would have
+            # done: the plan and the refused resources.
+            partial = getattr(e, "result", None)
+            if isinstance(partial, dict):
+                j.result = j.emitter.redact(partial)
             j.emitter.emit("job", "error", error=j.error, trace=traceback.format_exc()[-4000:])
             final = "cancelled" if j.emitter.cancelled else "failed"
         finally:

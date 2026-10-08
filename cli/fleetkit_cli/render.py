@@ -25,7 +25,11 @@ class RenderError(Exception):
 
 
 # Only what the runner needs of each stack, so the eval serialises no program.
-VIEW = "s: builtins.mapAttrs (_: x: { inherit (x) estate project backend file secrets; }) s"
+# adoptIds ({ <resource key> = <provider id>; }) and adoptUnresolved
+# ({ <resource key> = <why no id>; }) are what `fleetkit adopt` imports by;
+# a kit that does not expose them yet adopts only by --id.
+VIEW = ("s: builtins.mapAttrs (_: x: { inherit (x) estate project backend file secrets; "
+        "adoptIds = x.adoptIds or { }; adoptUnresolved = x.adoptUnresolved or { }; }) s")
 
 
 def nix_eval_json(s: Settings, attr: str, apply: str | None = None) -> Any:
@@ -40,7 +44,11 @@ def nix_eval_json(s: Settings, attr: str, apply: str | None = None) -> Any:
 
 
 def stacks(s: Settings) -> dict[str, dict[str, Any]]:
-    return nix_eval_json(s, "pulumi", VIEW)
+    out = nix_eval_json(s, "pulumi", VIEW)
+    for st in out.values():
+        st["adoptIds"] = st.get("adoptIds") or {}
+        st["adoptUnresolved"] = st.get("adoptUnresolved") or {}
+    return out
 
 
 def estates(s: Settings) -> dict[str, list[str]]:
@@ -91,6 +99,13 @@ def render(s: Settings, name: str, st: dict[str, Any], ev: Emitter) -> Path:
     for stale in ("Pulumi.json", "Main.json", "Main.yaml"):
         (wd / stale).unlink(missing_ok=True)
     _root(s, wd / "Pulumi.yaml", st["file"])
+    link_secrets(s, wd, st)
+    ev.emit("render", "done", stack=name, project=st["project"], program=st["file"], workdir=str(wd))
+    return wd
+
+
+def link_secrets(s: Settings, wd: Path, st: dict[str, Any]) -> None:
+    """The sops files a program's invokes read, linked where it looks for them."""
     for src in st["secrets"]:
         if Path(src).is_absolute():
             continue
@@ -99,5 +114,3 @@ def render(s: Settings, name: str, st: dict[str, Any], ev: Emitter) -> Path:
         if link.is_symlink() or link.exists():
             link.unlink()
         link.symlink_to(find_secret(s, src))
-    ev.emit("render", "done", stack=name, project=st["project"], program=st["file"], workdir=str(wd))
-    return wd
