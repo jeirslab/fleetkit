@@ -29,7 +29,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCHEMAS = ROOT / "providers/pulumi/schemas"
 NAMES = ROOT / "providers/pulumi/names"
-REF = re.compile(r"\$\{([A-Za-z0-9_-]+)")
+# "$${" is a literal "${" (estate text the render escaped), not a reference.
+REF = re.compile(r"(?<!\$)\$\{([A-Za-z0-9_-]+)")
 CRED = {"apiToken", "token", "pemFile", "id", "installationId"}
 
 prog = json.load(open(sys.argv[1]))

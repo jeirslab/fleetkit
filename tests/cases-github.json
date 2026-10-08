@@ -58,6 +58,44 @@
     "  };",
     "  fleet.repos.gh.site.environments.live = { estateEnvironment = \"gh/prod\"; branches = [ \"main\" ]; };",
     "  fleet.estates.gh.git.actions.secrets.SITE_TOKEN = { sourceRef = \"sops:gh/gh#other-token\"; repos = [ \"gh/site\" ]; };",
+    "  fleet.repos.gh.site = {",
+    "    homepageUrl = \"https://site.example.invalid/?q=\\${not_a_ref}\";",
+    "    topics = [ \"docs\" \"static-site\" ];",
+    "    isTemplate = true;",
+    "    pages = { buildType = \"legacy\"; source = { branch = \"gh-pages\"; path = \"/docs\"; }; cname = \"www.example.invalid\"; };",
+    "    vulnerabilityAlerts = true;",
+    "    hasDiscussions = true;",
+    "    allowAutoMerge = true;",
+    "    allowUpdateBranch = true;",
+    "    webCommitSignoffRequired = true;",
+    "    squashMergeCommitTitle = \"PR_TITLE\";",
+    "    squashMergeCommitMessage = \"PR_BODY\";",
+    "    mergeCommitTitle = \"PR_TITLE\";",
+    "    mergeCommitMessage = \"BLANK\";",
+    "  };",
+    "  fleet.repos.gh.app = {",
+    "    template = { owner = \"example-org\"; repository = \"service-template\"; includeAllBranches = true; };",
+    "    vulnerabilityAlerts = false;",
+    "    pages.buildType = \"workflow\";",
+    "  };",
+    "  fleet.repos.gh.mirror.template = { owner = \"example-org\"; repository = \"service-template\"; };",
+    "  fleet.estates.gh.git.teams.\"core.devs\".description = \"Core developers \\${not_a_ref}\";",
+    "  fleet.estates.gh.git.organization = {",
+    "    name = \"Example Org\";",
+    "    description = \"An example \\${not_a_ref}\";",
+    "    company = \"Example Co\";",
+    "    blog = \"https://blog.example.invalid\";",
+    "    email = \"hello@example.invalid\";",
+    "    location = \"Nowhere\";",
+    "    twitterUsername = \"example\";",
+    "    membersCanCreateInternalRepositories = false;",
+    "    membersCanCreatePages = true;",
+    "    membersCanCreatePublicPages = true;",
+    "    membersCanCreatePrivatePages = false;",
+    "    membersCanForkPrivateRepositories = false;",
+    "    advancedSecurityEnabledForNewRepositories = false;",
+    "    dependabotSecurityUpdatesEnabledForNewRepositories = true;",
+    "  };",
     "}"
   ],
   "negative": [
@@ -283,6 +321,123 @@
         "  };",
         "  fleet.repos.gh.app.environments = lib.mkForce { };",
         "}"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "pages-source-no-branch",
+      "description": "a pages source without a branch",
+      "expect": "fleet\\.repos\\.gh\\.site\\.pages\\.source\\.branch: a pages source needs a branch",
+      "module": [
+        "_: { fleet.repos.gh.site.pages.source.path = \"/docs\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "pages-build-type-unknown",
+      "description": "a pages build type that is neither legacy nor workflow",
+      "expect": "fleet\\.repos\\.gh\\.site\\.pages\\.buildType' is not of type `null or one of \"legacy\", \"workflow\"'",
+      "module": [
+        "_: { fleet.repos.gh.site.pages.buildType = \"jekyll\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "template-no-owner",
+      "description": "a template without an owner",
+      "expect": "fleet\\.repos\\.gh\\.app\\.template\\.owner: a template needs an owner and a repository",
+      "module": [
+        "_: { fleet.repos.gh.app.template.repository = \"service-template\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "template-no-repository",
+      "description": "a template without a repository",
+      "expect": "fleet\\.repos\\.gh\\.app\\.template\\.repository: a template needs an owner and a repository",
+      "module": [
+        "_: { fleet.repos.gh.app.template.owner = \"example-org\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "topic-uppercase",
+      "description": "a topic with an upper-case letter and a space",
+      "expect": "fleet\\.repos\\.gh\\.app\\.topics: \"Not A Topic\" is not a valid topic \\(lowercase letters, digits and hyphens, at most 50 characters, not starting with a hyphen\\)",
+      "module": [
+        "_: { fleet.repos.gh.app.topics = [ \"ok\" \"Not A Topic\" ]; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "squash-title-unknown",
+      "description": "a squash merge commit title GitHub does not have",
+      "expect": "fleet\\.repos\\.gh\\.app\\.squashMergeCommitTitle' is not of type `null or one of \"PR_TITLE\", \"COMMIT_OR_PR_TITLE\"'",
+      "module": [
+        "_: { fleet.repos.gh.app.squashMergeCommitTitle = \"MERGE_MESSAGE\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "merge-message-unknown",
+      "description": "a merge commit message GitHub does not have",
+      "expect": "fleet\\.repos\\.gh\\.app\\.mergeCommitMessage' is not of type `null or one of \"PR_BODY\", \"PR_TITLE\", \"BLANK\"'",
+      "module": [
+        "_: { fleet.repos.gh.app.mergeCommitMessage = \"COMMIT_MESSAGES\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "vulnerability-alerts-not-bool",
+      "description": "vulnerability alerts as a string",
+      "expect": "fleet\\.repos\\.gh\\.app\\.vulnerabilityAlerts' is not of type `null or boolean'",
+      "module": [
+        "_: { fleet.repos.gh.app.vulnerabilityAlerts = \"enabled\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "team-unknown-key",
+      "description": "a team key the kit does not know (a misspelt description)",
+      "expect": "fleet\\.estates\\.gh\\.git\\.teams\\.empty.*descripton",
+      "module": [
+        "_: { fleet.estates.gh.git.teams.empty.descripton = \"x\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "team-description-not-string",
+      "description": "a team description that is not text",
+      "expect": "fleet\\.estates\\.gh\\.git\\.teams\\.empty\\.description: expected a string",
+      "module": [
+        "_: { fleet.estates.gh.git.teams.empty.description = true; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "org-setting-not-bool",
+      "description": "an organisation member privilege that is not true or false",
+      "expect": "fleet\\.estates\\.gh\\.git\\.organization\\.membersCanCreatePages: expected true or false",
+      "module": [
+        "_: { fleet.estates.gh.git.organization.membersCanCreatePages = \"yes\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "org-setting-not-string",
+      "description": "an organisation profile field that is not text",
+      "expect": "fleet\\.estates\\.gh\\.git\\.organization\\.twitterUsername: expected a string",
+      "module": [
+        "_: { fleet.estates.gh.git.organization.twitterUsername = 7; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "org-setting-unknown",
+      "description": "an organisation setting the provider does not have",
+      "expect": "fleet\\.estates\\.gh\\.git\\.organization.*membersCanCreateTeams",
+      "module": [
+        "_: { fleet.estates.gh.git.organization.membersCanCreateTeams = true; }"
       ],
       "noecho": false
     }
