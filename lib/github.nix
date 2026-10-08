@@ -379,13 +379,16 @@ let
   teamMembers = namedAttrs "teams" (t: team: {
     team_id = ref "github_team.${tfName t}.id";
     # maintainers are members with the maintainer role; one listed in both is a maintainer.
+    # Logins in lower case: that is how the provider records team members
+    # (GitHub logins are case-insensitive), so another spelling is a
+    # difference on every plan.
     members =
       map (p: {
-        username = loginOf p;
+        username = lib.toLower (loginOf p);
         role = "maintainer";
       }) (team.maintainers or [ ])
       ++ map (p: {
-        username = loginOf p;
+        username = lib.toLower (loginOf p);
         role = "member";
       }) (lib.filter (p: !(lib.elem p (team.maintainers or [ ]))) (team.members or [ ]));
   }) (lib.filterAttrs (_: team: (team.members or [ ]) ++ (team.maintainers or [ ]) != [ ]) teams);
