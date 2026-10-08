@@ -1,0 +1,352 @@
+{
+  "support": [
+    "_: {",
+    "  fleet = {",
+    "    sites.s1 = {",
+    "      region = \"test\";",
+    "      networks.lan.cidr = \"192.0.2.0/24\";",
+    "      bridges.vmbr0.network = \"s1/lan\";",
+    "      nodes.n1 = {",
+    "        osType = \"debian-pve\";",
+    "        address = \"192.0.2.10\";",
+    "      };",
+    "      storage.local = { type = \"dir\"; path = \"/var/lib/vz\"; content = [ \"rootdir\" \"images\" \"vztmpl\" ]; };",
+    "      images.tpl = { datastore = \"s1/local\"; contentType = \"vztmpl\"; fileName = \"tpl.tar.zst\"; build.method = \"nix\"; };",
+    "      providers.proxmox = {",
+    "        api = \"https://192.0.2.10:8006/\";",
+    "        tokenRef = \"sops:gh/gh#repo-token\";",
+    "        ids.vmid.scope = \"cluster\";",
+    "        defaults = {",
+    "          console = \"console\";",
+    "          nic = { name = \"eth0\"; bridge = \"s1/vmbr0\"; };",
+    "          operatingSystem = { type = \"nixos\"; templateFileId = \"local:vztmpl/tpl.tar.zst\"; };",
+    "        };",
+    "      };",
+    "    };",
+    "    guests.gh.runner = {",
+    "      vmid = 9301;",
+    "      kind = \"lxc\";",
+    "      on = \"s1/n1\";",
+    "      networkInterfaces = [ { network = \"lan\"; address = \"192.0.2.51\"; } ];",
+    "      disks = [ { role = \"root\"; size = 8; datastore = \"s1/local\"; } ];",
+    "    };",
+    "    estates.gh.secrets.files.gh.keys = [ \"repo-token\" \"other-token\" ];",
+    "    estates.other = { owner = \"Other\"; };",
+    "    repos.other.thing = { visibility = \"private\"; };",
+    "  };",
+    "}"
+  ],
+  "positive": [
+    "_: {",
+    "  fleet.repos.gh.app = {",
+    "    actions = {",
+    "      secrets.REPO_TOKEN.sourceRef = \"sops:gh/gh#repo-token\";",
+    "      variables.DEPLOY_TARGET = \"staging\";",
+    "      variables.REF_LOOKALIKE = \"\\${github_repository.app.name} %{ if true }x%{ endif }\";",
+    "    };",
+    "    labels = {",
+    "      \"needs-review\" = { color = \"d93f0b\"; description = \"Waiting on a reviewer.\"; };",
+    "      \"bug\" = { color = \"b60205\"; };",
+    "    };",
+    "    files.\".github/workflows/signal.yml\" = {",
+    "      content = \"name: signal\\non: push\\nenv:\\n  REF: \\${{ github.ref }}\\njobs: {}\\n\";",
+    "      message = \"Manage signal workflow\";",
+    "    };",
+    "    runners.ci = { labels = [ \"self-hosted\" \"checks\" ]; on = \"gh/runner\"; };",
+    "    runners.esc = { labels = [ \"\\${not_a_ref}\" ]; on = \"gh/runner\"; };",
+    "    files.\"docs/escaped.txt\" = { content = \"x\"; branch = \"\\${not_a_ref}\"; };",
+    "  };",
+    "  fleet.repos.gh.site.environments.live = { estateEnvironment = \"gh/prod\"; branches = [ \"main\" ]; };",
+    "  fleet.estates.gh.git.actions.secrets.SITE_TOKEN = { sourceRef = \"sops:gh/gh#other-token\"; repos = [ \"gh/site\" ]; };",
+    "}"
+  ],
+  "negative": [
+    {
+      "name": "literal-secret",
+      "description": "a literal secret value where a sops ref is required",
+      "expect": "fleet\\.repos\\.gh\\.app\\.actions\\.secrets\\.LITERAL\\.sourceRef: secret reference <withheld: not a sops: reference> does not exist \\(a secret reference must start with sops:\\)",
+      "module": [
+        "_: { fleet.repos.gh.app.actions.secrets.LITERAL.sourceRef = \"not-a-ref-LITERALVALUE\"; }"
+      ],
+      "noecho": true
+    },
+    {
+      "name": "literal-secret-plaintext",
+      "description": "a plaintext_value attribute beside the ref",
+      "expect": "The option `fleet\\.repos\\.gh\\.app\\.actions\\.secrets\\.LITERAL\\.plaintext_value' does not exist",
+      "module": [
+        "_: { fleet.repos.gh.app.actions.secrets.LITERAL = { sourceRef = \"sops:gh/gh#repo-token\"; plaintext_value = \"not-a-ref-LITERALVALUE\"; }; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "secret-unknown-key",
+      "description": "a sops ref to a key the estate's secrets do not declare",
+      "expect": "fleet\\.repos\\.gh\\.app\\.actions\\.secrets\\.MISSING\\.sourceRef: secret reference \"sops:gh/gh#not-declared\" does not exist \\(known secret ids: ",
+      "module": [
+        "_: { fleet.repos.gh.app.actions.secrets.MISSING.sourceRef = \"sops:gh/gh#not-declared\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "org-secret-other-estate-repo",
+      "description": "an organisation secret (one the fixture does not define) naming a repository of another estate",
+      "expect": "mkGithubTerraform: fleet\\.estates\\.gh\\.git: repository \"other/thing\" is not a repository of estate \"gh\"",
+      "module": [
+        "_: { fleet.estates.gh.git.actions.secrets.OTHER_REPO_TOKEN = { sourceRef = \"sops:gh/gh#other-token\"; repos = [ \"other/thing\" ]; }; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "runner-on-node",
+      "description": "a runner on a node, which is not a guest",
+      "expect": "fleet\\.repos\\.gh\\.app\\.runners\\.ci\\.on: guest reference \"s1/n1\" does not exist \\(known guest ids: ",
+      "module": [
+        "_: { fleet.repos.gh.app.runners.ci = { labels = [ \"self-hosted\" ]; on = \"s1/n1\"; }; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "runner-on-unknown",
+      "description": "a runner on an id that is no guest",
+      "expect": "fleet\\.repos\\.gh\\.app\\.runners\\.ci\\.on: guest reference \"gh/nope\" does not exist \\(known guest ids: ",
+      "module": [
+        "_: { fleet.repos.gh.app.runners.ci = { labels = [ \"self-hosted\" ]; on = \"gh/nope\"; }; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "file-bad-path",
+      "description": "a managed file with an absolute path",
+      "expect": "fleet\\.repos\\.gh\\.app\\.files\\./abs/path: file path \"/abs/path\" must be relative to the repository root and contain no \\.\\.",
+      "module": [
+        "_: { fleet.repos.gh.app.files.\"/abs/path\".content = \"x\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "runner-on-other-estate-guest",
+      "description": "a runner on a declared guest of another estate than the repository's",
+      "expect": "fleet\\.repos\\.gh\\.app\\.runners\\.ci\\.on: guest reference \"other/box\" belongs to another estate \\(a runner must be on a guest of the repository's estate, expected gh/\\.\\.\\.\\)",
+      "module": [
+        "_: {",
+        "  fleet.guests.other.box = {",
+        "    vmid = 9302;",
+        "    kind = \"lxc\";",
+        "    on = \"s1/n1\";",
+        "    networkInterfaces = [ { network = \"lan\"; address = \"192.0.2.52\"; } ];",
+        "    disks = [ { role = \"root\"; size = 8; datastore = \"s1/local\"; } ];",
+        "  };",
+        "  fleet.repos.gh.app.runners.ci = { labels = [ \"self-hosted\" ]; on = \"other/box\"; };",
+        "}"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "file-on-other-estate-repo",
+      "description": "a tenant source (estate other) that sets a file on a repository of estate gh",
+      "expect": "tenant other \\([^)]*\\) sets fleet\\.repos outside what a tenant owns",
+      "tenant": {
+        "name": "other",
+        "module": [
+          "_: { fleet.repos.gh.app.files.\"x\".content = \"x\"; }"
+        ]
+      },
+      "module": [
+        "_: { }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "resource-name-collision",
+      "description": "two repository secrets whose <repo key>_<name> is the same string",
+      "expect": "repository Actions secrets: repository \"app\" Actions secret \"B_C\", repository \"app_B\" Actions secret \"C\" all render the resource name \"app_B_C\"",
+      "module": [
+        "_: {",
+        "  fleet.repos.gh.app.actions.secrets.B_C.sourceRef = \"sops:gh/gh#repo-token\";",
+        "  fleet.repos.gh.app_B.actions.secrets.C.sourceRef = \"sops:gh/gh#other-token\";",
+        "}"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "secret-name-github-prefix",
+      "description": "a repository secret whose name starts with the reserved GITHUB_ prefix",
+      "expect": "fleet\\.repos\\.gh\\.app\\.actions\\.secrets\\.GITHUB_X: \"GITHUB_X\" is not a valid Actions secret name \\(letters, digits and underscores, not starting with a digit, not starting with GITHUB_\\)",
+      "module": [
+        "_: { fleet.repos.gh.app.actions.secrets.GITHUB_X.sourceRef = \"sops:gh/gh#repo-token\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "variable-name-leading-digit",
+      "description": "a repository variable whose name starts with a digit",
+      "expect": "fleet\\.repos\\.gh\\.app\\.actions\\.variables\\.1X: \"1X\" is not a valid Actions variable name \\(letters, digits and underscores, not starting with a digit, not starting with GITHUB_\\)",
+      "module": [
+        "_: { fleet.repos.gh.app.actions.variables.\"1X\" = \"x\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "label-colour-with-hash",
+      "description": "a label colour written with a leading #",
+      "expect": "fleet\\.repos\\.gh\\.app\\.labels\\.bug\\.color: \"#ffffff\" is not six hex digits without a leading #",
+      "module": [
+        "_: { fleet.repos.gh.app.labels.bug.color = \"#ffffff\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "file-path-dotdot",
+      "description": "a managed file whose path has a .. component",
+      "expect": "fleet\\.repos\\.gh\\.app\\.files\\.a/\\.\\./b: file path \"a/\\.\\./b\" must be relative to the repository root and contain no \\.\\.",
+      "module": [
+        "_: { fleet.repos.gh.app.files.\"a/../b\".content = \"x\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "runner-no-labels",
+      "description": "a runner with an empty label list",
+      "expect": "fleet\\.repos\\.gh\\.app\\.runners\\.ci\\.labels: a runner needs at least one label",
+      "module": [
+        "_: { fleet.repos.gh.app.runners.ci = { labels = [ ]; on = \"gh/runner\"; }; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "org-plan-pro",
+      "description": "an organisation that declares the personal-account plan pro",
+      "expect": "- fleet\\.estates\\.gh\\.git\\.plan: \"pro\" is a personal account's plan; an organisation \\(kind = \"org\"\\) is on free, team or enterprise",
+      "module": [
+        "{ lib, ... }: { fleet.estates.gh.git.plan = lib.mkForce \"pro\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "secret-name-github-prefix-lowercase",
+      "description": "the reserved prefix in lower case; GitHub compares names without regard to case",
+      "expect": "fleet\\.repos\\.gh\\.app\\.actions\\.secrets\\.github_token: \"github_token\" is not a valid Actions secret name \\(letters, digits and underscores, not starting with a digit, not starting with GITHUB_\\)",
+      "module": [
+        "_: { fleet.repos.gh.app.actions.secrets.github_token.sourceRef = \"sops:gh/gh#repo-token\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "variable-names-differ-only-in-case",
+      "description": "two variables of one repository whose names differ only in case are one variable on GitHub",
+      "expect": "fleet\\.repos\\.gh\\.app\\.actions\\.variables: \"FOO\", \"Foo\" are the same name on GitHub \\(names differ only in case\\)",
+      "module": [
+        "_: { fleet.repos.gh.app.actions.variables = { Foo = \"a\"; FOO = \"b\"; }; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "plan-unknown",
+      "description": "an unknown git.plan on the organisation fixture",
+      "expect": "- fleet\\.estates\\.gh\\.git\\.plan: \"bogus\" is not one of free, pro, team, enterprise",
+      "module": [
+        "{ lib, ... }: { fleet.estates.gh.git.plan = lib.mkForce \"bogus\"; }"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "plan-unknown-nothing-plan-dependent",
+      "description": "an unknown git.plan on a personal account with no environment, organisation secret or ruleset: still refused",
+      "expect": "- fleet\\.estates\\.gh\\.git\\.plan: \"bogus\" is not one of free, pro, team, enterprise",
+      "module": [
+        "{ lib, ... }: {",
+        "  fleet.estates.gh.git = lib.mkForce {",
+        "    kind = \"user\";",
+        "    platform = \"github\";",
+        "    org = \"example\";",
+        "    plan = \"bogus\";",
+        "    auth = { kind = \"token\"; tokenRef = \"sops:gh/gh#ci-token\"; };",
+        "  };",
+        "  fleet.repos.gh.app.environments = lib.mkForce { };",
+        "}"
+      ],
+      "noecho": false
+    },
+    {
+      "name": "org-plan-pro-nothing-plan-dependent",
+      "description": "an organisation on pro with no environment, organisation secret or ruleset: still refused",
+      "expect": "- fleet\\.estates\\.gh\\.git\\.plan: \"pro\" is a personal account's plan; an organisation \\(kind = \"org\"\\) is on free, team or enterprise",
+      "module": [
+        "{ lib, ... }: {",
+        "  fleet.estates.gh.git = lib.mkForce {",
+        "    kind = \"org\";",
+        "    platform = \"github\";",
+        "    org = \"example\";",
+        "    plan = \"pro\";",
+        "    auth = { kind = \"token\"; tokenRef = \"sops:gh/gh#ci-token\"; };",
+        "  };",
+        "  fleet.repos.gh.app.environments = lib.mkForce { };",
+        "}"
+      ],
+      "noecho": false
+    }
+  ],
+  "personal": [
+    {
+      "name": "free-unset",
+      "description": "a personal account (git.kind is not \"org\") with git.plan unset: the private repository's environment is skipped with the account named as the plan's owner, the public repository's is rendered",
+      "module": [
+        "{ lib, ... }: {",
+        "  fleet.estates.gh.git = lib.mkForce {",
+        "    kind = \"user\";",
+        "    platform = \"github\";",
+        "    org = \"example-user\";",
+        "    auth = { kind = \"token\"; tokenRef = \"sops:gh/gh#ci-token\"; };",
+        "  };",
+        "  fleet.repos.gh.site.environments.live = { estateEnvironment = \"gh/prod\"; branches = [ \"main\" ]; };",
+        "}"
+      ],
+      "environments": [
+        "site_live"
+      ],
+      "skipped_environments": [
+        "app.prod: private repository, environments need a paid plan, the account is on free"
+      ]
+    },
+    {
+      "name": "pro",
+      "description": "the same personal account on GitHub Pro: the private repository's environment is rendered, nothing is skipped",
+      "module": [
+        "{ lib, ... }: {",
+        "  fleet.estates.gh.git = lib.mkForce {",
+        "    kind = \"user\";",
+        "    platform = \"github\";",
+        "    org = \"example-user\";",
+        "    plan = \"pro\";",
+        "    auth = { kind = \"token\"; tokenRef = \"sops:gh/gh#ci-token\"; };",
+        "  };",
+        "  fleet.repos.gh.site.environments.live = { estateEnvironment = \"gh/prod\"; branches = [ \"main\" ]; };",
+        "}"
+      ],
+      "environments": [
+        "app_prod",
+        "site_live"
+      ],
+      "skipped_environments": []
+    }
+  ],
+  "isolation": {
+    "description": "the other estate's repository carries a file, a secret and a label; none may reach estate gh's render",
+    "module": [
+      "_: {",
+      "  fleet.estates.other.secrets = { backend = \"sops\"; files.x = { path = \"secrets/x.json\"; keys = [ \"y\" ]; }; };",
+      "  fleet.repos.other.thing = {",
+      "    actions.secrets.OTHER_ONLY.sourceRef = \"sops:other/x#y\";",
+      "    labels.other-only.color = \"ffffff\";",
+      "    files.\"other-only.txt\".content = \"x\";",
+      "  };",
+      "}"
+    ],
+    "absent": [
+      "OTHER_ONLY",
+      "other-only",
+      "thing"
+    ]
+  }
+}

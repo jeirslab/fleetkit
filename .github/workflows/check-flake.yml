@@ -1,0 +1,170 @@
+name: check-flake
+# Reusable. Runs the caller's command (flake evaluation checks) from the caller's repository, about a commit
+# of the repository under check (a tenant repository, or the caller's own).
+# Reports a commit status (context "check-flake") on the given repository and commit: pending at start,
+# success or failure at the end.
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: >-
+          JSON list of runner labels, e.g. '["self-hosted","nix"]': where the command runs. No job
+          on this runner is given the status token in its environment.
+        type: string
+        required: true
+      report_runs_on:
+        description: >-
+          JSON list of runner labels for the jobs that hold the status token and do nothing but
+          call the GitHub API (statuses, the author gate where there is one). Normally a
+          GitHub-hosted runner. Never the labels of the runner that executes the command.
+        type: string
+        required: true
+      repository:
+        description: >-
+          owner/name of the repository under check: the status is reported on it. When it is not the
+          caller's repository it is also checked out into source_path, as an input for the command.
+        type: string
+        required: true
+      sha:
+        description: Commit of repository under check; the status is reported on it.
+        type: string
+        required: true
+      command:
+        description: >-
+          Command to run in the workspace root, which is the caller's repository (the lab's own
+          tool, e.g. tools/fleet check). It gets FLEET_SOURCE_REPOSITORY, FLEET_SOURCE_SHA and
+          FLEET_SOURCE_PATH (absolute path of the source_path checkout, or empty when repository is
+          the caller's own and the workspace is already at sha), and no token.
+        type: string
+        required: true
+      source_path:
+        description: >-
+          Optional. Directory, relative to the workspace root, that repository is checked out into
+          when it is not the caller's repository. Not the workspace root itself: an empty value,
+          ".", an absolute path and any ".." component are refused.
+        type: string
+        required: false
+        default: tenant
+    secrets:
+      token:
+        description: >-
+          Token that can write commit statuses on repository. The jobs that report the status hold
+          it, on report_runs_on. It is never present in the job that runs the command; the source
+          checkout there uses source_token.
+        required: true
+      source_token:
+        description: >-
+          Read-only token for a private source repository other than the caller's (contents read on
+          repository, nothing else). Used only by the checkout in the job that runs the command.
+          Not needed when repository is the caller's own or is public: the checkout then uses the
+          job's own token, which has contents read and nothing else.
+        required: false
+# Three jobs, so that no step of the job that runs the command has the token in its environment
+# (code under check could otherwise write to GITHUB_ENV / GITHUB_PATH or leave a process behind and
+# take it from a later step): `pending` and `report` hold the token and run on report_runs_on; `run` runs the command on
+# runs_on with no token in any step's environment.
+permissions:
+  contents: read
+jobs:
+  pending:
+    runs-on: ${{ fromJSON(inputs.report_runs_on) }}
+    permissions: {}
+    env:
+      REPO: ${{ inputs.repository }}
+      SHA: ${{ inputs.sha }}
+      CONTEXT: check-flake
+      TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: status pending
+        env:
+          GH_TOKEN: ${{ secrets.token }}
+        run: |
+          gh api -X POST "repos/$REPO/statuses/$SHA" -f state=pending -f context="$CONTEXT" \
+            -f description="running" -f target_url="$TARGET_URL"
+  run:
+    needs: pending
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    env:
+      REPO: ${{ inputs.repository }}
+      SHA: ${{ inputs.sha }}
+      CONTEXT: check-flake
+      TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: validate source_path
+        env:
+          SOURCE_PATH: ${{ inputs.source_path }}
+        run: |
+          bad=""
+          case "$SOURCE_PATH" in
+            "") bad="is empty" ;;
+            /*) bad="is an absolute path" ;;
+            *$'\n'*) bad="contains a newline" ;;
+          esac
+          if [ -z "$bad" ]; then
+            real=0
+            IFS=/ read -ra parts <<<"$SOURCE_PATH"
+            for c in "${parts[@]}"; do
+              case "$c" in
+                ..) bad="has a .. component" ;;
+                "" | .) ;;
+                *) real=1 ;;
+              esac
+            done
+            if [ -z "$bad" ] && [ "$real" = 0 ]; then bad="is the workspace root (.)"; fi
+          fi
+          if [ -n "$bad" ]; then
+            echo "source_path '$SOURCE_PATH' $bad; it must be a directory below the workspace root, e.g. tenant" >&2
+            exit 1
+          fi
+      # The workspace is the caller's repository (where the command lives), at the caller's commit;
+      # when the caller is itself the repository under check, at the commit under check. The job's
+      # own token reads it. No credential is left in .git/config for the command to find.
+      - name: check out the caller's repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.repository == github.repository && inputs.sha || '' }}
+          persist-credentials: false
+      # A repository other than the caller's is the command's input, not its workspace.
+      # The only secret in this job, and not the one that writes statuses: source_token is a
+      # separate, read-only token for fetching a private source repository. Without it the job's
+      # own token is used (contents read only), which is enough for a public repository. Either
+      # is used by the checkout action before the command runs and is not persisted in the checkout.
+      - name: check out the source repository
+        if: inputs.repository != github.repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.sha }}
+          path: ${{ inputs.source_path }}
+          token: ${{ secrets.source_token || github.token }}
+          persist-credentials: false
+      - name: run
+        env:
+          COMMAND: ${{ inputs.command }}
+          FLEET_SOURCE_REPOSITORY: ${{ inputs.repository }}
+          FLEET_SOURCE_SHA: ${{ inputs.sha }}
+          FLEET_SOURCE_PATH: ${{ inputs.repository != github.repository && format('{0}/{1}', github.workspace, inputs.source_path) || '' }}
+        run: bash -c "$COMMAND"
+  report:
+    needs: [pending, run]
+    if: always()
+    runs-on: ${{ fromJSON(inputs.report_runs_on) }}
+    permissions: {}
+    env:
+      REPO: ${{ inputs.repository }}
+      SHA: ${{ inputs.sha }}
+      CONTEXT: check-flake
+      TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: status final
+        env:
+          GH_TOKEN: ${{ secrets.token }}
+          RUN_RESULT: ${{ needs.run.result }}
+        run: |
+          case "$RUN_RESULT" in
+            success) state=success; desc="passed" ;;
+            failure | cancelled) state=failure; desc="failed or cancelled" ;;
+            *) state=error; desc="the command did not run (the pending status could not be reported)" ;;
+          esac
+          gh api -X POST "repos/$REPO/statuses/$SHA" -f state="$state" -f context="$CONTEXT" \
+            -f description="$desc" -f target_url="$TARGET_URL"

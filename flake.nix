@@ -79,6 +79,20 @@
             tf = import ./lib/github.nix ({ inherit (nixpkgs) lib; } // args);
             project = "${args.estate}-github";
           };
+        # The same two stages under their Terraform-era names: tests written
+        # against unstable (tests/github.sh, tests/terraform.sh) read these.
+        # { fleet; estate; } -> an attrset for builtins.toJSON into main.tf.json.
+        mkTerraform = args: import ./lib/terraform.nix ({ inherit (nixpkgs) lib; } // args);
+        # { fleet; estate; } -> the estate's GitHub repositories and organisation
+        # as an attrset for builtins.toJSON into main.tf.json.
+        mkGithubTerraform = args: import ./lib/github.nix ({ inherit (nixpkgs) lib; } // args);
+        # { org; tiers ? [ "pipeline" "terraform-admin" ]; name ? null; redirectUrl ? null; }
+        # -> the GitHub App manifest for that org (docs/github-app.md).
+        mkGithubAppManifest = args: import ./lib/github-app.nix ({ inherit (nixpkgs) lib; } // args);
+        # { name; workflow; ref; on; with ? { }; secrets ? { }; permissions ? { }; kitRepo ? "jeirslab/fleetkit"; }
+        # -> the text of a caller workflow file that runs the kit's reusable workflow
+        # at `ref` (a 40-hex commit SHA, else an evaluation error).
+        mkWorkflowCaller = args: import ./lib/workflow-caller.nix ({ inherit (nixpkgs) lib; } // args);
       };
 
       # Experimental: the deploy server as a NixOS service (GitOps mode).

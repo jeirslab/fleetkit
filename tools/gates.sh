@@ -65,11 +65,17 @@ log "lint: $lint"
 # Every guest option path is mapped to a provider argument that exists in the
 # pinned bpg/proxmox schema (docs/guest-provider-map.md), and so is the
 # terraform rendered from the fixture (tests/terraform.sh), and the GitHub
-# terraform against the pinned integrations/github schema (tests/github.sh).
+# terraform against the pinned integrations/github schema (tests/github.sh);
+# the GitHub App manifest renders for every tier selection (tests/github_app.sh);
+# the workflow caller renders, parses and refuses a non-SHA ref (tests/workflow_caller.sh);
+# the GitHub App bootstrap tool runs against a fake API and sops.
 fidelity=pass
 python3 tests/guest_fidelity.py --gate >&2 || fidelity=fail
 bash tests/terraform.sh >&2 || fidelity=fail
 bash tests/github.sh >&2 || fidelity=fail
+bash tests/github_app.sh >&2 || fidelity=fail
+bash tests/workflow_caller.sh >&2 || fidelity=fail
+python3 tests/github_app_bootstrap.py >&2 || fidelity=fail
 # Experimental: the same renders as Pulumi programs, against the pinned
 # Pulumi schemas (tests/pulumi.sh; offline). tests/pulumi_preview.sh is the
 # networked end-to-end check and is not a gate.
