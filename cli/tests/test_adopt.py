@@ -556,6 +556,109 @@ def test_a_real_difference_beside_an_unrecorded_one_is_an_update(lab):
     assert "REBOOTS" not in report["refused"][0]["why"] and "--accept-update net" in report["refused"][0]["why"]
 
 
+# ── provider-local settings: a difference that never reaches the hypervisor ─
+def test_a_difference_in_provider_local_settings_only_is_applied_without_accepting(lab):
+    """What is left of a container's adoption once the model ignores what the
+    import does not record: timeoutStart, which the provider only keeps in
+    state. No acceptance, and it is applied with the import."""
+    estate, w, p = lab
+    w.defaults[CT] = {"timeoutStart": 300}  # not declared, not recorded by the import
+    p["resources"]["db"]["properties"]["timeoutStartVm"] = 600  # declared; the import read 1800
+    estate.stack(p, adopt_ids={"web": "pve1/101", "db": "pve1/102"})
+    w.live[(VM, "pve1/102")]["timeoutStartVm"] = 1800
+    report = run(estate)
+    assert statuses(report) == {"web": "import+local", "db": "import+local"}
+    web, db = entry(report, "web"), entry(report, "db")
+    assert [(d["path"], d["kind"], d["declared"], d["declaredFrom"]) for d in web["diff"]] == [
+        ("timeoutStart", "unrecorded", 300, "provider default")]
+    assert [(d["path"], d["kind"], d["live"], d["declared"]) for d in db["diff"]] == [
+        ("timeoutStartVm", "real", 1800, 600)]
+    assert "provider-local" in web["note"] and "no reboot" in web["note"] and "nothing to accept" in web["note"]
+    assert report["ok"] and report["refused"] == []
+    text = "\n".join(adopt.text(report))
+    assert "web: import pve1/101 + provider-local settings only" in text and "no --accept-update needed" in text
+    assert "timeoutStart: live not recorded by the import, declared 300 (provider default)" in text
+    assert "REBOOTS" not in text and "an apply would refuse" not in text
+    # Applied without --accept-update, by the plan of that preview, and verified as any adoption.
+    report = run(estate, apply=True)
+    assert report["ok"] and report["applied"] and report["refused"] == []
+    assert statuses(report) == {"web": "import+local", "db": "import+local"}
+    assert sorted(w.updated) == ["db", "web"] and w.destroyed == [] and w.created == []
+    assert w.state[fakes.urn(p, "db")]["inputs"]["timeoutStartVm"] == 600
+    assert report["stacks"]["mini-guests"]["verify"] == {"ok": True, "differs": [], "destroys": []}
+    assert [(c["verb"], bool(c["imports"])) for c in w.calls[-3:]] == [
+        ("preview", True), ("up", True), ("preview", False)]
+    no_import_left(estate, w)
+
+
+@pytest.mark.parametrize("hidden", [[], ["cores"]])
+def test_a_local_setting_beside_another_property_is_still_refused(lab, hidden):
+    """timeoutStart and one more property: the statuses and the refusals of
+    before, whether the other one differs or is not recorded."""
+    estate, w, p = lab
+    w.defaults[CT] = {"timeoutStart": 300}
+    w.live[(CT, "pve1/101")]["cores"] = 4
+    w.unrecorded[(CT, "pve1/101")] = hidden
+    report = run(estate, apply=True, resources=["web"])
+    web = entry(report, "web")
+    assert web["status"] == ("import+unrecorded" if hidden else "import+update") and "note" not in web
+    assert [d["path"] for d in web["diff"]] == ["cores", "timeoutStart"]
+    (r,) = report["refused"]
+    assert not report["ok"] and not report["applied"] and r["kind"] == "update"
+    assert "cores, timeoutStart" in r["why"] and "--accept-update web" in r["why"]
+    assert ("REBOOTS" if hidden else "reboots") in r["why"]
+    assert [c["verb"] for c in w.calls] == ["preview"] and fakes.urn(p, "web") not in w.state
+    assert "provider-local" not in "\n".join(adopt.text(report))
+    # Accepted, it is the update it always was.
+    report = run(estate, apply=True, resources=["web"], accept_update=["web"])
+    assert report["applied"] and report["ok"] and w.updated == ["web"]
+    no_import_left(estate, w)
+
+
+def test_local_is_only_the_listed_properties_of_a_guest(lab):
+    """Not another resource type with a property of that name, not another
+    guest type's timeout, not a property that only looks like one."""
+    estate, w, p = lab
+    p["resources"]["net"] = {"type": POOL, "properties": {"poolId": "net"},
+                             "options": {"provider": "${provider-proxmox}"}}
+    estate.stack(p, adopt_ids={"web": "pve1/101", "db": "pve1/102", "net": "net"})
+    w.live[(POOL, "net")] = {"poolId": "net"}
+    w.defaults[POOL] = {"timeoutStart": 300}   # a pool is not a guest
+    w.defaults[CT] = {"timeoutStartVm": 1800}  # the VM's timeout, on a container
+    w.defaults[VM] = {"timeoutStartup": 300}   # no property of the list
+    report = run(estate, apply=True)
+    assert statuses(report) == {"web": "import+unrecorded", "db": "import+unrecorded", "net": "import+unrecorded"}
+    assert sorted(r["key"] for r in report["refused"]) == ["db", "net", "web"]
+    assert not report["applied"] and [c["verb"] for c in w.calls] == ["preview"] and w.updated == []
+    assert all("note" not in entry(report, k) for k in ("web", "db", "net"))
+    # By type and by top-level name.
+    for type_, props in adopt.LOCAL_PROPERTIES.items():
+        assert type_ in adopt.guard.GUEST_TYPES
+        assert all(adopt._local(type_, x) for x in props)
+        assert not adopt._local(POOL, next(iter(props))) and not adopt._local(REPO, next(iter(props)))
+    assert adopt._local(CT, "timeoutStart") and not adopt._local(VM, "timeoutStart")
+    assert adopt._local(VM, "timeoutStartVm") and not adopt._local(CT, "timeoutStartVm")
+    for other in sorted(adopt.guard.GUEST_TYPES - set(adopt.LOCAL_PROPERTIES)):
+        assert not adopt._local(other, "timeoutStart") and not adopt._local(other, "timeoutStartVm")
+    for path in ("agent.timeout", "agent", "timeout", "timeouts", "timeoutStartup", "cpu", "started", "vmId",
+                 "waitForIp", "", "x.timeoutStartVm", "initialization[0].timeoutStartVm"):
+        assert not adopt._local(VM, path) and not adopt._local(CT, path), path
+
+
+@pytest.mark.parametrize("diff", [None, ["agent.timeout"], ["timeoutStartVm", "agent.timeout"]])
+def test_an_update_without_a_local_only_diff_is_not_local(lab, diff):
+    """An update the engine names no property for, or one inside another
+    property: never classified as harmless."""
+    estate, w, p = lab
+    w.force["db"] = {"steps": ["import", "update"], "diff": diff}
+    report = run(estate, apply=True, resources=["db"])
+    assert statuses(report)["db"] in ("import+update", "import+unrecorded")
+    assert [r["key"] for r in report["refused"]] == ["db"] and not report["applied"]
+    # Several local properties and nothing else: local.
+    w.force["db"] = {"steps": ["import", "update"], "diff": ["timeoutStartVm", "timeoutReboot"]}
+    assert statuses(run(estate, resources=["db"]))["db"] == "import+local"
+
+
 # ── R4: secrets ────────────────────────────────────────────────────────────
 def test_a_secret_is_not_adopted_unless_named(estate):
     p = repos(r1={})

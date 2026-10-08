@@ -52,6 +52,22 @@ def test_every_vm_or_container_token_of_the_provider_is_decided():
     assert guard.GUEST_TYPES is guests.GUEST_TYPES
 
 
+def test_the_provider_local_properties_are_the_timeouts_of_the_pinned_provider():
+    """What adopt applies without an acceptance (guests.LOCAL_PROPERTIES): per
+    type, exactly the provider's `timeout*` properties, in the bridge's names."""
+    d = names_dir()
+    if d is None:
+        pytest.skip("the provider name map (providers/pulumi/names) is not reachable from here: "
+                    "set FLEETKIT_PROVIDER_NAMES")
+    by_token = {r["token"]: r for f in sorted(d.glob("bpg-proxmox-*.json"))
+                for r in json.loads(f.read_text())["resources"].values()}
+    assert len(guests.LOCAL_PROPERTIES) == 2 and set(guests.LOCAL_PROPERTIES) <= guests.GUEST_TYPES
+    for token, props in guests.LOCAL_PROPERTIES.items():
+        have = {v["n"] for k, v in by_token[token]["f"].items() if k.startswith("timeout")}
+        assert have == set(props) and props, token
+        assert all(p.startswith("timeout") for p in props)
+
+
 def test_a_new_guest_type_fails_the_check(tmp_path):
     """A provider bump that adds a VM type must fail, not pass unnoticed."""
     f = tmp_path / "bpg-proxmox-9.9.9.json"

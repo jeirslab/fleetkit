@@ -16,10 +16,16 @@ Fails (exit 1, problems on stderr) when:
     through the secrets of the estate that owns it (mini);
   - the guest with an lxc_extra_conf companion is not listed in
     locals.fleet_unrendered_companions, or does not ignore its description;
+  - a lifecycle.ignore_changes entry does not start at an attribute or block
+    of its resource, or is listed twice;
   - for the estate "gaps" (every option added for adopting existing guests):
     an argument is not exactly the expected value, or one that must be absent
     (the console block and pool_id of the guest that opts out of both, the
-    defaults of the others) is rendered (EXPECT, ABSENT).
+    defaults of the others) is rendered (EXPECT, ABSENT);
+  - for the estate "quiet" (adoption.unrecorded): the guests that ignore what
+    an import does not record do not carry exactly that list under
+    lifecycle.ignore_changes, after their own, or the guests that set it back
+    to "apply" carry a lifecycle at all.
 Evaluation only; no network.
 """
 import argparse
@@ -80,14 +86,29 @@ ESTATES = {
         key="site-token",
         endpoint=EP,
     ),
+    "quiet": dict(
+        managed={LXC: "ct", VM: "machine"},
+        pool=None,
+        adopted=None,
+        companion=None,
+        file="mini_tf",
+        key="site-token",
+        endpoint=EP,
+    ),
+}
+# What adoption.unrecorded = "ignore" puts under ignore_changes, per kind
+# (modules/guests.nix, unrecordedArgs).
+UNRECORDED = {
+    LXC: ["cpu", "memory", "vm_id", "console"],
+    VM: ["cpu", "memory", "scsi_hardware", "agent", "operating_system", "efi_disk"],
 }
 IDMAP = [
     {"type": t, "container_id": c, "host_id": h, "size": n}
     for t in ("uid", "gid")
     for c, h, n in ((0, 100000, 1000), (1000, 1000, 1), (1001, 101001, 64535))
 ]
-# Estate gaps: (resource type, name) -> argument -> the exact rendered value.
-EXPECT = {
+# Per estate: (resource type, name) -> argument -> the exact rendered value.
+EXPECT = {"gaps": {
     (LXC, "mapped"): {"idmap": IDMAP},
     (LXC, "conf"): {
         "console": {"type": "console"},
@@ -109,12 +130,23 @@ EXPECT = {
         "pool_id": "gpool",
     },
     (POOL, "gpool"): {"pool_id": "gpool", "comment": "guests of the gaps estate"},
-}
-# Estate gaps: arguments that must not be rendered at all.
-ABSENT = {
+}, "quiet": {
+    (LXC, "ct"): {"lifecycle": {"ignore_changes": UNRECORDED[LXC]}},
+    (VM, "machine"): {"lifecycle": {"ignore_changes": UNRECORDED[VM]}},
+    # Its own first, then what is not there yet: cpu once.
+    (LXC, "mixed"): {"lifecycle": {"ignore_changes": ["operating_system", "cpu", "memory", "vm_id", "console"]}},
+    # The ignore does not take the arguments out of the render.
+    (LXC, "loudct"): {"vm_id": 9604, "console": {"type": "console"}},
+    (VM, "loudvm"): {"vm_id": 9605},
+}}
+# Per estate: arguments that must not be rendered at all.
+ABSENT = {"gaps": {
     (LXC, "mapped"): ["console", "pool_id", "lifecycle"],
     (LXC, "conf"): ["idmap"],
-}
+}, "quiet": {
+    (LXC, "loudct"): ["lifecycle"],
+    (VM, "loudvm"): ["lifecycle"],
+}}
 PRIMITIVE = {"string": str, "number": (int, float), "bool": bool}
 TOKEN_PATH = "secrets/tf.json"
 
@@ -194,6 +226,13 @@ def check(doc, schemas, x):
             lc = body.get("lifecycle")
             if lc is not None and (not isinstance(lc, dict) or not lc):
                 problems.append(f"{where}: empty or malformed lifecycle must be dropped")
+            ignored = (lc or {}).get("ignore_changes") or [] if isinstance(lc, dict) else []
+            known = {**res["block"].get("attributes", {}), **res["block"].get("block_types", {})}
+            for path in ignored:
+                if re.split(r"[.\[]", path)[0] not in known:
+                    problems.append(f"{where}: lifecycle.ignore_changes '{path}' is not an attribute or block")
+            if len(set(ignored)) != len(ignored):
+                problems.append(f"{where}: lifecycle.ignore_changes lists an argument twice: {ignored}")
 
     for rtype, name in x["managed"].items():
         if name not in resources.get(rtype, {}):
@@ -232,8 +271,9 @@ def check(doc, schemas, x):
     elif companions:
         problems.append(f"unexpected locals.fleet_unrendered_companions {companions}")
 
-    if x is ESTATES["gaps"]:
-        for (rtype, name), want in EXPECT.items():
+    estate = next(n for n, e in ESTATES.items() if e is x)
+    if estate in EXPECT:
+        for (rtype, name), want in EXPECT[estate].items():
             body = resources.get(rtype, {}).get(name)
             if body is None:
                 problems.append(f"missing {rtype}.{name}")
@@ -241,7 +281,7 @@ def check(doc, schemas, x):
             for arg, value in want.items():
                 if body.get(arg) != value:
                     problems.append(f"{rtype}.{name}.{arg}: {body.get(arg)!r}, expected {value!r}")
-            for arg in ABSENT.get((rtype, name), []):
+            for arg in ABSENT[estate].get((rtype, name), []):
                 if arg in body:
                     problems.append(f"{rtype}.{name}.{arg}: rendered, but must be absent")
 

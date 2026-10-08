@@ -144,6 +144,26 @@
         "  };",
         "}"
       ]
+    },
+    {
+      "name": "adoption-unrecorded-bad-value",
+      "description": "adoption.unrecorded with a value that is neither ignore nor apply",
+      "expect": "A definition for option `fleet\\.guests\\.gaps\\.mapped\\.adoption\\.unrecorded' is not of type `null or one of \"ignore\", \"apply\"'",
+      "module": [
+        "_: {",
+        "  fleet.guests.gaps.mapped.adoption.unrecorded = \"skip\";",
+        "}"
+      ]
+    },
+    {
+      "name": "adoption-unrecorded-bad-default",
+      "description": "the same bad value in an estate's guestDefaults",
+      "expect": "A definition for option `fleet\\.estates\\.gaps\\.guestDefaults\\.adoption\\.unrecorded' is not of type `null or one of \"ignore\", \"apply\"'",
+      "module": [
+        "_: {",
+        "  fleet.estates.gaps.guestDefaults.adoption.unrecorded = true;",
+        "}"
+      ]
     }
   ]
 }
