@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Check a rendered main.tf.json against the pinned bpg/proxmox schema.
 
-  terraform.py RENDERED.json [--estate mini|tenant|bare] [--schema FILE]
+  terraform.py RENDERED.json [--estate mini|tenant|bare|gaps] [--schema FILE]
 
 Fails (exit 1, problems on stderr) when:
   - a resource type is not in the schema, or an argument / nested block name
-    (recursively) is not an attribute or block of that resource;
+    (recursively) is not an attribute or block of that resource, or a string,
+    number or bool argument holds a value of another type;
   - the managed guests (lxc and vm) or the pool are not at their expected
     addresses, or the adopted guest is rendered / not in locals.fleet_unmanaged;
   - any api_token is a literal instead of a ${data.sops_file...} reference,
@@ -14,7 +15,11 @@ Fails (exit 1, problems on stderr) when:
     placement.tokenRef, tenant and bare the provider's tokenRef, resolved
     through the secrets of the estate that owns it (mini);
   - the guest with an lxc_extra_conf companion is not listed in
-    locals.fleet_unrendered_companions.
+    locals.fleet_unrendered_companions, or does not ignore its description;
+  - for the estate "gaps" (every option added for adopting existing guests):
+    an argument is not exactly the expected value, or one that must be absent
+    (the console block and pool_id of the guest that opts out of both, the
+    defaults of the others) is rendered (EXPECT, ABSENT).
 Evaluation only; no network.
 """
 import argparse
@@ -66,7 +71,51 @@ ESTATES = {
         key="site-token",
         endpoint=EP,
     ),
+    "gaps": dict(
+        managed={LXC: "mapped", VM: "efi"},
+        pool="gpool",
+        adopted=None,
+        companion="conf",
+        file="mini_tf",
+        key="site-token",
+        endpoint=EP,
+    ),
 }
+IDMAP = [
+    {"type": t, "container_id": c, "host_id": h, "size": n}
+    for t in ("uid", "gid")
+    for c, h, n in ((0, 100000, 1000), (1000, 1000, 1), (1001, 101001, 64535))
+]
+# Estate gaps: (resource type, name) -> argument -> the exact rendered value.
+EXPECT = {
+    (LXC, "mapped"): {"idmap": IDMAP},
+    (LXC, "conf"): {
+        "console": {"type": "console"},
+        "pool_id": "gpool",
+        "description": "raw lines",
+        "lifecycle": {"ignore_changes": ["operating_system", "description"]},
+    },
+    (VM, "efi"): {
+        "scsi_hardware": "virtio-scsi-single",
+        "efi_disk": {"datastore_id": "local", "file_format": "raw", "type": "4m", "pre_enrolled_keys": True},
+        "initialization": {
+            "datastore_id": "local",
+            "interface": "ide2",
+            "upgrade": True,
+            "ip_config": [{"ipv4": {"address": "192.0.2.73/24"}}],
+        },
+        "clone": {"vm_id": 9000, "full": True},
+        "lifecycle": {"ignore_changes": ["clone"]},
+        "pool_id": "gpool",
+    },
+    (POOL, "gpool"): {"pool_id": "gpool", "comment": "guests of the gaps estate"},
+}
+# Estate gaps: arguments that must not be rendered at all.
+ABSENT = {
+    (LXC, "mapped"): ["console", "pool_id", "lifecycle"],
+    (LXC, "conf"): ["idmap"],
+}
+PRIMITIVE = {"string": str, "number": (int, float), "bool": bool}
 TOKEN_PATH = "secrets/tf.json"
 
 
@@ -84,6 +133,10 @@ def check_attr_value(value, typ, where, problems):
     """Keys inside an object-typed attribute must be members of that object."""
     members = object_members(typ)
     if members is None:
+        want = PRIMITIVE.get(typ) if isinstance(typ, str) else None
+        is_ref = isinstance(value, str) and "${" in value
+        if want and not is_ref and (not isinstance(value, want) or (typ == "number" and isinstance(value, bool))):
+            problems.append(f"{where}: {value!r} is not a {typ}")
         return
     items = value if isinstance(value, list) else [value]
     for i, item in enumerate(items):
@@ -172,8 +225,25 @@ def check(doc, schemas, x):
             problems.append(
                 f"locals.fleet_unrendered_companions does not list the guest '{x['companion']}'"
             )
+        # Its marker lines come back as description text: ignored, not fought.
+        ignored = (resources.get(LXC, {}).get(x["companion"], {}).get("lifecycle") or {}).get("ignore_changes") or []
+        if "description" not in ignored:
+            problems.append(f"{LXC}.{x['companion']}: lifecycle.ignore_changes does not hold description")
     elif companions:
         problems.append(f"unexpected locals.fleet_unrendered_companions {companions}")
+
+    if x is ESTATES["gaps"]:
+        for (rtype, name), want in EXPECT.items():
+            body = resources.get(rtype, {}).get(name)
+            if body is None:
+                problems.append(f"missing {rtype}.{name}")
+                continue
+            for arg, value in want.items():
+                if body.get(arg) != value:
+                    problems.append(f"{rtype}.{name}.{arg}: {body.get(arg)!r}, expected {value!r}")
+            for arg in ABSENT.get((rtype, name), []):
+                if arg in body:
+                    problems.append(f"{rtype}.{name}.{arg}: rendered, but must be absent")
 
     endpoint = doc.get("provider", {}).get("proxmox", {}).get("endpoint")
     if endpoint != x["endpoint"]:

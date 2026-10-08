@@ -1,0 +1,149 @@
+{
+  "negative": [
+    {
+      "name": "idmap-missing-field",
+      "description": "an idmap entry without its size",
+      "expect": "The option `fleet\\.guests\\.gaps\\.mapped\\.idmap\\.\"\\[definition 1-entry 1\\]\"\\.size' was accessed but has no value defined",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.guests.gaps.mapped.idmap = lib.mkForce [",
+        "    {",
+        "      type = \"uid\";",
+        "      containerId = 0;",
+        "      hostId = 100000;",
+        "    }",
+        "  ];",
+        "}"
+      ]
+    },
+    {
+      "name": "idmap-unknown-type",
+      "description": "an idmap entry whose type is the lxc.conf letter, not uid or gid",
+      "expect": "A definition for option `fleet\\.guests\\.gaps\\.mapped\\.idmap\\.\"\\[definition 1-entry 1\\]\"\\.type' is not of type `one of \"uid\", \"gid\"'",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.guests.gaps.mapped.idmap = lib.mkForce [",
+        "    {",
+        "      type = \"u\";",
+        "      containerId = 0;",
+        "      hostId = 100000;",
+        "      size = 65536;",
+        "    }",
+        "  ];",
+        "}"
+      ]
+    },
+    {
+      "name": "idmap-twice",
+      "description": "lxc.idmap lines in lxcExtraConf beside the typed idmap",
+      "expect": "fleet\\.guests\\.gaps\\.mapped\\.lxcExtraConf: carries lxc\\.idmap line\\(s\\) beside idmap \\(2\\)",
+      "module": [
+        "_: {",
+        "  fleet.guests.gaps.mapped.lxcExtraConf = [",
+        "    \"lxc.idmap: u 0 100000 65536\"",
+        "    \"lxc.idmap = g 0 100000 65536\"",
+        "    \"lxc.apparmor.profile: unconfined\"",
+        "  ];",
+        "}"
+      ]
+    },
+    {
+      "name": "idmap-on-vm",
+      "description": "an idmap on a VM",
+      "expect": "fleet\\.guests\\.gaps\\.efi\\.idmap: is lxc-only but kind is \"vm\"",
+      "module": [
+        "_: {",
+        "  fleet.guests.gaps.efi.idmap = [",
+        "    {",
+        "      type = \"uid\";",
+        "      containerId = 0;",
+        "      hostId = 100000;",
+        "      size = 65536;",
+        "    }",
+        "  ];",
+        "}"
+      ]
+    },
+    {
+      "name": "scsi-unknown",
+      "description": "a scsi hardware value the provider does not accept",
+      "expect": "A definition for option `fleet\\.guests\\.gaps\\.efi\\.vm\\.scsiHardware' is not of type `null or one of \"lsi\", \"lsi53c810\", \"virtio-scsi-pci\", \"virtio-scsi-single\", \"megasas\", \"pvscsi\"'",
+      "module": [
+        "{ lib, ... }:",
+        "{ fleet.guests.gaps.efi.vm.scsiHardware = lib.mkForce \"virtio-scsi\"; }"
+      ]
+    },
+    {
+      "name": "efi-no-datastore",
+      "description": "an EFI disk with no datastore, in an estate with no defaultDatastore (the provider would use local-lvm)",
+      "expect": "fleet\\.guests\\.nods\\.fw\\.vm\\.efiDisk\\.datastore: no datastore \\(set it, or guestDefaults\\.defaultDatastore\\)",
+      "module": [
+        "_: {",
+        "  fleet.estates.nods.owner = \"Nods\";",
+        "  fleet.guests.nods.fw = {",
+        "    vmid = 9701;",
+        "    kind = \"vm\";",
+        "    on = \"s1/n1\";",
+        "    vm.efiDisk.type = \"4m\";",
+        "    disks = [",
+        "      {",
+        "        role = \"root\";",
+        "        size = 8;",
+        "        interface = \"scsi0\";",
+        "        datastore = \"s1/local\";",
+        "      }",
+        "    ];",
+        "  };",
+        "}"
+      ]
+    },
+    {
+      "name": "efi-on-lxc",
+      "description": "an EFI disk on a container",
+      "expect": "fleet\\.guests\\.gaps\\.mapped\\.vm\\.efiDisk: is vm-only but kind is \"lxc\"",
+      "module": [
+        "_: { fleet.guests.gaps.mapped.vm.efiDisk = { }; }"
+      ]
+    },
+    {
+      "name": "cloud-init-interface",
+      "description": "a cloud-init drive slot the provider does not accept",
+      "expect": "A definition for option `fleet\\.guests\\.gaps\\.efi\\.vm\\.cloudInit\\.interface' is not of type",
+      "module": [
+        "{ lib, ... }:",
+        "{ fleet.guests.gaps.efi.vm.cloudInit.interface = lib.mkForce \"ide9\"; }"
+      ]
+    },
+    {
+      "name": "console-omit-and-type",
+      "description": "a guest that sets a console type and omits the console block",
+      "expect": "fleet\\.guests\\.gaps\\.mapped\\.console: console\\.omit renders no console block",
+      "module": [
+        "_: { fleet.guests.gaps.mapped.console.type = \"shell\"; }"
+      ]
+    },
+    {
+      "name": "no-pool-keeps-grant",
+      "description": "a guest in no pool with a vmid outside the estate pool's grant",
+      "expect": "fleet\\.guests\\.gaps\\.stray\\.vmid: vmid 9601 is outside the ranges granted to pool gaps/proxmox/gpool \\(9500-9599\\)",
+      "module": [
+        "_: {",
+        "  fleet.guests.gaps.stray = {",
+        "    vmid = 9601;",
+        "    kind = \"lxc\";",
+        "    on = \"s1/n1\";",
+        "    pool = \"none\";",
+        "    disks = [",
+        "      {",
+        "        role = \"root\";",
+        "        size = 8;",
+        "      }",
+        "    ];",
+        "  };",
+        "}"
+      ]
+    }
+  ]
+}

@@ -9,14 +9,17 @@ Fails (exit 1, problems on stderr) when:
     the token the bridge gives its type, or the program has a resource the
     render does not;
   - a property (recursively) is not in the pinned Pulumi schema of its token,
-    or is a list where the schema takes an object or the other way round;
+    or is a list where the schema takes an object or the other way round, or a
+    string, number or boolean property holds a value of another type;
     checked against providers/pulumi/schemas directly, not the name maps, so a
     wrong name map is caught too;
   - a ${...} names a resource or variable the program does not have;
   - a packages entry is not the terraform-provider bridge at the provider and
     version the Terraform render pins;
   - a provider credential is a literal instead of a sops invoke reference, or
-    a lifecycle meta-argument is lost (prevent_destroy -> protect);
+    a lifecycle meta-argument is lost (prevent_destroy -> protect,
+    ignore_changes -> ignoreChanges: as many paths, each starting at an input
+    property of the resource), or the outputs are not the render's locals;
   - a resource has an `import` option or any key other than type, name,
     properties and options: adoption ids are never part of a program.
 Evaluation only; no network.
@@ -32,6 +35,8 @@ NAMES = ROOT / "providers/pulumi/names"
 # "$${" is a literal "${" (estate text the render escaped), not a reference.
 REF = re.compile(r"(?<!\$)\$\{([A-Za-z0-9_-]+)")
 CRED = {"apiToken", "token", "pemFile", "id", "installationId"}
+
+PRIMITIVE = {"string": str, "integer": int, "number": (int, float), "boolean": bool}
 
 prog = json.load(open(sys.argv[1]))
 tf = json.load(open(sys.argv[2]))
@@ -82,6 +87,10 @@ def check_value(where, v, prop, types):
             bad.append(f"{where}: the schema takes an object, the program has a list")
             return
         check_props(where, v, types[ref[len("#/types/"):]].get("properties", {}), types)
+        return
+    want = PRIMITIVE.get(t)
+    if want and "${" not in str(v) and (not isinstance(v, want) or (t != "boolean" and isinstance(v, bool))):
+        bad.append(f"{where}: {v!r} is not a {t}")
 
 
 # Resources: parity with the Terraform render, and the schema.
@@ -121,10 +130,26 @@ for rtype, rs in (tf.get("resource") or {}).items():
         if hits and (body.get("lifecycle") or {}).get("prevent_destroy"):
             if not (hits[0].get("options") or {}).get("protect"):
                 bad.append(f"{rtype}.{name}: prevent_destroy is not options.protect")
+        ignored = (body.get("lifecycle") or {}).get("ignore_changes")
+        if hits and ignored is not None:
+            got = (hits[0].get("options") or {}).get("ignoreChanges")
+            inputs = schema_of(tok)["resources"][tok].get("inputProperties", {})
+            if not isinstance(got, list) or len(got) != len(ignored):
+                bad.append(f"{rtype}.{name}: ignore_changes {ignored} is not options.ignoreChanges ({got})")
+            else:
+                for path in got:
+                    if re.split(r"[.\[]", path)[0] not in inputs:
+                        bad.append(f"{rtype}.{name}: options.ignoreChanges {path}: not an input property")
+        elif hits and "ignoreChanges" in (hits[0].get("options") or {}):
+            bad.append(f"{rtype}.{name}: options.ignoreChanges without a lifecycle.ignore_changes")
 for tok, name in sorted(want - seen):
     bad.append(f"missing: {tok} {name}")
 for tok, name in sorted(seen - want):
     bad.append(f"extra: {tok} {name}")
+
+# Outputs: the render's locals (what is unmanaged, what is not rendered).
+if prog.get("outputs", {}) != (tf.get("locals") or {}):
+    bad.append("outputs are not the Terraform render's locals")
 
 # Packages: the bridge, at the pinned provider and version.
 for local, rp in pins.items():

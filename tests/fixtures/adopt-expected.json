@@ -21,6 +21,15 @@
     },
     "adoptUnresolved": {}
   },
+  "gaps-guests": {
+    "adoptIds": {
+      "mapped": "n1/9501",
+      "conf": "n1/9502",
+      "efi": "n1/9503",
+      "gpool": "gpool"
+    },
+    "adoptUnresolved": {}
+  },
   "gh-github": {
     "adoptIds": {
       "alice": "example-org:alice-example",

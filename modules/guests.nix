@@ -22,13 +22,15 @@
 #
 # Derived, read-only per guest: id, ipv4.<network> (from networkInterfaces;
 # config.nix reads guests.<e>.<g>.ipv4.lan) and effectivePool (the guest's
-# pool, else the estate's placement.pool).
+# pool, else the estate's placement.pool; null when pool = "none").
 #
 # Also owned here: fleet.report.ipCollisions (data, never an error),
 # fleet.report.vmidCollisions + fleet.allow.vmidCollisions (a vmid used
 # twice in one cluster fails unless allowlisted with a reason),
 # fleet.report.guestOptionPaths (every modelled guest option path, for the
-# fidelity test) and fleet.estates.<estate>.guestDefaults.
+# fidelity test), fleet.report.lxcExtraConfIdmap (guests whose raw lxc.conf
+# lines carry an id mapping the provider would own) and
+# fleet.estates.<estate>.guestDefaults.
 { lib, config, ... }:
 let
   inherit (lib)
@@ -97,7 +99,7 @@ let
   knobOptions = {
     description = nullable types.str "description (both kinds).";
     tags = nullable (types.listOf types.str) "tags (both kinds). Lists replace, never merge.";
-    pool = nullable types.str "Pool id (<estate>/proxmox/<pool>) -> pool_id. null = the estate's placement.pool; see effectivePool.";
+    pool = nullable types.str "Pool id (<estate>/proxmox/<pool>) -> pool_id, or \"none\": in no pool, no pool_id is rendered. null = silent (the lower layer, last the estate's placement.pool); see effectivePool.";
     protect = nullable types.bool "Terraform lifecycle.prevent_destroy (meta-argument, not a provider argument). Effective default false.";
     protection = nullable types.bool "protection (both kinds): the Proxmox protection flag.";
     ignoreChanges = nullable (types.listOf types.str) "Terraform lifecycle.ignore_changes (meta-argument): provider argument names whose drift is ignored after create.";
@@ -142,6 +144,7 @@ let
       "tty"
       "shell"
     ]) "lxc only: console.type. Default from providers.proxmox.defaults.console.";
+    console.omit = nullable types.bool "lxc only: true = render no console block at all (the site default console.type is not rendered either). The provider then records none for a container whose console is its default: enabled, type tty, 2 ttys.";
     environment = nullable (types.attrsOf types.str) "lxc only: environment_variables.";
     defaultDatastore = nullable types.str "Storage id used by every disk whose datastore is null (layering helper; feeds disk datastore_id / mount_point volume).";
     initialization = {
@@ -187,16 +190,44 @@ let
       ]) "vm only: bios.";
       machine = nullable types.str "vm only: machine (e.g. q35).";
       serialDevices = nullable (types.listOf types.str) "vm only: serial_device[].device (e.g. socket).";
+      scsiHardware = nullable (types.enum scsiHardwareValues) "vm only: scsi_hardware. null = not rendered (the provider default virtio-scsi-pci).";
+      efiDisk = nullable (types.submodule {
+        options = {
+          datastore = nullable types.str "vm only: storage id -> efi_disk.datastore_id. null = defaultDatastore; one of them must be set (the provider would otherwise use local-lvm).";
+          fileFormat = nullable (types.enum [
+            "raw"
+            "qcow2"
+            "vmdk"
+          ]) "vm only: efi_disk.file_format.";
+          type = nullable (types.enum [
+            "2m"
+            "4m"
+          ]) "vm only: efi_disk.type (size and type of the OVMF vars disk). Changing it on an existing VM forces a replacement.";
+          preEnrolledKeys = nullable types.bool "vm only: efi_disk.pre_enrolled_keys.";
+        };
+      }) "vm only: the EFI vars disk (efi_disk). null = no efi_disk block.";
       cloudInit = {
         datastore = nullable types.str "vm only: initialization.datastore_id (storage id of the cloud-init drive).";
         type = nullable (types.enum [
           "nocloud"
           "configdrive2"
         ]) "vm only: initialization.type.";
+        interface = nullable (types.strMatching "ide[0-3]|sata[0-5]|scsi([0-9]|[12][0-9]|30)") "vm only: initialization.interface (the bus slot of the cloud-init drive, e.g. ide2).";
+        upgrade = nullable types.bool "vm only: initialization.upgrade (package upgrade on first boot; Proxmox defaults to true). The provider only lets root@pam change it.";
       };
     };
   };
   knobNames = builtins.attrNames knobOptions;
+
+  # scsi_hardware values the provider accepts (vm/validators.go, SCSIHardwareValidator).
+  scsiHardwareValues = [
+    "lsi"
+    "lsi53c810"
+    "virtio-scsi-pci"
+    "virtio-scsi-single"
+    "megasas"
+    "pvscsi"
+  ];
 
   # Knob paths that exist for one kind only.
   lxcOnlyKnobs = [
@@ -306,6 +337,35 @@ let
     };
   };
 
+  idmapType = types.submodule {
+    options = {
+      type = mkOption {
+        type = types.enum [
+          "uid"
+          "gid"
+        ];
+        description = "lxc only: idmap.type (uid = an lxc.idmap \"u\" line, gid = a \"g\" line).";
+      };
+      containerId = mkOption {
+        type = types.ints.unsigned;
+        description = "lxc only: idmap.container_id (first id inside the container).";
+      };
+      hostId = mkOption {
+        type = types.ints.unsigned;
+        description = "lxc only: idmap.host_id (first id on the host).";
+      };
+      size = mkOption {
+        type = types.ints.positive;
+        description = "lxc only: idmap.size (number of ids mapped).";
+      };
+    };
+  };
+
+  # A raw lxc.conf line that sets lxc.idmap: the one raw key the provider
+  # reads back (as idmap) and rewrites.
+  isIdmapLine = l: builtins.match "[[:space:]]*lxc\\.idmap[[:space:]]*[:=].*" l != null;
+  idmapLinesOf = g: filter isIdmapLine (if g.lxcExtraConf == null then [ ] else g.lxcExtraConf);
+
   hostpciType = types.submodule {
     options = {
       device = nullable (types.strMatching "hostpci[0-9]+") "vm only: hostpci.device. Default hostpci<i>.";
@@ -383,7 +443,12 @@ let
             default = [ ];
             description = "vm only: hostpci[] (PCI passthrough of node pcie devices).";
           };
-          lxcExtraConf = nullable (types.listOf types.str) "lxc only: raw lines appended verbatim to /etc/pve/lxc/<vmid>.conf. NOT a provider argument: rendered as the terraform_data.<guest>-lxc-conf companion.";
+          idmap = mkOption {
+            type = types.listOf idmapType;
+            default = [ ];
+            description = "lxc only: idmap[] (the container's lxc.idmap lines, in file order). The provider owns every lxc.idmap line of the guest, so lxcExtraConf must not carry any beside this.";
+          };
+          lxcExtraConf = nullable (types.listOf types.str) "lxc only: raw lines appended verbatim to /etc/pve/lxc/<vmid>.conf. NOT a provider argument: rendered as the terraform_data.<guest>-lxc-conf companion. A guest that has any gets description under lifecycle.ignore_changes.";
 
           ipv4 = mkOption {
             type = types.attrsOf ipv4;
@@ -400,7 +465,7 @@ let
             type = types.nullOr types.str;
             readOnly = true;
             default = (effective estate config).pool;
-            description = "Derived, read-only: pool id after layering (guest pool, guestDefaults pool, else fleet.estates.<estate>.placement.pool) -> pool_id.";
+            description = "Derived, read-only: pool id after layering (guest pool, guestDefaults pool, else fleet.estates.<estate>.placement.pool) -> pool_id. null when that is \"none\" or there is none.";
           };
         };
       }
@@ -485,8 +550,12 @@ let
       placementPool = if e == null || e.placement == null then null else e.placement.pool;
     in
     k
-    // {
-      pool = if (k.pool or null) != null then k.pool else placementPool;
+    // rec {
+      # "none" is the guest in no pool: nothing is rendered. The grant (vmid
+      # and host ranges) is still the estate pool's.
+      noPool = (k.pool or null) == "none";
+      pool = if noPool then null else if (k.pool or null) != null then k.pool else placementPool;
+      grantPool = if noPool then placementPool else pool;
     };
 
   # ------------------------------------------------- derived interfaces --
@@ -639,6 +708,17 @@ let
           d.operatingSystem.templateFileId
         else
           null;
+      # Arguments the kit puts under ignore_changes by itself:
+      #   clone        every member of the provider's clone block is ForceNew
+      #                and no read records one, so a declared clone on a guest
+      #                that exists without it in state plans a replacement;
+      #                the block is used at create and never compared after.
+      #   description  for a container with lxcExtraConf: the companion's
+      #                "# BEGIN/END" marker lines are comment lines of the
+      #                conf file, which Proxmox returns as description text.
+      autoIgnored =
+        optional (clone != null) "clone"
+        ++ optional (isLxc && g.lxcExtraConf != null && g.lxcExtraConf != [ ]) "description";
       cloneArgs = if clone == null then null else {
         vm_id = clone.vmid;
         datastore_id = lastSeg clone.datastore;
@@ -677,7 +757,7 @@ let
       lxcArgs = common // {
         start_on_boot = k.startOnBoot or null;
         unprivileged = k.unprivileged or null;
-        console.type = k.console.type or null;
+        console = if (k.console.omit or null) == true then null else { type = k.console.type or null; };
         cpu = cpuCommon;
         memory = {
           dedicated = k.memory.dedicatedMiB or null;
@@ -731,6 +811,13 @@ let
             deny_write = x.denyWrite;
           }) g.devicePassthrough
         );
+        idmap = nonEmpty (
+          map (x: {
+            inherit (x) type size;
+            container_id = x.containerId;
+            host_id = x.hostId;
+          }) g.idmap
+        );
       };
       vmArgs = common // {
         inherit name;
@@ -758,6 +845,8 @@ let
         initialization = {
           datastore_id = lastSeg (k.vm.cloudInit.datastore or null);
           type = k.vm.cloudInit.type or null;
+          interface = k.vm.cloudInit.interface or null;
+          upgrade = k.vm.cloudInit.upgrade or null;
           inherit dns;
           ip_config = ipConfigOf ifs;
           user_account = {
@@ -781,6 +870,20 @@ let
         agent.enabled = k.vm.agent or null;
         bios = k.vm.bios or null;
         machine = k.vm.machine or null;
+        scsi_hardware = k.vm.scsiHardware or null;
+        efi_disk =
+          let
+            e = k.vm.efiDisk or null;
+          in
+          if e == null then
+            null
+          else
+            {
+              datastore_id = lastSeg (diskDs k e);
+              file_format = e.fileFormat;
+              inherit (e) type;
+              pre_enrolled_keys = e.preEnrolledKeys;
+            };
         serial_device =
           let
             s = k.vm.serialDevices or null;
@@ -805,7 +908,14 @@ let
       args = prune (if isLxc then lxcArgs else vmArgs);
       lifecycle = prune {
         prevent_destroy = if (k.protect or null) == true then true else null;
-        ignore_changes = k.ignoreChanges or null;
+        ignore_changes =
+          let
+            declared = k.ignoreChanges or null;
+          in
+          if autoIgnored == [ ] then
+            declared
+          else
+            lib.unique ((if declared == null then [ ] else declared) ++ autoIgnored);
       };
       companions = prune {
         lxc_extra_conf = g.lxcExtraConf;
@@ -866,8 +976,16 @@ let
     ) (foreignKnobs g.kind)
     ++ optionals isLxc [
       (check "${where}.hostpci" (g.hostpci == [ ]) "is vm-only but kind is \"lxc\"")
+      (check "${where}.vm.efiDisk" (g.vm.efiDisk == null) "is vm-only but kind is \"lxc\"")
+      (check "${where}.console" (
+        !(g.console.omit == true && g.console.type != null)
+      ) "console.omit renders no console block, so console.type beside it is never rendered; set one of them")
+      (check "${where}.lxcExtraConf" (g.idmap == [ ] || idmapLinesOf g == [ ])
+        "carries lxc.idmap line(s) beside idmap (${toString (length (idmapLinesOf g))}); the provider rewrites every lxc.idmap line of the conf file from idmap, so declare the mapping there only"
+      )
     ]
     ++ optionals (!isLxc) [
+      (check "${where}.idmap" (g.idmap == [ ]) "is lxc-only but kind is \"vm\"")
       (check "${where}.lxcExtraConf" (g.lxcExtraConf == null) "is lxc-only but kind is \"vm\"")
       (check "${where}.devicePassthrough" (g.devicePassthrough == [ ]) "is lxc-only but kind is \"vm\"")
     ]
@@ -1064,7 +1182,6 @@ let
     }:
     let
       roots = length (filter (x: x.role == "root") g.disks);
-      siteStorage = if cfg.sites ? ${site} then attrValues cfg.sites.${site}.storage else [ ];
       vmIfaces = filter (x: x != null) (map (x: x.interface) g.disks);
       dupIfaces = lib.unique (filter (x: lib.count (y: y == x) vmIfaces > 1) vmIfaces);
       needContent = if isLxc then "rootdir" else "images";
@@ -1079,7 +1196,6 @@ let
         let
           w = "${where}.disks[${toString i}]";
           ds = diskDs k x;
-          st = lib.findFirst (s: s.id == ds) null siteStorage;
         in
         optional isLxc (check "${w}.role" (x.role != "data") "role \"data\" is vm-only; an lxc uses \"mount\"")
         ++ optional (!isLxc) (check "${w}.role" (x.role != "mount") "role \"mount\" is lxc-only; a vm uses \"data\"")
@@ -1102,28 +1218,57 @@ let
         ++ map (f: check "${w}.${f}" (x.${f} == null) "is ${otherKindOf isLxc}-only but kind is \"${g.kind}\"") (
           if isLxc then vmOnlyDiskFields else lxcOnlyDiskFields
         )
-        ++ [
-          (check "${w}.datastore" (ds != null) "no datastore (set it, or guestDefaults.defaultDatastore)")
-        ]
-        ++ optionals (ds != null) (
-          [
-            (h.refAssertion {
-              where = "${w}.datastore";
-              kind = "storage";
-              ids = ids.storage;
-            } ds)
-          ]
-          ++ optional (elem ds ids.storage) (
-            check "${w}.datastore" (st != null) "storage \"${ds}\" is not a storage of site \"${site}\" (the site of node ${g.on})"
-          )
-          ++ optional (st != null && st.nodes != [ ]) (
-            check "${w}.datastore" (elem g.on st.nodes) "storage \"${ds}\" is not available on node ${g.on} (its nodes: ${toString st.nodes})"
-          )
-          ++ optional (st != null) (
-            check "${w}.datastore" (elem needContent st.content) "storage \"${ds}\" does not hold content \"${needContent}\""
-          )
-        )
+        ++ datastoreAssertions {
+          inherit
+            w
+            ds
+            g
+            site
+            needContent
+            ;
+        }
       ) g.disks
+    )
+    ++ optionals (!isLxc && (k.vm.efiDisk or null) != null) (datastoreAssertions {
+      w = "${where}.vm.efiDisk";
+      ds = diskDs k k.vm.efiDisk;
+      inherit g site needContent;
+    });
+
+  # A datastore of a disk: set, a storage of the node's site, available on the
+  # node, holding the content the kind needs.
+  datastoreAssertions =
+    {
+      w,
+      ds,
+      g,
+      site,
+      needContent,
+    }:
+    let
+      siteStorage = if cfg.sites ? ${site} then attrValues cfg.sites.${site}.storage else [ ];
+      st = lib.findFirst (s: s.id == ds) null siteStorage;
+    in
+    [
+      (check "${w}.datastore" (ds != null) "no datastore (set it, or guestDefaults.defaultDatastore)")
+    ]
+    ++ optionals (ds != null) (
+      [
+        (h.refAssertion {
+          where = "${w}.datastore";
+          kind = "storage";
+          ids = ids.storage;
+        } ds)
+      ]
+      ++ optional (elem ds ids.storage) (
+        check "${w}.datastore" (st != null) "storage \"${ds}\" is not a storage of site \"${site}\" (the site of node ${g.on})"
+      )
+      ++ optional (st != null && st.nodes != [ ]) (
+        check "${w}.datastore" (elem g.on st.nodes) "storage \"${ds}\" is not available on node ${g.on} (its nodes: ${toString st.nodes})"
+      )
+      ++ optional (st != null) (
+        check "${w}.datastore" (elem needContent st.content) "storage \"${ds}\" does not hold content \"${needContent}\""
+      )
     );
   otherKindOf = isLxc: if isLxc then "vm" else "lxc";
 
@@ -1279,7 +1424,10 @@ let
       g,
     }:
     let
-      parts = lib.splitString "/" (if g.effectivePool == null then "" else g.effectivePool);
+      # effectivePool, or the estate's placement.pool for a guest that is in
+      # no pool (pool = "none"): leaving the pool does not leave the grant.
+      gp = (effective estate g).grantPool;
+      parts = lib.splitString "/" (if gp == null then "" else gp);
       own = builtins.length parts == 3 && builtins.head parts == estate;
       pool =
         if own then
@@ -1287,13 +1435,13 @@ let
         else
           null;
     in
-    optional (g.effectivePool != null) (
-      check "${where}.pool" own "pool \"${g.effectivePool}\" is not a pool of estate \"${estate}\""
+    optional (gp != null) (
+      check "${where}.pool" own "pool \"${gp}\" is not a pool of estate \"${estate}\""
     )
     ++ optionals (pool != null) (
       [
         (check "${where}.vmid" (inRanges pool.vmid g.vmid)
-          "vmid ${toString g.vmid} is outside the ranges granted to pool ${g.effectivePool} (${showRanges pool.vmid})"
+          "vmid ${toString g.vmid} is outside the ranges granted to pool ${gp} (${showRanges pool.vmid})"
         )
       ]
       ++ lib.concatLists (
@@ -1301,7 +1449,7 @@ let
           net: p:
           optional (g.ipv4 ? ${net}) (
             check "${where}.networkInterfaces" (inRanges p.hosts (lib.toInt (lib.last (lib.splitString "." g.ipv4.${net}))))
-              "address ${g.ipv4.${net}} on \"${net}\" is outside the host ranges granted to pool ${g.effectivePool} (${showRanges p.hosts})"
+              "address ${g.ipv4.${net}} on \"${net}\" is outside the host ranges granted to pool ${gp} (${showRanges p.hosts})"
           )
         ) pool.networks
       )
@@ -1328,7 +1476,7 @@ let
         where = "${w}.pool";
         kind = "pool";
         ids = ids.pool;
-      } gd.pool
+      } (if gd.pool == "none" then null else gd.pool)
       ++ h.optionalRefAssertions {
         where = "${w}.defaultDatastore";
         kind = "storage";
@@ -1470,7 +1618,30 @@ in
           repeatable blocks are lists (network_interface, mount_point,
           ip_config, vm disk, hostpci, ...); null leaves and empty blocks are
           dropped. lifecycle: prevent_destroy / ignore_changes (Terraform
-          meta-arguments). companions.lxc_extra_conf: raw lxc.conf lines.
+          meta-arguments; ignore_changes also holds what the kit ignores by
+          itself: clone on a guest that declares one, description on a
+          container with lxcExtraConf). companions.lxc_extra_conf: raw
+          lxc.conf lines.
+        '';
+      };
+      lxcExtraConfIdmap = mkOption {
+        type = types.attrsOf (types.listOf types.str);
+        readOnly = true;
+        default = builtins.listToAttrs (
+          concatMap (
+            { g, ... }:
+            optional (idmapLinesOf g != [ ]) {
+              name = g.id;
+              value = idmapLinesOf g;
+            }
+          ) allGuests
+        );
+        description = ''
+          Derived, read-only: per guest id, the lxc.idmap lines its
+          lxcExtraConf carries. They are not rendered as the provider's idmap,
+          which reads them from the live guest all the same: such a guest
+          plans an idmap removal (the lines deleted from the conf file over
+          ssh, the container rebooted). Declare them as `idmap` instead.
         '';
       };
       guestOptionPaths = mkOption {
