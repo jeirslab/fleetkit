@@ -241,6 +241,77 @@ let
       allow_squash_merge = r.merge.squash;
       allow_rebase_merge = r.merge.rebase;
       delete_branch_on_merge = r.merge.deleteBranchOnMerge;
+    }
+    // repoSettings r
+    // lib.optionalAttrs (r.template.includeAllBranches or false) {
+      # The provider reads a template back without include_all_branches, so a
+      # declared true would differ from state on every plan after the first.
+      lifecycle = {
+        prevent_destroy = true;
+        ignore_changes = [ "template[0].include_all_branches" ];
+      };
+    };
+
+  # The optional repository settings: each is rendered only when the estate
+  # sets it (null = the argument is left out). The options live in
+  # modules/repos.nix and are read with `or null`, for a caller that passes a
+  # fleet without them.
+  set = v: v != null;
+  repoSettings =
+    r:
+    let
+      o = n: r.${n} or null;
+      # { <argument> = <option>; }: the plain values (booleans and enums).
+      plain = lib.filterAttrs (_: set) {
+        is_template = o "isTemplate";
+        vulnerability_alerts = o "vulnerabilityAlerts";
+        has_discussions = o "hasDiscussions";
+        allow_auto_merge = o "allowAutoMerge";
+        allow_update_branch = o "allowUpdateBranch";
+        web_commit_signoff_required = o "webCommitSignoffRequired";
+        squash_merge_commit_title = o "squashMergeCommitTitle";
+        squash_merge_commit_message = o "squashMergeCommitMessage";
+        merge_commit_title = o "mergeCommitTitle";
+        merge_commit_message = o "mergeCommitMessage";
+      };
+      template = o "template";
+      pages = o "pages";
+      need =
+        what: v:
+        if set v && v != "" then
+          tfText v
+        else
+          throw "${where}: a repository's ${what} is required";
+    in
+    plain
+    // lib.optionalAttrs (set (o "homepageUrl")) { homepage_url = tfText r.homepageUrl; }
+    // lib.optionalAttrs (set (o "topics")) { topics = map tfText r.topics; }
+    // lib.optionalAttrs (set template) {
+      template = [
+        {
+          owner = need "template.owner" (template.owner or null);
+          repository = need "template.repository" (template.repository or null);
+          include_all_branches = template.includeAllBranches or false;
+        }
+      ];
+    }
+    // lib.optionalAttrs (set pages) {
+      pages = [
+        (
+          lib.optionalAttrs (set (pages.buildType or null)) { build_type = pages.buildType; }
+          // lib.optionalAttrs (set (pages.cname or null)) { cname = tfText pages.cname; }
+          // lib.optionalAttrs (set (pages.source or null)) {
+            source = [
+              (
+                {
+                  branch = need "pages.source.branch" (pages.source.branch or null);
+                }
+                // lib.optionalAttrs (set (pages.source.path or null)) { path = tfText pages.source.path; }
+              )
+            ];
+          }
+        )
+      ];
     };
 
   withDefaultBranch = lib.filterAttrs (_: r: r.defaultBranch != null) repos;
@@ -301,6 +372,7 @@ let
       name = t;
     }
     // lib.optionalAttrs (team ? privacy) { inherit (team) privacy; }
+    // lib.optionalAttrs (team ? description) { description = tfText team.description; }
   ) teams;
   teamMembers = namedAttrs "teams" (t: team: {
     team_id = ref "github_team.${tfName t}.id";
@@ -460,7 +532,11 @@ let
     github_team_repository = teamRepos;
   }
   // lib.optionalAttrs (g ? organization) {
-    github_organization_settings.org = snakeKeys g.organization;
+    # Text the estate supplies (name, description, company, blog, email,
+    # location, ...) is escaped like any other; see tfText.
+    github_organization_settings.org = snakeKeys (
+      lib.mapAttrs (_: v: if builtins.isString v then tfText v else v) g.organization
+    );
   }
   // lib.optionalAttrs (actionsPermissions != { }) {
     github_actions_organization_permissions = actionsPermissions;

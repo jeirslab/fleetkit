@@ -49,6 +49,114 @@ let
               };
             }
           );
+          homepageUrl = nullable types.str // {
+            description = "github_repository.homepage_url. null = not rendered.";
+          };
+          topics = nullable (types.listOf types.str) // {
+            description = "github_repository.topics: each is lowercase letters, digits and hyphens, at most 50 characters, not starting with a hyphen. null = not rendered.";
+          };
+          isTemplate = nullable types.bool // {
+            description = "github_repository.is_template: the repository is a template repository. null = not rendered.";
+          };
+          template = nullable (
+            types.submodule {
+              options = {
+                owner = nullable types.str // {
+                  description = "github_repository.template.owner: the account that owns the template repository. Required.";
+                };
+                repository = nullable types.str // {
+                  description = "github_repository.template.repository: the template repository's name. Required.";
+                };
+                includeAllBranches = mkOption {
+                  type = types.bool;
+                  default = false;
+                  description = "github_repository.template.include_all_branches. Only read when the repository is created.";
+                };
+              };
+            }
+          ) // {
+            description = "github_repository.template: the template repository this one was created from. null = not rendered; see docs/github.md before leaving it out of an adopted repository.";
+          };
+          pages = nullable (
+            types.submodule {
+              options = {
+                buildType = nullable (
+                  types.enum [
+                    "legacy"
+                    "workflow"
+                  ]
+                ) // {
+                  description = "github_repository.pages.build_type; null = the provider's default (legacy).";
+                };
+                source = nullable (
+                  types.submodule {
+                    options = {
+                      branch = nullable types.str // {
+                        description = "github_repository.pages.source.branch. Required.";
+                      };
+                      path = nullable types.str // {
+                        description = "github_repository.pages.source.path; null = the provider's default (/).";
+                      };
+                    };
+                  }
+                );
+                cname = nullable types.str // {
+                  description = "github_repository.pages.cname: the custom domain.";
+                };
+              };
+            }
+          ) // {
+            description = "github_repository.pages: the GitHub Pages site. null = not rendered.";
+          };
+          vulnerabilityAlerts = nullable types.bool // {
+            description = "github_repository.vulnerability_alerts (Dependabot alerts). null = not rendered.";
+          };
+          hasDiscussions = nullable types.bool // {
+            description = "github_repository.has_discussions. null = not rendered.";
+          };
+          allowAutoMerge = nullable types.bool // {
+            description = "github_repository.allow_auto_merge. null = not rendered.";
+          };
+          allowUpdateBranch = nullable types.bool // {
+            description = "github_repository.allow_update_branch. null = not rendered.";
+          };
+          webCommitSignoffRequired = nullable types.bool // {
+            description = "github_repository.web_commit_signoff_required. null = not rendered.";
+          };
+          squashMergeCommitTitle = nullable (
+            types.enum [
+              "PR_TITLE"
+              "COMMIT_OR_PR_TITLE"
+            ]
+          ) // {
+            description = "github_repository.squash_merge_commit_title. null = not rendered.";
+          };
+          squashMergeCommitMessage = nullable (
+            types.enum [
+              "PR_BODY"
+              "COMMIT_MESSAGES"
+              "BLANK"
+            ]
+          ) // {
+            description = "github_repository.squash_merge_commit_message. null = not rendered.";
+          };
+          mergeCommitTitle = nullable (
+            types.enum [
+              "PR_TITLE"
+              "MERGE_MESSAGE"
+            ]
+          ) // {
+            description = "github_repository.merge_commit_title. null = not rendered.";
+          };
+          mergeCommitMessage = nullable (
+            types.enum [
+              "PR_BODY"
+              "PR_TITLE"
+              "BLANK"
+            ]
+          ) // {
+            description = "github_repository.merge_commit_message. null = not rendered.";
+          };
           archiveOnDestroy = mkOption {
             type = types.nullOr types.bool;
             default = null;
@@ -252,7 +360,26 @@ let
           let
             w = p: "fleet.repos.${estate}.${n}.${p}";
           in
-          lib.concatLists (
+          lib.optionals (r.template != null) (
+            map
+              (f: {
+                assertion = r.template.${f} != null && r.template.${f} != "";
+                message = "${w "template.${f}"}: a template needs an owner and a repository";
+              })
+              [
+                "owner"
+                "repository"
+              ]
+          )
+          ++ lib.optional (r.pages != null && r.pages.source != null) {
+            assertion = r.pages.source.branch != null && r.pages.source.branch != "";
+            message = "${w "pages.source.branch"}: a pages source needs a branch";
+          }
+          ++ map (t: {
+            assertion = builtins.match "[a-z0-9][a-z0-9-]{0,49}" t != null;
+            message = "${w "topics"}: \"${t}\" is not a valid topic (lowercase letters, digits and hyphens, at most 50 characters, not starting with a hyphen)";
+          }) (if r.topics == null then [ ] else r.topics)
+          ++ lib.concatLists (
             lib.mapAttrsToList (
               s: sv:
               [

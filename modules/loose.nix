@@ -95,6 +95,35 @@ let
           ]
         else
           [ ];
+      # github_organization_settings arguments beyond the first set: profile
+      # text and member privileges, each checked for its type when present.
+      orgText = [
+        "blog"
+        "company"
+        "description"
+        "email"
+        "location"
+        "name"
+        "twitterUsername"
+      ];
+      orgBool = [
+        "advancedSecurityEnabledForNewRepositories"
+        "dependabotSecurityUpdatesEnabledForNewRepositories"
+        "membersCanCreateInternalRepositories"
+        "membersCanCreatePages"
+        "membersCanCreatePrivatePages"
+        "membersCanCreatePublicPages"
+        "membersCanForkPrivateRepositories"
+      ];
+      # The named leaves of a block, when present, satisfy `ok`.
+      typed =
+        where: what: ok: names: attrs:
+        lib.optionals (builtins.isAttrs attrs) (
+          map (n: {
+            assertion = ok attrs.${n};
+            message = "${where}.${n}: expected ${what}";
+          }) (lib.filter (n: attrs ? ${n}) names)
+        );
       plan = g.plan or "free";
       plans = [
         "free"
@@ -132,20 +161,31 @@ let
     ++ keysOk (w "auth") [ "appIdRef" "installationIdRef" "kind" "pemRef" "tokenRef" ] (g.auth or { })
     ++ keysOk (w "hostAccess") [ "method" "readOnly" ] (g.hostAccess or { })
     ++ keysOk (w "members") [ "admin" "member" "outside" ] members
-    ++ keysOk (w "organization") [
-      "billingEmail"
-      "defaultRepositoryPermission"
-      "dependabotAlertsEnabledForNewRepositories"
-      "dependencyGraphEnabledForNewRepositories"
-      "hasOrganizationProjects"
-      "hasRepositoryProjects"
-      "membersCanCreatePrivateRepositories"
-      "membersCanCreatePublicRepositories"
-      "membersCanCreateRepositories"
-      "secretScanningEnabledForNewRepositories"
-      "secretScanningPushProtectionEnabledForNewRepositories"
-      "webCommitSignoffRequired"
-    ] (g.organization or { })
+    ++ keysOk (w "organization") (
+      [
+        "billingEmail"
+        "defaultRepositoryPermission"
+        "dependabotAlertsEnabledForNewRepositories"
+        "dependencyGraphEnabledForNewRepositories"
+        "hasOrganizationProjects"
+        "hasRepositoryProjects"
+        "membersCanCreatePrivateRepositories"
+        "membersCanCreatePublicRepositories"
+        "membersCanCreateRepositories"
+        "secretScanningEnabledForNewRepositories"
+        "secretScanningPushProtectionEnabledForNewRepositories"
+        "webCommitSignoffRequired"
+      ]
+      ++ orgText
+      ++ orgBool
+    ) (g.organization or { })
+    ++ typed (w "organization") "a string" builtins.isString orgText (g.organization or { })
+    ++ typed (w "organization") "true or false" builtins.isBool orgBool (g.organization or { })
+    ++ lib.concatLists (
+      lib.mapAttrsToList (
+        t: typed (w "teams.${t}") "a string" builtins.isString [ "description" ]
+      ) teams
+    )
     ++ keysOk (w "actions") [
       "allowedActions"
       "enabledRepositories"
@@ -161,7 +201,7 @@ let
     ++ lib.concatLists (
       lib.mapAttrsToList (
         t: team:
-        keysOk (w "teams.${t}") [ "members" "privacy" "repos" ] team
+        keysOk (w "teams.${t}") [ "description" "members" "privacy" "repos" ] team
         ++ keysOkEach (w "teams.${t}.repos") [ "repo" "permission" ] (team.repos or [ ])
       ) teams
     )
