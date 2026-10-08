@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+"""deploy-key: make the SSH identity a deploy server (or any other automation)
+logs in to a fleet's hosts with, and keep its private half in a sops file.
+
+    deploy-key create --name NAME --sops-file FILE --key-path PATH
+                      [--estate E]... [--region R]... [--role ROLE]
+                      [--comment TEXT] [--rotate]
+    deploy-key public --sops-file FILE --key-path PATH
+
+`create` generates an ed25519 key pair, stores the private key in FILE under
+PATH (`a/b/c` or `a.b.c`) with `sops set`, reads it back and checks that it
+is the key it made, and prints the public key and the lines an estate adds to
+its model: a service principal holding the public key, and a grant of a role
+to it. `--estate` and `--region` narrow the grant (fleet.operators.grants
+`where`); with neither it applies everywhere the model reaches. One key per
+scope: a key for one estate, one site's region, or all of them is this
+command run with another name and another scope.
+
+The private key is never printed, never an argument and never in the
+environment of a command: it exists in a 0700 directory on a memory file
+system for the moment ssh-keygen needs, goes to sops on stdin, and the
+directory is removed. An existing key at PATH is not replaced without
+`--rotate`. `public` prints the public key of what is stored, derived from
+the private half.
+
+Needs `sops` and `ssh-keygen`; standard-library Python otherwise.
+"""
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+NAME = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+PUBLIC = re.compile(r"^ssh-ed25519 [A-Za-z0-9+/=]+$")
+
+
+def die(msg, code=2):
+    print(f"deploy-key: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def run(argv, stdin=None):
+    try:
+        p = subprocess.run(argv, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except FileNotFoundError:
+        die(f"{argv[0]}: command not found")
+    return p.returncode, p.stdout, p.stderr.decode("utf-8", "replace")
+
+
+def scrub(text, private=None):
+    """An error text that cannot carry key material."""
+    if private:
+        text = text.replace(private, "<private key>")
+    text = re.sub(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(-----END [A-Z ]*PRIVATE KEY-----|\Z)", "<private key>",
+                  text, flags=re.S)
+    return text.strip()[-600:]
+
+
+def sops_path(key_path):
+    parts = [p for p in re.split(r"[./]", key_path) if p]
+    if not parts or any(not re.match(r"^[A-Za-z0-9_-]+$", p) for p in parts):
+        die(f"--key-path {key_path!r}: use names of letters, digits, _ and -, separated by / or .")
+    return "".join(f'["{p}"]' for p in parts), "/".join(parts)
+
+
+def preflight(a):
+    if not os.path.isfile(a.sops_file):
+        die(f"sops file {a.sops_file} does not exist; create it with sops first (the tool does not create one, "
+            "so that the right creation rule applies to it)")
+    if not os.access(a.sops_file, os.R_OK | os.W_OK):
+        die(f"sops file {a.sops_file} is not readable and writable by you")
+    rc, _, err = run([a.sops, "decrypt", a.sops_file])
+    if rc != 0:
+        die(f"`sops decrypt {a.sops_file}` failed (exit {rc}): {scrub(err)}\n"
+            "  The file must be sops-encrypted and your key one of its recipients. Nothing was made.")
+
+
+def stored(a, path):
+    """The value at the key path, or None when there is none."""
+    rc, out, _ = run([a.sops, "decrypt", "--extract", path, a.sops_file])
+    return out.decode("utf-8", "replace") if rc == 0 else None
+
+
+def public_of(a, private, strict=True):
+    """The public key of a private key (None, when not strict, if it is not one). The key is
+    in a 0600 file of a scratch directory for the call, never an argument."""
+    workdir = scratch()
+    try:
+        f = os.path.join(workdir, "k")
+        fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as h:
+            h.write(private if private.endswith("\n") else private + "\n")
+        rc, out, err = run([a.ssh_keygen, "-y", "-f", f])
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+    if rc != 0:
+        if not strict:
+            return None
+        die(f"what is stored is not a private key ssh-keygen reads: {scrub(err, private)}", 1)
+    return " ".join(out.decode().split()[:2])
+
+
+def scratch():
+    """A 0700 directory, on a memory file system where there is one."""
+    base = next((d for d in ("/dev/shm", os.environ.get("XDG_RUNTIME_DIR") or "") if d and os.path.isdir(d)
+                 and os.access(d, os.W_OK | os.X_OK)), None)
+    return tempfile.mkdtemp(prefix="deploy-key-", dir=base)
+
+
+def snippet(a, public, ref_path):
+    where = []
+    if a.region:
+        where.append("regions = [ %s ];" % " ".join(json.dumps(r) for r in a.region))
+    if a.estate:
+        where.append("estates = [ %s ];" % " ".join(json.dumps(e) for e in a.estate))
+    scope = (" where = { %s };" % " ".join(where)) if where else ""
+    return f"""\
+# the principal (fleet.operators.principals)
+{a.name} = {{
+  kind = "service";
+  keys.ssh.main = {{
+    public = {json.dumps(public + " " + a.comment)};
+    # privateRef = <the estate's sops ref for {a.sops_file} : {ref_path}>;
+  }};
+}};
+
+# the grant (fleet.operators.grants){"" if scope else "  -- everywhere the model reaches"}
+{a.name} = {{ principals = [ principals.{a.name}.id ]; role = {json.dumps(a.role)};{scope} }};
+"""
+
+
+def create(a):
+    if not NAME.match(a.name):
+        die(f"--name {a.name!r}: lower-case letters, digits and -, as a principal's name")
+    a.comment = a.comment or f"{a.name} (deploy key)"
+    if "\n" in a.comment or "-----" in a.comment:
+        die("--comment: one line, no key material")
+    path, ref_path = sops_path(a.key_path)
+    preflight(a)
+    old = stored(a, path)
+    if old is not None and not a.rotate:
+        die(f"{a.sops_file} already has a value at {ref_path}; `deploy-key public` shows its public key, "
+            "--rotate replaces it (the old key stops working once the hosts are deployed with the new one)")
+    workdir = scratch()
+    try:
+        f = os.path.join(workdir, "id")
+        rc, _, err = run([a.ssh_keygen, "-q", "-t", "ed25519", "-N", "", "-C", a.comment, "-f", f])
+        if rc != 0:
+            die(f"ssh-keygen failed (exit {rc}): {scrub(err)}", 1)
+        private = open(f).read()
+        public = " ".join(open(f + ".pub").read().split()[:2])
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+    if not PUBLIC.match(public):
+        die("ssh-keygen did not give an ed25519 public key", 1)
+    rc, _, err = run([a.sops, "set", "--value-stdin", a.sops_file, path], stdin=json.dumps(private).encode())
+    if rc != 0:
+        die(f"`sops set` failed (exit {rc}): {scrub(err, private)}\n  The key was not stored and is gone; "
+            "nothing uses it. Run the command again.", 1)
+    back = stored(a, path)
+    if back is None or public_of(a, back, strict=False) != public:
+        die(f"stored the key, but what reads back from {a.sops_file} at {ref_path} is not it. "
+            "Do not use the public key of this run; look at the file.", 1)
+    print(f"deploy-key: stored the private key in {a.sops_file} at {ref_path}"
+          + (" (replaced the one that was there)" if old is not None else ""), file=sys.stderr)
+    print(public + " " + a.comment)
+    print()
+    print(snippet(a, public, ref_path), end="")
+
+
+def public(a):
+    path, ref_path = sops_path(a.key_path)
+    preflight(a)
+    value = stored(a, path)
+    if value is None:
+        die(f"{a.sops_file} has no value at {ref_path}", 1)
+    print(public_of(a, value))
+
+
+def main():
+    p = argparse.ArgumentParser(prog="deploy-key", description=__doc__.split("\n\n")[0])
+    sub = p.add_subparsers(dest="cmd", required=True)
+    for name in ("create", "public"):
+        c = sub.add_parser(name)
+        c.add_argument("--sops-file", required=True, help="existing sops file; your key must decrypt it")
+        c.add_argument("--key-path", required=True, help="where in the file, e.g. deploy_ssh_key or deploy/ssh_key")
+        c.add_argument("--sops", default="sops", help="sops command")
+        c.add_argument("--ssh-keygen", default="ssh-keygen", help="ssh-keygen command")
+        if name == "create":
+            c.add_argument("--name", required=True, help="the principal's name, e.g. fleet-deploy")
+            c.add_argument("--estate", action="append", default=[], help="grant only in this estate (repeat)")
+            c.add_argument("--region", action="append", default=[], help="grant only in this site region (repeat)")
+            c.add_argument("--role", default="deploy", help="the role granted (default: deploy)")
+            c.add_argument("--comment", default="", help="the public key's comment")
+            c.add_argument("--rotate", action="store_true", help="replace a key already stored at the path")
+    a = p.parse_args()
+    {"create": create, "public": public}[a.cmd](a)
+
+
+if __name__ == "__main__":
+    main()
