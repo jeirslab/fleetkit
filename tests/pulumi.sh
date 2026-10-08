@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Experimental. Renders lib.mkPulumi for the estates of tests/fixtures/tf-mini
+# ("gaps" among them: every option added for adopting existing guests)
 # and lib.mkGithubPulumi for gh-mini, and checks each against its Terraform
 # render and the pinned Pulumi schemas (tests/pulumi.py); that the estates
 # the internal stage refuses (split, offsite) are refused by mkPulumi with a
@@ -33,7 +34,7 @@ pair() { # tfFn pulumiFn fixture estate
     status=fail
   fi
 }
-for estate in mini tenant bare; do
+for estate in mini tenant bare gaps; do
   pair internal_guests mkPulumi tf-mini "$estate"
 done
 pair internal_github mkGithubPulumi gh-mini gh
@@ -109,7 +110,7 @@ stacks() { # name case types modules-of-the-model fromModel-args...
   fi
 }
 stacks tf "" "" "$ROOT/tests/fixtures/tf-mini" \
-  'estate = "mini";' 'estate = "tenant";' 'estate = "bare";'
+  'estate = "mini";' 'estate = "tenant";' 'estate = "bare";' 'estate = "gaps";'
 stacks gh "" "" "$ROOT/tests/fixtures/gh-mini" 'estate = "gh"; github = true;'
 stacks gh-adopt "+gh-adopt" "$GH_TYPES" "$ROOT/tests/fixtures/gh-mini $ROOT/tests/fixtures/gh-adopt" \
   'estate = "gh"; github = true;'

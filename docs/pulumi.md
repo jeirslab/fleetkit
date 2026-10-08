@@ -585,6 +585,12 @@ know fails evaluation.
   store file names `import` or `adopt`. Eight
   hand mutations (shape flips, a typo, a literal token, a lost protect, a
   missing resource, a wrong pin, a dangling reference) are each caught.
+  The estate `gaps` (every option for adopting existing guests) is rendered
+  both ways too: `idmap` becomes the list `idmaps`, `efi_disk` the object
+  `efiDisk`, `console` is absent, and each `lifecycle.ignore_changes` must be
+  an `options.ignoreChanges` of the same length whose paths start at an input
+  property (`clone`, `description`, `operatingSystem`); `outputs` must be the
+  render's locals; a string, number or boolean of the wrong type fails.
 - `tests/pulumi_preview.sh` (networked, not a gate): `pulumi install` and
   `pulumi preview` of the mini estate with a file backend and a throwaway age
   key. It plans all four resources plus the provider as creates, decrypts the
@@ -632,6 +638,18 @@ a private repository this environment could not fetch).
   real container the first `up` imported it and updated it in place (a
   reboot), and the next, with `import` still there, destroyed it (issue #61);
   the runner now refuses such a program. Terraform state is not converted.
+- **No lxc-conf companion.** The Pulumi path renders nothing for
+  `lxcExtraConf`: there is no `terraform_data` and no provisioner (toPulumi
+  refuses provisioners). An existing guest keeps its raw lines, which the
+  provider neither reads nor writes (`lxc.idmap` excepted: that is the typed
+  `idmap`). A guest created from scratch by Pulumi has none of them until they
+  are written into `/etc/pve/lxc/<vmid>.conf` by hand. The guests concerned are
+  the stack's `outputs.fleet_unrendered_companions`; their `description` is
+  under `ignoreChanges`. See `guest-model.md`, "Adopting existing guests".
+- **`clone` on an adopted guest.** An import records no `clone`, and every
+  member of the block forces a replacement, so a guest that declares
+  `source.clone` carries `clone` in `options.ignoreChanges`: used at create,
+  not compared afterwards.
 - **Ordering, both engines.** A guest's `pool_id` is a plain string, not a
   reference to the pool resource, so neither engine orders the pool first on a
   fresh create. It is unchanged here, to keep the two renders equal.

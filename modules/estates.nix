@@ -92,6 +92,11 @@ let
             type = types.str;
             description = "Provider id.";
           };
+          comment = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            description = "The pool's comment (proxmox: pool comment). null = not rendered.";
+          };
           access = mkOption {
             type = types.listOf types.str;
             default = [ ];

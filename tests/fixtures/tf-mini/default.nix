@@ -3,7 +3,11 @@
 # guest with an lxc_extra_conf companion and one adopted guest, and its own
 # placement.tokenRef. Two more estates share the site's provider: "tenant"
 # (placement without a tokenRef, a pool and a guest) and "bare" (no placement,
-# one guest). "split" has guests on two sites and must not render; "offsite" has a placement on s1 and a guest on s2, and must not render. Generic
+# one guest). "gaps" (placement without a tokenRef) uses every option added for
+# adopting existing guests: a pool with a comment, a container with an idmap,
+# no console block and in no pool, a container with lxc_extra_conf (description
+# ignored), a VM with scsi hardware, an EFI disk, a cloud-init drive slot and a
+# clone source (clone ignored). "split" has guests on two sites and must not render; "offsite" has a placement on s1 and a guest on s2, and must not render. Generic
 # names only; nothing here is a real address.
 _: {
   fleet = {
@@ -159,6 +163,25 @@ _: {
         guestDefaults.defaultDatastore = "s1/local";
       };
 
+      gaps = {
+        owner = "Gaps";
+        placement = {
+          provider = "s1/proxmox";
+          pool = "gaps/proxmox/gpool";
+        };
+        pools.proxmox.gpool = {
+          provider = "s1/proxmox";
+          comment = "guests of the gaps estate";
+          vmid = [
+            {
+              from = 9500;
+              to = 9599;
+            }
+          ];
+        };
+        guestDefaults.defaultDatastore = "s1/local";
+      };
+
     };
     guests = {
       tenant.tbox = {
@@ -250,6 +273,126 @@ _: {
               role = "root";
               size = 8;
               datastore = "s2/local";
+            }
+          ];
+        };
+      };
+
+      gaps = {
+        # An unprivileged container with a custom id mapping, the provider's
+        # default console (no block) and in no pool.
+        mapped = {
+          vmid = 9501;
+          kind = "lxc";
+          on = "s1/n1";
+          pool = "none";
+          console.omit = true;
+          idmap = [
+            {
+              type = "uid";
+              containerId = 0;
+              hostId = 100000;
+              size = 1000;
+            }
+            {
+              type = "uid";
+              containerId = 1000;
+              hostId = 1000;
+              size = 1;
+            }
+            {
+              type = "uid";
+              containerId = 1001;
+              hostId = 101001;
+              size = 64535;
+            }
+            {
+              type = "gid";
+              containerId = 0;
+              hostId = 100000;
+              size = 1000;
+            }
+            {
+              type = "gid";
+              containerId = 1000;
+              hostId = 1000;
+              size = 1;
+            }
+            {
+              type = "gid";
+              containerId = 1001;
+              hostId = 101001;
+              size = 64535;
+            }
+          ];
+          networkInterfaces = [
+            {
+              network = "lan";
+              address = "192.0.2.71";
+            }
+          ];
+          disks = [
+            {
+              role = "root";
+              size = 8;
+            }
+          ];
+        };
+        # Raw lxc.conf lines: no companion is rendered, the description is
+        # ignored (beside what the guest ignores itself).
+        conf = {
+          vmid = 9502;
+          kind = "lxc";
+          on = "s1/n1";
+          description = "raw lines";
+          ignoreChanges = [ "operating_system" ];
+          lxcExtraConf = [ "lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file" ];
+          networkInterfaces = [
+            {
+              network = "lan";
+              address = "192.0.2.72";
+            }
+          ];
+          disks = [
+            {
+              role = "root";
+              size = 8;
+            }
+          ];
+        };
+        efi = {
+          vmid = 9503;
+          kind = "vm";
+          on = "s1/n1";
+          source.clone = {
+            vmid = 9000;
+            full = true;
+          };
+          vm = {
+            bios = "ovmf";
+            scsiHardware = "virtio-scsi-single";
+            efiDisk = {
+              fileFormat = "raw";
+              type = "4m";
+              preEnrolledKeys = true;
+            };
+            cloudInit = {
+              datastore = "s1/local";
+              interface = "ide2";
+              upgrade = true;
+            };
+          };
+          networkInterfaces = [
+            {
+              network = "lan";
+              address = "192.0.2.73";
+            }
+          ];
+          disks = [
+            {
+              role = "root";
+              size = 16;
+              interface = "scsi0";
             }
           ];
         };

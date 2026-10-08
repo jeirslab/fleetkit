@@ -30,7 +30,8 @@ estate is the first tenant; its declaration lives in
    Anything else fails evaluation, `mkForce` included.
 2. The grant (`modules/guests.nix`, `grantAssertions`): a guest's pool is a
    pool of its own estate, its vmid is inside the pool's vmid ranges and its
-   address inside the pool's host ranges.
+   address inside the pool's host ranges. A guest with `pool = "none"` (in no
+   pool) is held to the ranges of the estate's `placement.pool`.
 3. Everything the model already checked (references, collisions, secret refs
    per estate, storage on the node, ...), now across both repos.
 

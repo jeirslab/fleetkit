@@ -12,8 +12,10 @@
 # tokenRef when that is null, through data.sops_file.<file alias of the ref>
 # (<estate>_<alias> when the file is another estate's). The provider is
 # placement.provider, or the one site's provider the guests are on.
-# Companions (lxc_extra_conf) are not rendered yet; the guests that have any
-# are listed under locals.fleet_unrendered_companions.
+# Companions (lxc_extra_conf) are not rendered, here or in the Pulumi program
+# compiled from this: the raw lxc.conf lines of such a guest are applied by
+# nothing the kit renders. The guests that have any are listed under
+# locals.fleet_unrendered_companions (the Pulumi program's outputs).
 {
   lib,
   fleet,
@@ -111,7 +113,9 @@ let
     }
   ) { } (lib.attrNames managed);
 
-  poolResources = lib.mapAttrs (name: _: { pool_id = name; }) pools;
+  poolResources = lib.mapAttrs (
+    name: pool: { pool_id = name; } // lib.optionalAttrs (pool.comment != null) { inherit (pool) comment; }
+  ) pools;
 
   withCompanions = lib.attrNames (
     lib.filterAttrs (n: _: (views.${n}.companions or { }) != { }) guests
