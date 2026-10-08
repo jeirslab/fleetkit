@@ -47,6 +47,26 @@ Per stack: `estate` (what `fleetkit deploy <estate>` runs), `packages`,
 `Pulumi.yaml` in the store, by `builtins.toFile`), `secrets` (the sops
 files its invokes read), and `adoptIds` / `adoptUnresolved` (below).
 
+**Secret roots.** A stack's sops files (`secrets`, and its backend's) are
+looked up in the estate repo. An estate whose model includes a tenant (another
+repo, a flake input) declares the tenant's source as one more place to look:
+
+```nix
+# flake.nix
+pulumi = fleetkit.lib.pulumi.stacks {
+  fleet = config.fleet;
+  modules = [ ./pulumi.nix ];
+  secretRoots = [ inputs.xgcs ];         # every stack; a flake input, a path or a string
+};
+```
+
+The same list is the module option `secretRoots` (next to `stacks`), and
+`stacks.<name>.secretRoots` adds roots for one stack; all of them add up. A
+root is a directory: absolute (a flake input's store path), or relative to
+the estate repo. It is data beside the program (`pulumi.<stack>.secretRoots`):
+declaring one changes no program. The runner reads it with the stacks, from
+the checkout it runs ("Where sops files are looked up", below).
+
 **Types.** Every resource's `properties` are checked against the pinned Pulumi
 schema of its `type` (`lib/pulumi/types.nix`). Types are built only for the
 types a stack uses: a stack with a container, a VM and pools evaluates in about
@@ -483,9 +503,37 @@ On the command line SIGINT, SIGTERM and SIGHUP are that cancel (`deploy`,
 it stands, and prints what was done.
 
 `PULUMI_CONFIG_PASSPHRASE(_FILE)` encrypts Pulumi's secrets in state;
-`SOPS_AGE_KEY_FILE` decrypts the model's; `FLEETKIT_SECRET_ROOTS` adds
-directories (a tenant's source) where sops files are looked up. `pulumi-bin`,
-`colmena`, `sops` and `git` come with the package; `nix` is the host's.
+`SOPS_AGE_KEY_FILE` decrypts the model's. `pulumi-bin`, `colmena`, `sops` and
+`git` come with the package; `nix` is the host's.
+
+### Where sops files are looked up (`render.secret_roots`)
+
+A stack's sops files (those its invokes read, and its backend's `urlSecret` /
+`env`) are relative paths. Each is looked up, in this order, under:
+
+1. the estate repo: the working tree, or in GitOps mode the checkout of the
+   job's commit;
+2. the stack's `secretRoots`, as the estate's flake declares them ("Secret
+   roots", above). They come from the same `nix eval` of `<repo>#pulumi` as
+   the stack, so each job reads the roots of its own commit: a tenant's source
+   is a store path that changes with the estate repo's `flake.lock`, and
+   nothing is kept from one job to the next. Evaluating a flake input fetches
+   it, so its source is on disk by then;
+3. `FLEETKIT_SECRET_ROOTS` (colon-separated directories), from the runner's
+   environment: the same for every job, for what no flake declares.
+
+A declared root that is not a directory on the runner's host fails the render,
+before anything is planned, and the error names it:
+
+```
+secret root /nix/store/...-source (declared by the estate's flake: secretRoots) is not a directory on this host; ...
+```
+
+(a store path that is not a flake input's source, e.g. a derivation's output,
+is not built by the runner). Before `secretRoots`, a tenant's source could
+only be given as `FLEETKIT_SECRET_ROOTS=$(nix eval --raw .#tenants.xgcs)`: one
+value for the whole process, so a server (`fleetkit serve --repo`), whose jobs
+each run another commit, could not preview or deploy an estate with a tenant.
 
 ### HTTP API (`cli/fleetkit_cli/api.py`; OpenAPI at `/docs`)
 
@@ -728,7 +776,9 @@ The branch is the desired state, and the server deploys it on itself:
 - it keeps a bare mirror of the estate repo (`<state>/repo.git`) and runs each
   job from a checkout of one commit (`<state>/checkouts/<sha>`, a shared clone,
   detached; the last few are kept). Nix evaluates a clean tree at a known
-  revision, and the job records the sha;
+  revision, and the job records the sha. What depends on the commit is read
+  from that evaluation, the secret roots of a tenant included ("Where sops
+  files are looked up");
 - a push arrives by polling (`FLEETKIT_POLL` seconds) or by the GitHub webhook
   (`FLEETKIT_WEBHOOK_SECRET`); each estate in `FLEETKIT_DEPLOY_ON_PUSH` whose
   last submitted commit is not the head gets a job for the head. A commit is
@@ -925,7 +975,25 @@ put a TLS proxy in front of anything but loopback.
   all along. Thirty-two hand mutations of these fixes (each undoing one
   piece) are each caught by a test here, eleven of them also run against the
   real-engine tests.
-- `tests/pulumi_nix.sh` (gate): Pulumi.nix good and bad cases above.
+- `tests/pulumi_nix.sh` (gate): Pulumi.nix good and bad cases above;
+  `secretRoots` empty by default, the argument, the module option and a
+  stack's own adding up, and the program file the same store path with them.
+- Secret roots: `tests/pulumi_secret_roots.sh` (gate; real `nix`, path
+  inputs): an estate repo at three commits, a tenant flake input as
+  `secretRoots` at two of them, each checked out alone and evaluated with the
+  runner's own expression: each commit's root is its tenant's source, on disk,
+  with that tenant's file; the commit that declares none has none.
+  `cli/tests/test_secret_roots.py` (fake engine; one case with the real
+  engine, offline): the engine's project dir links the file under the declared
+  root; the order checkout, declared, environment; `FLEETKIT_SECRET_ROOTS`
+  still added; a relative root; a root that is not a directory refused by name
+  with no engine call, also for a stack that reads no file; a backend's
+  secret found under a declared root by a deploy and by an adoption (the
+  estate's other stacks too); GitOps jobs at commits A, B, A and one that
+  declares none, each with its own commit's roots and one evaluation per job.
+  Eighteen hand mutations (each undoing one piece, in the runner and in the
+  Nix) are each caught. Not run: a tenant's real sops files with real `sops`,
+  and a server deploying a real estate with a tenant.
 - `tests/deploy_e2e.sh` (networked, not a gate): a throwaway estate git repo
   whose pulumi.nix imports the model's stack and adds one composed from it;
   real pulumi previews of both, with state in PostgreSQL and garage

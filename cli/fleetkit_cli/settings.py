@@ -50,16 +50,14 @@ class Settings:
     # A fallback for stacks whose Pulumi.nix names no backend.
     backend_url: str | None = None
     stack: str = "main"
+    # FLEETKIT_SECRET_ROOTS. Where a stack's sops files are looked up is
+    # render.secret_roots: the checkout, what its flake declares, then these.
     extra_secret_roots: list[Path] = field(default_factory=list)
     colmena: str = "colmena"
     nix: str = "nix"
     sops: str = "sops"
     pulumi_home: Path | None = None
     git: GitSettings | None = None
-
-    @property
-    def secret_roots(self) -> list[Path]:
-        return ([self.flake] if self.flake else []) + self.extra_secret_roots
 
     def at(self, flake: Path) -> "Settings":
         """The same settings, on another checkout of the estate repo."""

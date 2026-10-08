@@ -223,7 +223,7 @@ class Estate:
                 if n not in self.sts:
                     self.sts[n] = st
                     self.projects[n] = render.render(self.s, n, st, self.ev, self.rundir)
-                    self.envs[n] = backends.env_for(self.s, n, st["backend"], self.ev)
+                    self.envs[n] = backends.env_for(self.s, n, st["backend"], self.ev, st)
             states = {}
             for n in self.sts:
                 self.ev.check()
@@ -380,7 +380,7 @@ def run(s: Settings, estate: str, ev: Emitter, stacks: list[str] | None = None,
     # here is written where a deploy reads, and no deploy writes here.
     with render.Run(s, "adopt") as rundir:
         projects = {n: render.render(s, n, st, ev, rundir) for n, st in sts.items()}
-        envs = {n: backends.env_for(s, n, st["backend"], ev) for n, st in sts.items()}
+        envs = {n: backends.env_for(s, n, st["backend"], ev, st) for n, st in sts.items()}
         # The program the engine runs: every guest protected (guard.protect).
         programs = {n: guard.load_program(projects[n].wd) for n in sts}
         known = {k for p in programs.values() for k in (p.get("resources") or {})}
