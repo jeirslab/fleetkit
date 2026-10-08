@@ -10,6 +10,8 @@ Exit 1 if any estate's job did not succeed.
 Environment (set by action.yml): FLEETKIT_API_URL, FLEETKIT_API_TOKEN,
 FLEETKIT_ESTATES, FLEETKIT_MODE (auto|preview|deploy), FLEETKIT_REV,
 FLEETKIT_GOAL, FLEETKIT_HIVE, FLEETKIT_STACKS, FLEETKIT_INFRA, FLEETKIT_NIXOS,
+FLEETKIT_ALLOW_REPLACE, FLEETKIT_ALLOW_DELETE, FLEETKIT_ALLOW_UPDATE (guests a
+deploy may replace, delete, update; the server refuses otherwise),
 FLEETKIT_TIMEOUT, FLEETKIT_COMMENT, GITHUB_TOKEN, and the runner's GITHUB_*.
 """
 from __future__ import annotations
@@ -138,6 +140,31 @@ def show(e: dict[str, Any]) -> None:
         print(f"[{e.get('stage')}] {e.get('kind')} {json.dumps(rest) if rest else ''}")
 
 
+def plan_lines(res: dict[str, Any], preview: bool) -> list[str]:
+    """Every resource that changes, by op, and what the server's guard refuses
+    (a failed, refused deploy carries the same lists in its result)."""
+    plan, refused = res.get("plan") or {}, res.get("refused") or {}
+    out: list[str] = []
+    for stack in sorted({*plan, *refused}):
+        changes, rs = plan.get(stack) or [], refused.get(stack) or []
+        if not changes and not rs:
+            continue
+        out.append(f"**`{stack}`**")
+        for c in changes:
+            bits = []
+            if c.get("diff"):
+                bits.append("changes " + ", ".join(c["diff"]))
+            if c.get("replaceReasons"):
+                bits.append("replaced because of " + ", ".join(c["replaceReasons"]))
+            out.append(f"- {c['op']}: `{c['key']}` (`{c['type']}`)" + (f" [{'; '.join(bits)}]" if bits else ""))
+        for r in rs:
+            word = "a deploy would refuse" if preview else "refused"
+            need = f"needs `{r['flag']}`" if r.get("flag") else r.get("why", "")
+            out.append(f"- ⛔ {word}: {r['op']} of `{r['key']}` (`{r['type']}`): {need}")
+        out.append("")
+    return out
+
+
 def report(estate: str, rec: dict[str, Any], kind: str, sha: str, url: str | None) -> str:
     ok = rec.get("state") == "succeeded"
     res = rec.get("result") or {}
@@ -150,6 +177,7 @@ def report(estate: str, rec: dict[str, Any], kind: str, sha: str, url: str | Non
             lines.append(f"| `{st}` | " + " | ".join(str(c.get(op, 0)) for op in OPS)
                          + f" | `{prog.rsplit('/', 1)[-1]}` |")
         lines.append("")
+    lines += plan_lines(res, kind == "preview")
     if res.get("nixos"):
         lines.append("NixOS: " + ("built" if res["nixos"] == "built" else f"colmena apply {res['nixos']}"))
     if rec.get("error"):
@@ -223,6 +251,10 @@ def main() -> int:
             body["hive"] = env("FLEETKIT_HIVE")
         if stacks:
             body["stacks"] = stacks
+        for op in ("replace", "delete", "update"):
+            keys = [k for k in re.split(r"[,\s]+", env(f"FLEETKIT_ALLOW_{op.upper()}")) if k]
+            if keys:
+                body[f"allow_{op}"] = keys
         print(f"::group::fleetkit {mode} {estate} at {sha[:12]}")
         job = srv.submit(body, deadline)
         print(f"job {job['id']}")

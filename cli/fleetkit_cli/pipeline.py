@@ -7,7 +7,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from . import backends, infra, nixos, render
+from . import backends, guard, infra, nixos, render
 from .events import Emitter
 from .settings import Settings
 
@@ -27,10 +27,18 @@ class DeployRequest(BaseModel):
     preview: bool = Field(default=False, description="pulumi preview and colmena build; nothing changes.")
     refresh: bool = Field(default=False, description="Refresh Pulumi state from the providers first.")
     targets: list[str] = Field(default_factory=list, description="Pulumi --target URNs.")
+    # The guard (guard.py): a deploy whose plan replaces, deletes or updates a
+    # guest is refused unless the guest is named here for that op.
+    allow_replace: list[str] = Field(
+        default_factory=list, description="Guests (resource keys) this deploy may replace: destroy and create anew.")
+    allow_delete: list[str] = Field(
+        default_factory=list, description="Guests (resource keys) this deploy may delete.")
+    allow_update: list[str] = Field(
+        default_factory=list, description="Guests (resource keys) this deploy may update in place (a reboot).")
 
 
 def run(s: Settings, req: DeployRequest, ev: Emitter) -> dict[str, Any]:
-    result: dict[str, Any] = {"infra": {}, "programs": {}, "nixos": None}
+    result: dict[str, Any] = {"infra": {}, "plan": {}, "refused": {}, "programs": {}, "nixos": None}
     if req.infra:
         stacks = render.stacks_of(s, req.estate, req.stacks)
         # Render everything, and resolve every backend, before changing
@@ -40,10 +48,26 @@ def run(s: Settings, req: DeployRequest, ev: Emitter) -> dict[str, Any]:
         envs = {n: backends.env_for(s, n, st["backend"], ev) for n, st in stacks.items()}
         # The store path of each program: exactly what this deploy ran.
         result["programs"] = {n: st["file"] for n, st in stacks.items()}
+        allow = guard.Allow(replace=req.allow_replace, delete=req.allow_delete, update=req.allow_update)
+        # Every stack is previewed, and every plan passes the guard, before
+        # any stack is applied: a refusal leaves all of them as they were.
         for n in stacks:
             ev.check()
-            result["infra"][n] = infra.run(s, workdirs[n], n, envs[n], ev, req.preview,
-                                           req.refresh, req.targets)
+            p = infra.plan(s, workdirs[n], n, envs[n], ev, req.preview, req.refresh, req.targets, allow)
+            result["infra"][n], result["plan"][n] = p["changes"], p["plan"]
+            if p["refused"]:
+                result["refused"][n] = p["refused"]
+        if not req.preview:
+            if result["refused"]:
+                raise guard.GuardError(guard.message(result["refused"]), result)
+            for n in stacks:
+                ev.check()
+                try:
+                    done = infra.apply(s, workdirs[n], n, envs[n], ev, req.refresh, req.targets, allow)
+                except guard.GuardError as e:
+                    e.result = e.result or result
+                    raise
+                result["infra"][n] = done["changes"]
     if req.nixos:
         # After infra: the hive is evaluated now, against what was provisioned.
         nixos.run(s, req.hive or req.estate, ev, req.goal, req.preview, req.on)

@@ -35,6 +35,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from . import guard
 from .github import GitHub, GitHubError
 from .jobs import BusyError, Job, JobManager
 from .pipeline import DeployRequest
@@ -124,7 +125,12 @@ def make_runner(s: Settings, repo: Repo, run: Any = None) -> Any:
             raise PermissionError(f"{sha[:12]} is not on {repo.g.branch}: only commits on the deploy "
                                   f"branch deploy (previews may be of any commit)")
         ev.emit("git", "checkout", rev=sha, branch=repo.g.branch)
-        return {"rev": sha, **run(s.at(repo.checkout(sha)), req, ev)}
+        try:
+            return {"rev": sha, **run(s.at(repo.checkout(sha)), req, ev)}
+        except guard.GuardError as e:
+            # A refused deploy: the failed job still carries its plan.
+            e.result = {"rev": sha, **(e.result or {})}
+            raise
 
     return runner
 
@@ -270,6 +276,10 @@ class GitOps:
         verb = "preview" if link["kind"] == "preview" else "deploy"
         changes = ((j.result or {}).get("infra") or {}) if ok else {}
         summary = ", ".join(f"{st}: {_ops(c)}" for st, c in changes.items()) or j.state
+        refused = [r for rs in ((j.result or {}).get("refused") or {}).values() for r in rs]
+        if refused:
+            names = ", ".join(f"{r['op']} {r['key']}" for r in refused)
+            summary = f"refused: {names}" if not ok else f"{summary}; a deploy would refuse: {names}"
         self._status(link["repo"], link["sha"], "success" if ok else "failure", link["estate"],
                      f"{verb} {j.state}: {summary}", self._url(j.id))
         if not self.gh:
@@ -328,6 +338,10 @@ def _comment(j: Job, link: dict[str, Any], url: str | None, merge_deploys: bool)
             lines.append(f"| `{st}` | " + " | ".join(str(c.get(op, 0)) for op in OPS)
                          + f" | `{prog.rsplit('/', 1)[-1]}` |")
         lines.append("")
+    # What changes, resource by resource, and what the guard refuses: the
+    # counts above do not say which resource a replace or a delete is.
+    lines += guard.markdown(result.get("plan") or {}, result.get("refused") or {},
+                            preview=j.request.preview)
     if result.get("nixos"):
         lines.append(f"NixOS: {'built' if result['nixos'] == 'built' else 'colmena apply ' + result['nixos']}"
                      f" (`hives.{j.request.hive or j.request.estate}`)")

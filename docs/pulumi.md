@@ -104,8 +104,11 @@ One pipeline for the CLI, the API and GitOps:
 2. **backends**: every stack's backend resolved and its secrets decrypted.
    Steps 1 and 2 finish for every stack before anything runs: a model that does
    not evaluate, or a secret that does not decrypt, changes nothing.
-3. **infra**: per stack, the Pulumi Automation API (`install`, then `preview`
-   or `up`), engine events to the event stream, `show_secrets` off.
+3. **infra**: per stack, the Pulumi Automation API (`install`, then
+   `preview`), engine events to the event stream, `show_secrets` off. The
+   preview's step events become the stack's **plan**: one entry per resource
+   that is not `same`. Every stack is previewed, and every plan passes the
+   guard (below), before any stack is applied; then `up`, stack by stack.
 4. **nixos**: `colmena apply <goal>` (`build` for a preview) on
    `hives.<hive>` (default: the estate), after infra.
 
@@ -116,8 +119,62 @@ fleetkit estates
 fleetkit preview homelab                 # pulumi preview + colmena build; changes nothing
 fleetkit deploy homelab --goal test      # pulumi up + colmena apply test
 fleetkit deploy homelab --no-nixos --stack homelab-guests
+fleetkit deploy homelab --allow-update web --allow-replace old-ct   # the guard, below
+fleetkit adopt homelab                   # what exists already: "Adopting what already exists"
 fleetkit serve                           # the API (below); --repo for GitOps
 ```
+
+### The guard: what an `up` may do to a guest (`cli/fleetkit_cli/guard.py`)
+
+A summary line with counts (`replace: 1`) does not say what is replaced, and
+`protect` does not stop a replacement: issue #61 lost a live container to one.
+So the pipeline every `up` goes through (CLI, API, GitOps, the action) reads
+the plan before applying it:
+
+- **The plan.** `[{ key, urn, type, op, steps, diff, replaceReasons }]` for
+  every resource whose op is not `same`. `key` is the resource's key in the
+  program (for a resource the program no longer has: its name in state);
+  `op` is what happens to the resource (`create`, `update`, `replace`,
+  `delete`, `import`); `steps` are the engine's ops behind it (a replacement
+  is `create-replacement`, `replace`, `delete-replaced`); `diff` the changed
+  property paths; `replaceReasons` the paths that force the replacement. It is
+  in the `plan` event (as data and as text), in the `summary` event
+  (`resources`: op → key and type, beside the counts), in the job's result
+  (`plan.<stack>`), in the CLI's output and in the PR comment.
+- **Guests** are `proxmox:index/virtualEnvironmentContainer:VirtualEnvironmentContainer`
+  and `proxmox:index/virtualEnvironmentVm:VirtualEnvironmentVm`
+  (`guard.GUEST_TYPES`).
+- **Refused**, with nothing applied in any stack of the job, when the plan
+  holds for a guest:
+
+  | engine op | named with | API field |
+  |---|---|---|
+  | `replace`, `create-replacement`, `delete-replaced` (any step of a replacement) | `--allow-replace KEY` | `allow_replace: [KEY]` |
+  | `delete` | `--allow-delete KEY` | `allow_delete: [KEY]` |
+  | `update` (an in-place update reboots a container) | `--allow-update KEY` | `allow_update: [KEY]` |
+
+  The flags repeat; a name allows that op for that resource only. The error
+  lists each offending resource, its op and the flag it needs. A guest's
+  `create` is not gated, and nothing is gated for other resources (pools, DNS,
+  repositories): they are listed, always.
+- **A program with `import` is refused** whatever the flags
+  (`options.import` on any resource): after an adoption a leftover `import`
+  makes the next `up` replace the resource. Rendered programs never carry one;
+  `fleetkit adopt` is how a resource is imported.
+- **During the `up`** each step is checked again before it runs, and the
+  engine is cancelled (Pulumi's own cancel) if a gated step comes up that the
+  preview did not show and the request did not name. The stack may then be
+  partly applied; the job fails and says so.
+- A **preview** (`fleetkit preview`, `preview: true`) prints the same plan and
+  marks what a deploy would refuse (`refused.<stack>` in the result); naming
+  the resources in the preview request removes the mark.
+- A refused deploy is a **failed job** whose `result` still carries `plan` and
+  `refused`, so the PR comment (GitOps, or `actions/deploy`) shows the list
+  and the commit status reads `deploy failed: refused: replace web`. A deploy
+  started by a merge or a push names nothing, so it is refused; apply it by
+  hand with the names: `POST /v1/deploys {"estate", "rev", "allow_replace":
+  ["web"]}`, or the action's `allow-replace` / `allow-delete` / `allow-update`
+  inputs on a `workflow_dispatch` run.
 
 `PULUMI_CONFIG_PASSPHRASE(_FILE)` encrypts Pulumi's secrets in state;
 `SOPS_AGE_KEY_FILE` decrypts the model's; `FLEETKIT_SECRET_ROOTS` adds
@@ -128,8 +185,8 @@ directories (a tenant's source) where sops files are looked up. `pulumi-bin`,
 
 | | |
 |---|---|
-| `POST /v1/deploys` | `{estate, stacks?, rev?, infra, nixos, hive?, on[], goal, preview, refresh, targets[]}` → 202 and the job |
-| `GET /v1/deploys[/{id}]` | jobs / one job (state, result with rev and programs, error) |
+| `POST /v1/deploys` | `{estate, stacks?, rev?, infra, nixos, hive?, on[], goal, preview, refresh, targets[], allow_replace[], allow_delete[], allow_update[]}` → 202 and the job |
+| `GET /v1/deploys[/{id}]` | jobs / one job (state, result with rev, programs, the plan and what was refused; error) |
 | `GET /v1/deploys/{id}/events?after=&wait=` | events from a sequence number, long-polling |
 | `GET /v1/deploys/{id}/stream` | the same as server-sent events, ending with the job record |
 | `POST /v1/deploys/{id}/cancel` | Pulumi's own cancel, or colmena terminated |
@@ -141,6 +198,79 @@ Bearer auth on every `/v1` route but the webhook; `--no-auth` only on
 loopback. One deploy per estate at a time (409 with the running job's id).
 Jobs are records plus JSONL event logs; a job cut off by a restart reads
 `interrupted`.
+
+## Adopting what already exists (`fleetkit adopt`, `cli/fleetkit_cli/adopt.py`)
+
+A resource that exists but is not in a stack's state (a container made by
+hand, a repository, a pool) is brought in by a command, not by an option in
+the program:
+
+```sh
+fleetkit adopt homelab                              # the report; changes nothing
+fleetkit adopt homelab --stack homelab-guests --resource web --json
+fleetkit adopt homelab --id old-ct=pve2/300         # an id the model cannot compute
+fleetkit adopt homelab --apply                      # adopt what imports cleanly
+fleetkit adopt homelab --apply --accept-update web  # ... and web, updated in place
+```
+
+Each stack exposes `adoptIds` (`{ <resource key> = <provider import id>; }`)
+and `adoptUnresolved` (`{ <resource key> = <why no id>; }`) beside its
+`program`; `--id KEY=ID` adds or overrides an id. A kit that does not expose
+them yet adopts only by `--id`.
+
+1. The stacks are rendered and each selected stack's state is read (the
+   Automation API's export). **To adopt** = resources with an id that are not
+   in state. A resource already in state is never touched (the report says
+   so, also when `--id` names it). An unresolved resource without `--id` is
+   listed as `cannot adopt: <why>` and skipped.
+2. A **temporary program** is written to a temporary directory (the system's,
+   not the state dir): the stack's program with `options.import` set on the
+   resources to adopt, and nothing else changed. The rendered program and its
+   project dir are not modified.
+3. It is previewed with `--target` on those resources and on what they depend
+   on (their provider; anything a property refers to). **The report**, per
+   resource:
+   - `import`: the declaration equals the live resource;
+   - `import+update`: it differs, with each property's path, the live value
+     and the declared one (secrets as `[secret]`, like the event stream);
+   - `error`: the provider refused the import (no such id, say), with its
+     message.
+
+   `--json` prints the report as one JSON document on stdout (events go to
+   stderr): `{estate, apply, applied, ok, refused[], stacks.<stack>.{program,
+   resources[{key, type, urn, id, status, diff[{path, live, declared}]}],
+   other[], verify?}}`. It is what a person or an agent reads to make the
+   declaration match what is there.
+4. Without `--apply` that is all: nothing changed.
+5. With `--apply`, two refusals, both before anything is applied in any stack:
+   - a resource that would be `import+update` and is not named with
+     `--accept-update KEY`. For a guest the update is a reboot, and the
+     message says so. Fix the declaration, or accept the update;
+   - a plan that holds anything but `import`, `update` and `same`: any create,
+     replace or delete, of the resource or of something targeted with it (a
+     dependency that is not in state yet). The one exception is the `create`
+     of a provider or of the stack itself in a new stack: those exist only in
+     state.
+
+   Then the temporary program is applied with the same targets, the temporary
+   directory is removed, and the **real** program (no `import`) is previewed:
+   every adopted resource must be `same`. If one is not, the command exits
+   non-zero and prints what differs; it does not try to fix it.
+6. `import` is never written anywhere that lasts: only into the temporary
+   program, whose directory is removed on every way out (a refusal, an error,
+   an interrupt). A hard kill leaves it in the system's temporary directory,
+   which no run reads.
+
+Why `import` never stays: with it still in the program after the adoption, the
+next `up` planned `replace: 1` for the adopted container and ran
+`delete-replaced` on it (issue #61). The runner's guard refuses such a program
+for the same reason.
+
+Adoption is a CLI command only: the API's jobs are deploys (one request type,
+one runner), so there is no `POST /v1/adoptions`. Run it where the stack's
+state is reachable: with a `local` backend, on the deploy server (as its
+user, with its state dir); with `pg` or `s3`, from any operator's machine.
+Pulumi's own stack lock keeps it apart from a running deploy.
 
 ## GitOps (`fleetkit serve --repo`, `cli/fleetkit_cli/gitops.py`)
 
@@ -252,7 +382,19 @@ put a TLS proxy in front of anything but loopback.
   through the deploy API); pull requests against a fake GitHub API (previews
   at the PR head, statuses, one comment edited in place, forks, untrusted
   authors, drafts and other bases not previewed, deploy on merge with
-  `trigger = pr`, a busy estate's preview queued); redaction.
+  `trigger = pr`, a busy estate's preview queued); redaction. With a fake
+  engine (`cli/tests/fakes.py`: real Automation API event objects, a state and
+  a set of live resources): the guard refuses each gated op on a guest and
+  lets it through when named, lists and allows a non-guest replace, refuses a
+  program with `import`, refuses the whole job when a later stack's plan is
+  refused, cancels an `up` that starts an unplanned gated step, and the
+  summary, the CLI, a failed job and the PR comment name the resources;
+  `adopt` picks what to adopt (in state, not in state, unresolved, `--id`),
+  changes nothing without `--apply`, refuses an unaccepted update and any
+  create / replace / delete, keeps `import` to a temporary program that is
+  gone afterwards (also when the engine raises), and fails when the preview
+  after the adoption still differs. Twelve hand mutations of the guard and of
+  adopt are each caught.
 - `tests/pulumi_nix.sh` (gate): Pulumi.nix good and bad cases above.
 - `tests/deploy_e2e.sh` (networked, not a gate): a throwaway estate git repo
   whose pulumi.nix imports the model's stack and adds one composed from it;
@@ -269,7 +411,17 @@ put a TLS proxy in front of anything but loopback.
   and the example workflow by actionlint; neither ran on GitHub.
 
 Not tested: `pulumi up` or `colmena apply` against real hosts, a linode bucket,
-and the estate repo's own data.
+and the estate repo's own data. The guard and `adopt` ran only against the
+fake engine. What that leaves open about Pulumi itself: the events of an
+`import` whose inputs differ (the code takes either an `import` step that
+carries a diff, with the live inputs as `old` and the declared ones as `new`,
+or an `import` step followed by an `update` step; the Python SDK at the pin
+reads the engine's `detailedDiff` under another name, so paths come from
+`diffs`, top-level properties); whether a targeted `up` imports with only the
+resources and their providers targeted, and what it does to the stack resource
+of a new stack; that a new stack's passphrase salt, created through the real
+project dir first, is the one the temporary dir then uses; and how much of a
+step Pulumi's cancel still lets finish.
 
 ## The compiler (`lib.toPulumi`)
 
@@ -376,12 +528,13 @@ a private repository this environment could not fetch).
   the bridge, so a fully Nix-built plugin cache would need a derivation for
   `pulumi-terraform-provider`.
 - **Parameterised packages need `pulumi install`** before `preview` or `up`.
-- **Moving an existing estate.** `mkPulumi { adopt = true; }` sets
-  `options.import` on every guest and pool, with the bpg import ids computed
-  from the model (`<node>/<vmid>`, `<pool_id>`), so the first `pulumi up`
-  adopts instead of creating. Pulumi refuses an adoption whose inputs differ
-  from the live resource, so that run doubles as a model-versus-live check.
-  Drop `adopt` after it. Terraform state is not converted.
+- **Moving an existing estate.** `fleetkit adopt <estate>` ("Adopting what
+  already exists"): the bpg import ids come from the model (`<node>/<vmid>`,
+  `<pool_id>`) as each stack's `adoptIds`, and the report is the
+  model-versus-live check. `options.import` in a program is not the way: on a
+  real container the first `up` imported it and updated it in place (a
+  reboot), and the next, with `import` still there, destroyed it (issue #61);
+  the runner now refuses such a program. Terraform state is not converted.
 - **Ordering, both engines.** A guest's `pool_id` is a plain string, not a
   reference to the pool resource, so neither engine orders the pool first on a
   fresh create. It is unchanged here, to keep the two renders equal.
