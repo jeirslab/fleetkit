@@ -1,0 +1,94 @@
+name: github-app-manifest
+# Reusable. Renders the GitHub App manifest of an organisation (lib.mkGithubAppManifest) from a pinned
+# commit of the kit and publishes it as an artifact, with its permissions in the job summary.
+# The manifest holds no secret: a name, a URL and the permissions the App asks for. This workflow
+# takes no secret and no token. Registering the App from the manifest is not done here and cannot
+# be: an organisation owner confirms it in a browser, and the answer is the App's private key, which
+# must go straight into a sops file (tools/github-app-bootstrap, docs/github-app-bootstrap.md).
+on:
+  workflow_call:
+    inputs:
+      org:
+        description: The organisation the App is for.
+        type: string
+        required: true
+      tiers:
+        description: >-
+          Space-separated permission tiers (docs/github-app.md): pipeline, terraform-admin.
+        type: string
+        required: false
+        default: pipeline terraform-admin
+      kit_ref:
+        description: >-
+          40-hex commit of the kit the manifest is rendered from. Not a branch or a tag: the
+          permissions an owner is asked to confirm must not move under the same caller.
+        type: string
+        required: true
+      kit_repository:
+        description: owner/name of the kit (public).
+        type: string
+        required: false
+        default: jeirslab/fleetkit
+      runs_on:
+        description: >-
+          JSON list of runner labels, e.g. '["ubuntu-latest"]'. Nix is installed when the runner
+          has none.
+        type: string
+        required: true
+permissions: {}
+jobs:
+  render:
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    permissions: {}
+    env:
+      ORG: ${{ inputs.org }}
+      TIERS: ${{ inputs.tiers }}
+      KIT_REF: ${{ inputs.kit_ref }}
+      KIT_REPOSITORY: ${{ inputs.kit_repository }}
+    steps:
+      - name: check the inputs
+        run: |
+          set -euo pipefail
+          bad() { echo "::error::$1"; exit 1; }
+          [[ $ORG =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?$ ]] || bad "org is not an organisation name"
+          [[ $KIT_REF =~ ^[0-9a-f]{40}$ ]] || bad "kit_ref must be a 40-hex commit"
+          [[ $KIT_REPOSITORY =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || bad "kit_repository must be owner/name"
+          [[ $TIERS =~ ^[a-z-]+( [a-z-]+)*$ ]] || bad "tiers must be space-separated tier names"
+      - name: is Nix here
+        id: nix
+        run: |
+          if command -v nix >/dev/null; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
+      - name: install Nix
+        if: steps.nix.outputs.present == 'false'
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - name: render
+        run: |
+          set -euo pipefail
+          read -ra names <<< "$TIERS"
+          tiers=$(printf '"%s" ' "${names[@]}")
+          nix --extra-experimental-features 'nix-command flakes' eval --json \
+            "github:$KIT_REPOSITORY/$KIT_REF#lib.mkGithubAppManifest" \
+            --apply "f: f { org = \"$ORG\"; tiers = [ $tiers]; }" > manifest.raw.json
+          python3 -m json.tool --sort-keys manifest.raw.json > github-app-manifest.json
+          rm manifest.raw.json
+          python3 - >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json, os
+          m = json.load(open("github-app-manifest.json"))
+          print(f"## GitHub App manifest: `{m['name']}`\n")
+          print(f"Organisation `{os.environ['ORG']}`, tiers `{os.environ['TIERS']}`, "
+                f"kit `{os.environ['KIT_REPOSITORY']}@{os.environ['KIT_REF']}`.\n")
+          print("| Permission | Level |\n| --- | --- |")
+          for k, v in sorted(m["default_permissions"].items()):
+              print(f"| `{k}` | {v} |")
+          print(f"\nEvents: {m['default_events'] or 'none'}. Public: {m['public']}. "
+                f"Webhook active: {m['hook_attributes'].get('active')}.\n")
+          print("Nothing was registered. Download the `github-app-manifest` artifact and, on a machine "
+                "that holds the estate's sops key, run `tools/github-app-bootstrap --org "
+                f"{os.environ['ORG']} --manifest github-app-manifest.json --sops-file <file> "
+                "--key-prefix integrations/github` (docs/github-app-bootstrap.md).")
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: github-app-manifest
+          path: github-app-manifest.json
+          if-no-files-found: error
