@@ -310,8 +310,12 @@ def test_unnamed_guests_are_protected_in_the_program_that_runs(settled):
     preview, up = w.calls
     assert preview["protect"] == ["db"] and up["protect"] == ["db"]  # web is named for a replace
     assert open(store).read() == before and '"protect"' not in before
-    # After the up the state protects what the run protected.
-    assert w.state[fakes.urn(prog, "db")]["protect"] is True and w.state[fakes.urn(prog, "web")]["protect"] is False
+    # The state protected db before the plan (first contact: it did not yet),
+    # and never web, which is named; the up wrote the program's flags (web:
+    # none), and afterwards the run protected what was left unprotected: the
+    # replaced web.
+    assert w.protected == [fakes.urn(prog, "db"), fakes.urn(prog, "web")]
+    assert w.state[fakes.urn(prog, "db")]["protect"] is True and w.state[fakes.urn(prog, "web")]["protect"] is True
     w.force.clear()
     w.calls.clear()
     deploy(estate, allow_update=["web"], allow_delete=["db"])  # an update needs no unprotecting
@@ -584,7 +588,7 @@ def twins(estate):
     wa, wb = estate.stack(a), estate.stack(b)
     for w, prog in ((wa, a), (wb, b)):
         for k in prog["resources"]:
-            w.in_state(prog, k)
+            w.in_state(prog, k, f"{prog['name']}:{k}")  # two guests: two ids
     return estate, wa, wb, a, b
 
 

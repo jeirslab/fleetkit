@@ -49,6 +49,11 @@ inputs:
   allow-update:
     description: Guests (comma-separated, <stack>/<key>) this deploy may update in place (a reboot).
     default: ''
+  allow-create:
+    description: >
+      Guests (comma-separated, <stack>/<key>) this deploy may create although the stack declares them
+      as already existing (they have an adoption id and are not in state), and HA resources it may create.
+    default: ''
   timeout:
     description: Seconds to wait for each estate (including waiting while it is busy).
     default: '3600'
@@ -118,6 +123,7 @@ runs:
         FLEETKIT_ALLOW_REPLACE: ${{ inputs.allow-replace }}
         FLEETKIT_ALLOW_DELETE: ${{ inputs.allow-delete }}
         FLEETKIT_ALLOW_UPDATE: ${{ inputs.allow-update }}
+        FLEETKIT_ALLOW_CREATE: ${{ inputs.allow-create }}
         FLEETKIT_TIMEOUT: ${{ inputs.timeout }}
         FLEETKIT_COMMENT: ${{ inputs.comment }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
