@@ -137,6 +137,10 @@ def _deploy_options(f):
         click.option("--allow-update", multiple=True, metavar="[STACK/]KEY",
                      help="A guest this deploy may update in place: a reboot (repeat). STACK/KEY, a URN, or a KEY "
                           "that only one stack of the run has."),
+        click.option("--allow-create", multiple=True, metavar="[STACK/]KEY",
+                     help="A guest this deploy may create although the stack declares it as already existing "
+                          "(it has an adoption id and is not in state), or an HA resource it may create "
+                          "(repeat). STACK/KEY, a URN, or a KEY that only one stack of the run has."),
         click.option("--json", "as_json", is_flag=True, help="Events as JSON lines on stdout."),
     ]):
         f = opt(f)
@@ -150,7 +154,7 @@ def _run(ctx: click.Context, estate: str, preview: bool, goal: str, kw: dict) ->
         nixos=not kw["no_nixos"], hive=kw["hive"], on=list(kw["on"]), goal=goal,
         preview=preview, refresh=kw["refresh"], targets=list(kw["targets"]),
         allow_replace=list(kw["allow_replace"]), allow_delete=list(kw["allow_delete"]),
-        allow_update=list(kw["allow_update"]))
+        allow_update=list(kw["allow_update"]), allow_create=list(kw["allow_create"]))
     ev = Emitter(_printer(kw["as_json"]))
     try:
         with _signals(ev):
@@ -182,7 +186,8 @@ def preview(ctx: click.Context, estate: str, **kw) -> None:
     """pulumi preview of each stack, then colmena build. Changes nothing.
 
     Lists every resource that would change, by op, and which of them a deploy
-    would refuse without --allow-replace / --allow-delete / --allow-update."""
+    would refuse without --allow-replace / --allow-delete / --allow-update /
+    --allow-create."""
     _run(ctx, estate, True, "switch", kw)
 
 
@@ -197,7 +202,9 @@ def deploy(ctx: click.Context, estate: str, goal: str, **kw) -> None:
     Every stack is previewed first. A plan that replaces, deletes or updates a
     guest (a Proxmox container or VM) is refused, with nothing applied, unless
     the guest is named: --allow-replace KEY, --allow-delete KEY,
-    --allow-update KEY (an in-place update reboots a container). KEY is
+    --allow-update KEY (an in-place update reboots a container). So is the
+    create of a guest the stack declares as already existing (it has an
+    adoption id and is not in state: adopt it, or --allow-create KEY). KEY is
     STACK/KEY, a URN, or a key only one stack of the run has. Each up is bound
     to the plan of its preview (the engine refuses anything else), and every
     guest that is not named is protected for the run. Ctrl-C stops the engine

@@ -320,14 +320,15 @@ def test_an_ha_resource_is_gated_like_a_guest_and_its_create_too(settled):
     estate.stack(guests_prog(ha=ha("stopped")))
     with pytest.raises(guard.GuardError) as e:
         deploy(estate)
-    assert "create of HA resource ha" in str(e.value) and "needs --allow-update ha" in str(e.value)
+    assert "create of HA resource ha" in str(e.value) and "needs --allow-create ha" in str(e.value)
     (r,) = e.value.result["refused"]["mini-guests"]
-    assert (r["op"], r["flag"], r["steps"]) == ("create", "--allow-update ha", ["create"])
+    assert (r["op"], r["flag"], r["steps"]) == ("create", "--allow-create ha", ["create"])
     assert ups(w) == [] and w.created == []
-    for wrong in ({"allow_replace": ["ha"]}, {"allow_delete": ["ha"]}, {"allow_update": ["db"]}):
+    for wrong in ({"allow_replace": ["ha"]}, {"allow_delete": ["ha"]}, {"allow_update": ["ha"]},
+                  {"allow_create": ["db"]}):
         with pytest.raises(guard.GuardError):
             deploy(estate, **wrong)
-    deploy(estate, allow_update=["ha"])
+    deploy(estate, allow_create=["ha"])
     assert w.created == ["ha"]
     # Protected for the run like a guest, in the program and then in state.
     assert "ha" in w.calls[-1]["protect"]
@@ -378,7 +379,9 @@ def test_known_and_unknown_types():
     assert not guard.unknown("pulumi:providers:proxmox") and not guard.unknown("github:index/repository:Repository")
     assert guard.unknown("proxmox:index/vm9:Vm9") and guard.unknown("proxmoxve:index/thing:Thing")
     assert guard.gated(HA) and guard.gated(CT) and not guard.gated(POOL)
-    assert guard.gate(HA, "create") == "update" and guard.gate(CT, "create") is None
+    assert guard.gate(HA, "create") == "create" and guard.gate(CT, "create") is None
+    assert guard.gate(CT, "create", True) == "create" and guard.gate(POOL, "create", True) is None
+    assert guard.gate(CT, "create-replacement", True) == "replace"
     assert guard.gate(HA, "delete") == "delete" and guard.gate(CT, "delete-replaced") == "replace"
     assert not guests.HA_TYPES & guests.GUEST_TYPES and guests.GATED_TYPES == guests.GUEST_TYPES | guests.HA_TYPES
 
@@ -734,3 +737,53 @@ def test_an_adoption_leaves_the_protect_of_what_is_in_state_as_it_is(lab, protec
     for u, r in before.items():
         assert entries()[u] == r, u  # every entry that was in state: untouched
     assert w.state[fakes.urn(p, "db")]["protect"] is True and w.protected == [] and w.unprotected == []
+
+
+# ── F10: the create of a guest the stack declares as already existing ──────
+def test_the_create_of_a_guest_with_an_adoption_id_is_refused_unless_named(estate, monkeypatch):
+    """Seen live: 24 of 27 guests were adopted, the nodes of the other three
+    were off. The stack's preview then plans `create` for those three, which
+    exist: a deploy would create over live vmids. A create was never gated."""
+    prog = guests_prog(new={"type": CT, "properties": {"nodeName": "pve1", "vmId": 400}})
+    w = estate.stack(prog, adopt_ids={"web": "pve1/101", "db": "pve1/102", "apps": "apps"})
+    w.in_state(prog, "provider-proxmox")
+    w.in_state(prog, "web", "101")           # adopted; db could not be
+    with pytest.raises(guard.GuardError) as e:
+        deploy(estate)
+    text = str(e.value)
+    assert "create of guest db" in text and "declared as already existing (pve1/102)" in text
+    assert "adopt it" in text and "or pass --allow-create db" in text and "web" not in text.replace("--", "")
+    (r,) = e.value.result["refused"]["mini-guests"]
+    assert (r["key"], r["op"], r["flag"], r["id"], r["steps"]) == ("db", "create", "--allow-create db", "pve1/102",
+                                                                   ["create"])
+    assert ups(w) == [] and w.created == []  # nothing applied: not the pool, not the new guest either
+    out = deploy(estate, preview=True)
+    assert out["refused"]["mini-guests"][0]["flag"] == "--allow-create db"
+    for wrong in ({"allow_update": ["db"]}, {"allow_replace": ["db"]}, {"allow_create": ["web"]},
+                  {"allow_create": ["other/db"]}):
+        with pytest.raises(guard.GuardError):
+            deploy(estate, **wrong)
+    assert w.created == []
+    # Named (it really is new), with its stack: created. `new` has no
+    # adoption id and `apps` is no guest: created as ever.
+    out = deploy(estate, allow_create=["mini-guests/db"])
+    assert sorted(w.created) == ["apps", "db", "new"] and out["applied"] == ["mini-guests"]
+    # The CLI flag and the API field.
+    del w.state[fakes.urn(prog, "db")]
+    monkeypatch.setenv("PULUMI_CONFIG_PASSPHRASE", "p")
+    base = ["--flake", str(estate.repo), "--state-dir", str(estate.s.state_dir), "deploy", "mini", "--no-nixos"]
+    r = CliRunner().invoke(cli, base)
+    assert r.exit_code == 1 and "pass --allow-create db" in r.output
+    assert CliRunner().invoke(cli, [*base, "--allow-create", "db"]).exit_code == 0
+    assert DeployRequest(estate="mini").allow_create == []  # what an unattended job carries
+
+
+def test_a_bare_allow_create_name_two_stacks_have_is_ambiguous(estate):
+    a, b = guests_prog(), {**guests_prog(), "name": "mini-more"}
+    wa, wb = estate.stack(a, adopt_ids={"db": "pve1/102"}), estate.stack(b, adopt_ids={"db": "pve2/202"})
+    with pytest.raises(guard.GuardError, match="--allow-create db is ambiguous"):
+        deploy(estate, allow_create=["db"])
+    with pytest.raises(guard.GuardError) as e:
+        deploy(estate, allow_create=["mini-more/db"])
+    assert "mini-guests: create of guest db" in str(e.value) and "--allow-create mini-guests/db" in str(e.value)
+    assert "mini-more:" not in str(e.value) and wa.created == [] and wb.created == []

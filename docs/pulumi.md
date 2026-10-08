@@ -233,7 +233,7 @@ to what was read: the refusals, the engine's update plan, and `protect`.
   `vm`, `clonedVm`, `virtualEnvironmentClonedVm` (the VM family; all
   `proxmox:index/...`). **HA resources** (`haresource`,
   `virtualEnvironmentHaresource`) are gated like guests, and their `create`
-  as well, under `--allow-update`: an HA resource tells the HA manager which
+  as well, under `--allow-create`: an HA resource tells the HA manager which
   state the guest it names must be in, so creating, changing or deleting one
   can start, stop or move a guest. `harule` and `hagroup` are not gated.
 - **Every proxmox type is decided.** `guests.py` lists every resource token
@@ -258,12 +258,33 @@ to what was read: the refusals, the engine's update plan, and `protect`.
   | `replace`, `create-replacement`, `delete-replaced` (any step of a replacement) | `--allow-replace NAME` | `allow_replace: [NAME]` |
   | `delete` | `--allow-delete NAME` | `allow_delete: [NAME]` |
   | `update` (an in-place update reboots a container) | `--allow-update NAME` | `allow_update: [NAME]` |
+  | `create` of a guest the stack declares as already existing, and of an HA resource | `--allow-create NAME` | `allow_create: [NAME]` |
 
   The flags repeat; a name allows that op for that resource only. The error
   lists each offending resource, its op and the flag it needs. A guest's
-  `create` is not gated (the `create` of an HA resource is: `--allow-update`),
-  and nothing is gated for other resources (pools, DNS, repositories): they
-  are listed, always.
+  `create` is gated only in the case below, and nothing is gated for other
+  resources (pools, DNS, repositories): they are listed, always.
+- **A guest declared as already existing is not created.** Seen live: 24 of
+  27 guests were adopted, the nodes of the other three were powered off, and
+  the stack's preview then planned `create` for those three. They exist; a
+  deploy would have created over live vmids, and a create was not gated. Now
+  the `create` of a guest that is not in state and for which the stack carries
+  an adoption id (`adoptIds`, the same data `fleetkit adopt` imports by:
+  `resources.<key>.adopt`, computed by `lib/pulumi/adopt.nix` for the model's
+  guests) is refused with nothing applied: `create of guest db (...): declared
+  as already existing (pve1/102): adopt it (fleetkit adopt), or pass
+  --allow-create db`. The API field is `allow_create`, empty by default, so a
+  deploy started by a merge or a push never creates such a guest; the action
+  has an `allow-create` input. A guest without an adoption id creates as
+  before. **Consequence:** a stack from `fromModel` computes an adoption id
+  for every container and VM it renders (`<node>/<vmid>`), so there every
+  guest that is not in state yet, a genuinely new one too, needs
+  `--allow-create` once; the runner cannot tell a new guest from one that
+  exists and was not adopted. A stack built with `adopt = false`, or a
+  hand-written resource without `adopt`, is not gated. A resource listed in
+  `adoptUnresolved` (declared, id not computable) is not gated either. A
+  create-replacement is of a resource that is in state: it is a replace
+  (`--allow-replace`).
 - **A guest that two state entries hold is never deleted.** When the plan
   deletes a guest whose state id (compared by family and vmid) is also the id
   of another state entry, in this stack or in any other stack of the run, the
@@ -368,7 +389,7 @@ to what was read: the refusals, the engine's update plan, and `protect`.
   started by a merge or a push names nothing, so it is refused; apply it by
   hand with the names: `POST /v1/deploys {"estate", "rev", "allow_replace":
   ["homelab-guests/web"]}`, or the action's `allow-replace` / `allow-delete` /
-  `allow-update` inputs on a `workflow_dispatch` run.
+  `allow-update` / `allow-create` inputs on a `workflow_dispatch` run.
 
 ### A directory per run (`cli/fleetkit_cli/render.py`)
 
@@ -470,7 +491,7 @@ directories (a tenant's source) where sops files are looked up. `pulumi-bin`,
 
 | | |
 |---|---|
-| `POST /v1/deploys` | `{estate, stacks?, rev?, infra, nixos, hive?, on[], goal, preview, refresh, targets[], allow_replace[], allow_delete[], allow_update[]}` (names: `<stack>/<key>`, a URN, or an unambiguous key) → 202 and the job |
+| `POST /v1/deploys` | `{estate, stacks?, rev?, infra, nixos, hive?, on[], goal, preview, refresh, targets[], allow_replace[], allow_delete[], allow_update[], allow_create[]}` (names: `<stack>/<key>`, a URN, or an unambiguous key) → 202 and the job |
 | `GET /v1/deploys[/{id}]` | jobs / one job (state, result with rev, programs and their sha256, the plan, what was refused, `applied`, and `stopped` when an up did not finish; error) |
 | `GET /v1/deploys/{id}/events?after=&wait=` | events from a sequence number, long-polling |
 | `GET /v1/deploys/{id}/stream` | the same as server-sent events, ending with the job record |
@@ -877,7 +898,9 @@ put a TLS proxy in front of anything but loopback.
   again is in the error, an event and the result; the delete of a guest held
   by a second state entry (same stack, another stack, another token of the VM
   family) is refused without a flag, named or not; HA resources gated, their
-  create too; an unknown proxmox type refused; `absent` only for the engine's
+  create too; the create of a guest that has an adoption id refused unless
+  named with `--allow-create` (bare, with its stack, ambiguous across two
+  stacks, from the CLI), one without an id and a pool created as before; an unknown proxmox type refused; `absent` only for the engine's
   exact words, eight messages; an absent guest refusing `--apply` unless
   accepted, an absent pool not; two to-do entries with one id, in one stack
   and across two; an id held by an unselected stack of the estate; the other
@@ -896,9 +919,12 @@ put a TLS proxy in front of anything but loopback.
   id and an id another stack holds, both refused before any engine run; a
   state with one id under two keys: the delete refused without a flag, and
   clean after `pulumi state delete`; an adoption whose dependency is in state
-  unprotected: still unprotected afterwards. Twenty-eight hand mutations of
-  these fixes (each undoing one piece) are each caught by a test here, eight
-  of them also run against the real-engine tests.
+  unprotected: still unprotected afterwards; two guests declared with
+  adoption ids, one adopted: the create of the other refused by name, then
+  adopted instead, or created when named, and a guest without an id created
+  all along. Thirty-two hand mutations of these fixes (each undoing one
+  piece) are each caught by a test here, eleven of them also run against the
+  real-engine tests.
 - `tests/pulumi_nix.sh` (gate): Pulumi.nix good and bad cases above.
 - `tests/deploy_e2e.sh` (networked, not a gate): a throwaway estate git repo
   whose pulumi.nix imports the model's stack and adds one composed from it;

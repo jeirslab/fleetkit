@@ -10,8 +10,9 @@ Exit 1 if any estate's job did not succeed.
 Environment (set by action.yml): FLEETKIT_API_URL, FLEETKIT_API_TOKEN,
 FLEETKIT_ESTATES, FLEETKIT_MODE (auto|preview|deploy), FLEETKIT_REV,
 FLEETKIT_GOAL, FLEETKIT_HIVE, FLEETKIT_STACKS, FLEETKIT_INFRA, FLEETKIT_NIXOS,
-FLEETKIT_ALLOW_REPLACE, FLEETKIT_ALLOW_DELETE, FLEETKIT_ALLOW_UPDATE (guests a
-deploy may replace, delete, update; the server refuses otherwise),
+FLEETKIT_ALLOW_REPLACE, FLEETKIT_ALLOW_DELETE, FLEETKIT_ALLOW_UPDATE,
+FLEETKIT_ALLOW_CREATE (guests a deploy may replace, delete, update, create
+although declared as existing; the server refuses otherwise),
 FLEETKIT_TIMEOUT, FLEETKIT_COMMENT, GITHUB_TOKEN, and the runner's GITHUB_*.
 """
 from __future__ import annotations
@@ -251,7 +252,7 @@ def main() -> int:
             body["hive"] = env("FLEETKIT_HIVE")
         if stacks:
             body["stacks"] = stacks
-        for op in ("replace", "delete", "update"):
+        for op in ("replace", "delete", "update", "create"):
             keys = [k for k in re.split(r"[,\s]+", env(f"FLEETKIT_ALLOW_{op.upper()}")) if k]
             if keys:
                 body[f"allow_{op}"] = keys

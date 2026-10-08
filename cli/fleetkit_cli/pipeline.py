@@ -37,6 +37,10 @@ class DeployRequest(BaseModel):
         default_factory=list, description="Guests this deploy may delete. " + _NAME)
     allow_update: list[str] = Field(
         default_factory=list, description="Guests this deploy may update in place (a reboot). " + _NAME)
+    allow_create: list[str] = Field(
+        default_factory=list, description="Guests this deploy may create although the stack declares them as "
+                                          "already existing (they have an adoption id), and HA resources it may "
+                                          "create. " + _NAME)
 
 
 def _names(program: dict[str, Any], state: list[dict[str, Any]]) -> set[str]:
@@ -71,7 +75,8 @@ def run(s: Settings, req: DeployRequest, ev: Emitter) -> dict[str, Any]:
 
 def _infra(s: Settings, req: DeployRequest, ev: Emitter, rundir: render.Run, result: dict[str, Any]) -> None:
     stacks = render.stacks_of(s, req.estate, req.stacks)
-    allow = guard.Allow(replace=req.allow_replace, delete=req.allow_delete, update=req.allow_update)
+    allow = guard.Allow(replace=req.allow_replace, delete=req.allow_delete, update=req.allow_update,
+                        create=req.allow_create)
     unknown = guard.ambiguous(allow, {n: set() for n in stacks})
     if unknown:
         raise guard.GuardError("refused, nothing was applied:\n  " + "\n  ".join(unknown))
@@ -109,7 +114,7 @@ def _infra(s: Settings, req: DeployRequest, ev: Emitter, rundir: render.Run, res
         ev.check()
         others = {m: st for m, st in states.items() if m != n}
         planned[n] = infra.plan(s, p.wd, n, envs[n], ev, req.preview, req.refresh, req.targets,
-                                guard.scope(allow, n), labels[n], others)
+                                guard.scope(allow, n), labels[n], others, stacks[n].get("adoptIds") or {})
         result["infra"][n], result["plan"][n] = planned[n]["changes"], planned[n]["plan"]
         if planned[n]["refused"]:
             result["refused"][n] = planned[n]["refused"]
@@ -123,7 +128,8 @@ def _infra(s: Settings, req: DeployRequest, ev: Emitter, rundir: render.Run, res
         # planned; the engine is then bound to the plan (infra.apply).
         p.verify()
         done = infra.apply(s, p.wd, n, envs[n], ev, planned[n], req.refresh, req.targets,
-                           guard.scope(allow, n), labels[n], {m: st for m, st in states.items() if m != n})
+                           guard.scope(allow, n), labels[n], {m: st for m, st in states.items() if m != n},
+                           stacks[n].get("adoptIds") or {})
         result["infra"][n] = done["changes"]
         result["applied"].append(n)
         if done.get("unprotected"):

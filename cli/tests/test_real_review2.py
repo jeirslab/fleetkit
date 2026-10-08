@@ -297,3 +297,37 @@ def test_an_adoption_does_not_change_the_protect_of_what_it_depends_on(lab):
     assert {k: after["a"].get(k) for k in same} == {k: before["a"].get(k) for k in same}
     assert (after["b"]["id"], after["b"]["protect"]) == ("abcdefgh", True)
     assert not [c for c in estate.calls if c[:2] in (["state", "protect"], ["state", "unprotect"])]
+
+
+def test_a_guest_declared_as_existing_is_not_created_unless_named(lab):
+    """F10. Two guests are declared with adoption ids; one is adopted, the
+    other could not be (its import fails). The real program's plan creates
+    the second: over a guest that exists."""
+    estate = lab
+    ev = Emitter(lambda e: None)
+    ids = {"a": "abcdefgh", "b": "ijklmnop"}
+    estate.stack(prog(a=rs(8), b=rs(8), fresh=rs(5)), adopt_ids=ids)
+    report = adopt.run(estate.s, "mini", ev, apply=True, resources=["a"])
+    assert report["applied"] and state(estate)["a"]["id"] == "abcdefgh"
+    estate.calls.clear()
+    out = deploy(estate, preview=True)
+    assert {c["key"]: c["op"] for c in out["plan"]["mini-guests"]} == {"b": "create", "fresh": "create"}
+    assert [(r["key"], r["flag"], r["id"]) for r in out["refused"]["mini-guests"]] == [("b", "--allow-create b", "ijklmnop")]
+    with pytest.raises(guard.GuardError) as e:
+        deploy(estate)
+    assert "create of guest b" in str(e.value) and "declared as already existing (ijklmnop)" in str(e.value)
+    assert "pass --allow-create b" in str(e.value) and "fresh" not in str(e.value)
+    assert not [c for c in estate.calls if c[0] == "up"] and set(state(estate)) == {"a"}
+    # Adopted instead: nothing left to refuse, and the guest that has no
+    # adoption id is created as ever.
+    assert adopt.run(estate.s, "mini", ev, apply=True)["applied"]
+    out = deploy(estate)
+    st = state(estate)
+    assert st["b"]["id"] == "ijklmnop" and len(st["fresh"]["id"]) == 5 and out["refused"] == {}
+    # Or named: created.
+    estate.stack(prog(a=rs(8), b=rs(8), fresh=rs(5), c=rs(6)), adopt_ids={**ids, "c": "qrstuv"})
+    with pytest.raises(guard.GuardError, match="pass --allow-create c"):
+        deploy(estate)
+    deploy(estate, allow_create=["mini-guests/c"])
+    assert len(state(estate)["c"]["id"]) == 6 and state(estate)["c"]["id"] != "qrstuv"
+    no_cancel(estate)

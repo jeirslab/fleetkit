@@ -8,8 +8,10 @@ would replace, delete or update a guest (a Proxmox container or VM) that the
 request did not name for that op, and any `up` of a program that carries an
 `import` option (issue #61: a leftover `import` on an adopted container made
 the next `up` destroy it, although it was protected). HA resources are gated
-the same way, their create too (guests.py says why). Two more refusals take
-no name: a resource of a `proxmox*` package whose type the runner does not
+the same way, their create too (guests.py says why). The create of a guest is
+gated when the stack declares it as already existing, by an adoption id
+(`--allow-create`): a guest that could not be adopted would otherwise be
+created over the live one. Two more refusals take no name: a resource of a `proxmox*` package whose type the runner does not
 know (unknown_refusals), and the delete of a guest whose id a second state
 entry holds as well (Held).
 
@@ -42,7 +44,7 @@ from pydantic import BaseModel, Field
 from .guests import CONTAINER_TYPES, GUEST_TYPES, HA_TYPES, KNOWN_TYPES, VM_TYPES
 
 # Gated op family -> the request field (and CLI flag) that names a resource for it.
-FLAGS = {"replace": "allow_replace", "delete": "allow_delete", "update": "allow_update"}
+FLAGS = {"replace": "allow_replace", "delete": "allow_delete", "update": "allow_update", "create": "allow_create"}
 
 # Resources that exist only in Pulumi's state: creating one touches nothing real.
 STATE_ONLY = ("pulumi:providers:", "pulumi:pulumi:Stack")
@@ -72,12 +74,13 @@ _GENERIC_RE = re.compile(r"^(preview|update) failed$")
 
 
 class Allow(BaseModel):
-    """Resources a deploy may replace, delete or update. A name is
+    """Resources a deploy may replace, delete, update or create. A name is
     `<stack>/<key>`, a URN, or a bare program key; a bare key that names a
     resource in more than one stack of the request is refused (`ambiguous`)."""
     replace: list[str] = Field(default_factory=list)
     delete: list[str] = Field(default_factory=list)
     update: list[str] = Field(default_factory=list)
+    create: list[str] = Field(default_factory=list)
 
 
 def _split(name: str) -> tuple[Optional[str], str]:
@@ -93,7 +96,8 @@ def scope(allow: Allow, stack: str) -> Allow:
     stack prefix: `<stack>/<key>` for this stack, URNs, and bare keys."""
     def mine(names: list[str]) -> list[str]:
         return [key for st, key in map(_split, names) if st in (None, stack)]
-    return Allow(replace=mine(allow.replace), delete=mine(allow.delete), update=mine(allow.update))
+    return Allow(replace=mine(allow.replace), delete=mine(allow.delete), update=mine(allow.update),
+                 create=mine(allow.create))
 
 
 def ambiguous(allow: Allow, names: dict[str, set[str]]) -> list[str]:
@@ -119,12 +123,15 @@ def gated(type_: str) -> bool:
     return type_ in GUEST_TYPES or type_ in HA_TYPES
 
 
-def gate(type_: str, op: str) -> Optional[str]:
-    """The gated family of an engine op on a resource of this type. The
-    create of an HA resource is gated as an update: it puts the guest it names
-    under the HA manager, which starts, stops or moves it to match."""
-    if op == "create" and type_ in HA_TYPES:
-        return "update"
+def gate(type_: str, op: str, declared: bool = False) -> Optional[str]:
+    """The gated family of an engine op on a resource of this type. A
+    `create` is gated for an HA resource (it puts the guest it names under
+    the HA manager, which starts, stops or moves it to match) and for a guest
+    the stack declares as already existing (`declared`: it has an adoption
+    id). A `create` step is of a resource that is not in state; a
+    create-replacement is of one that is, and is a replace."""
+    if op == "create":
+        return "create" if type_ in HA_TYPES or (declared and type_ in GUEST_TYPES) else None
     return family(op)
 
 
@@ -480,22 +487,29 @@ class Plan:
 
 
 def refusals(changes: list[dict[str, Any]], allow: Allow, label: Optional[Callable[[str], str]] = None,
-             held: Optional[Callable[[str], Optional[str]]] = None) -> list[dict[str, Any]]:
+             held: Optional[Callable[[str], Optional[str]]] = None,
+             adopt_ids: Optional[dict[str, str]] = None) -> list[dict[str, Any]]:
     """What a deploy refuses of a plan: [{key, urn, type, op, flag}], one per
     guest (or HA resource) and gated op that the request did not name. `allow`
     is already scoped to the stack (`scope`); `label` writes the key in the
     flag (the pipeline adds the stack when the key exists in another stack
     too). `held` (Held): the delete of a guest whose id a second state entry
-    holds is refused whatever the request names, with `why` and no flag."""
+    holds is refused whatever the request names, with `why` and no flag.
+    `adopt_ids`: the stack's adoption ids (program key -> the id of the
+    existing resource the declaration describes); the create of a guest that
+    has one is refused unless named for a create, with the id (`id`)."""
     label = label or (lambda key: key)
+    ids = adopt_ids or {}
     out = []
     for c in changes:
         if not gated(c["type"]):
             continue
-        for fam in dict.fromkeys(f for f in (gate(c["type"], s) for s in c["steps"]) if f):
-            steps = [s for s in c["steps"] if gate(c["type"], s) == fam]
-            base = {"key": c["key"], "urn": c["urn"], "type": c["type"], "steps": steps,
-                    "op": "create" if steps == ["create"] else fam}
+        declared = c["key"] in ids
+        for fam in dict.fromkeys(f for f in (gate(c["type"], s, declared) for s in c["steps"]) if f):
+            steps = [s for s in c["steps"] if gate(c["type"], s, declared) == fam]
+            base = {"key": c["key"], "urn": c["urn"], "type": c["type"], "steps": steps, "op": fam}
+            if fam == "create" and declared:
+                base["id"] = ids[c["key"]]
             why = held(c["urn"]) if held and fam == "delete" else None
             named = getattr(allow, fam)
             if why:
@@ -550,6 +564,9 @@ def _refusal(r: dict[str, Any]) -> str:
                 f"guest it names to match): needs {r['flag']}")
     if not r.get("flag"):
         return f"{r['op']} of guest {r['key']} ({r['type']}): {r['why']}"
+    if r["op"] == "create":
+        return (f"create of guest {r['key']} ({r['type']}): declared as already existing ({r.get('id')}): "
+                f"adopt it (`fleetkit adopt`), or pass {r['flag']}")
     note = " (an in-place update reboots a guest)" if r["op"] == "update" else ""
     return f"{r['op']} of guest {r['key']} ({r['type']}){note}: needs {r['flag']}"
 

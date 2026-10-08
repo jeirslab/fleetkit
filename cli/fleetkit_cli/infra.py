@@ -495,13 +495,16 @@ def engine(st: Any, ev: Emitter, stack: str, verb: str, plan: guard.Plan, refres
 def plan(s: Settings, wd: Path, stack: str, env: dict[str, str], ev: Emitter, preview: bool,
          refresh: bool = False, targets: list[str] | None = None,
          allow: guard.Allow | None = None, label: Callable[[str], str] | None = None,
-         states: dict[str, list[dict[str, Any]]] | None = None) -> dict[str, Any]:
+         states: dict[str, list[dict[str, Any]]] | None = None,
+         adopt_ids: dict[str, str] | None = None) -> dict[str, Any]:
     """Preview the stack and save the engine's update plan.
     -> {changes: counts, plan: [...], refused: [...], bound, unprotect}.
     `bound` is what apply() needs to run exactly this (None when the engine
     made no plan); `unprotect` the guests named for a delete that are protected
     in state. `allow` is scoped to the stack (guard.scope). `states`: the
     state resources of the other stacks of the run, by stack (guard.Held).
+    `adopt_ids`: the stack's adoption ids (a guest that has one and is not in
+    state is not created unless named: guard.refusals).
 
     Before the engine runs, the state is read: a pending operation refuses
     the run (refuse_pending). `preview` says whether a deploy follows: if one
@@ -539,7 +542,7 @@ def plan(s: Settings, wd: Path, stack: str, env: dict[str, str], ev: Emitter, pr
         plan_file.unlink(missing_ok=True)
     changes = p.changes()
     refused = (guard.import_refusals(program) + guard.unknown_refusals(program, changes)
-               + guard.refusals(changes, allow, label, held))
+               + guard.refusals(changes, allow, label, held, adopt_ids))
     refused_urns = {r.get("urn") for r in refused}
     # A guest the request names for a delete, that the program no longer has
     # and the state protects (an earlier run of this runner set it): the
@@ -622,7 +625,8 @@ def reprotect(s: Settings, wd: Path, stack: str, env: dict[str, str], ev: Emitte
 def apply(s: Settings, wd: Path, stack: str, env: dict[str, str], ev: Emitter, planned: dict[str, Any],
           refresh: bool = False, targets: list[str] | None = None,
           allow: guard.Allow | None = None, label: Callable[[str], str] | None = None,
-          states: dict[str, list[dict[str, Any]]] | None = None) -> dict[str, Any]:
+          states: dict[str, list[dict[str, Any]]] | None = None,
+          adopt_ids: dict[str, str] | None = None) -> dict[str, Any]:
     """`up` a stack, bound to the plan that passed (`planned`: what plan()
     returned for this directory). -> {changes: counts, plan: what it did,
     unprotected?: what could not be protected in state again}."""
@@ -638,7 +642,7 @@ def apply(s: Settings, wd: Path, stack: str, env: dict[str, str], ev: Emitter, p
     unprotected: list[str] = []
     try:
         counts, p = _apply(s, wd, stack, env, ev, planned, refresh, targets, allow, label, states, program,
-                           unprotected)
+                           unprotected, adopt_ids)
     except BaseException as e:
         left = reprotect(s, wd, stack, env, ev, program, unprotected)
         if left and e.args and isinstance(e.args[0], str):
@@ -653,7 +657,7 @@ def apply(s: Settings, wd: Path, stack: str, env: dict[str, str], ev: Emitter, p
 def _apply(s: Settings, wd: Path, stack: str, env: dict[str, str], ev: Emitter, planned: dict[str, Any],
            refresh: bool, targets: list[str] | None, allow: guard.Allow, label: Callable[[str], str] | None,
            states: dict[str, list[dict[str, Any]]] | None, program: dict[str, Any],
-           unprotected: list[str]) -> tuple[dict[str, int], guard.Plan]:
+           unprotected: list[str], adopt_ids: dict[str, str] | None = None) -> tuple[dict[str, int], guard.Plan]:
     """The unprotecting, the second plan and the up of apply(). `unprotected` collects the URNs it
     unprotected in state, for apply() to protect again whatever happens here."""
     if planned.get("unprotect"):
@@ -662,7 +666,7 @@ def _apply(s: Settings, wd: Path, stack: str, env: dict[str, str], ev: Emitter, 
             ev.emit("infra", "unprotect", stack=stack, urn=urn)
             unprotected.append(urn)  # before the call: whether it got there or not
             unprotect(st, urn)
-        again = plan(s, wd, stack, env, ev, False, refresh, targets, allow, label, states)
+        again = plan(s, wd, stack, env, ev, False, refresh, targets, allow, label, states, adopt_ids)
         if again["refused"] or again["unprotect"] or _gated(again["plan"]) != _gated(planned["plan"]):
             raise guard.GuardError(
                 f"refused: {stack}: after unprotecting {', '.join(planned['unprotect'])} the plan is not the "
@@ -687,7 +691,7 @@ def _apply(s: Settings, wd: Path, stack: str, env: dict[str, str], ev: Emitter, 
     p = guard.Plan(s.stack, program)
 
     def tripwire(entry: dict[str, Any], op: str) -> Optional[str]:
-        bad = guard.refusals([{**entry, "steps": [op]}], allow, label)
+        bad = guard.refusals([{**entry, "steps": [op]}], allow, label, adopt_ids=adopt_ids)
         return f"{op} of guest {entry['key']} (needs {bad[0]['flag']})" if bad else None
 
     try:
