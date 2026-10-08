@@ -33,10 +33,14 @@
 #   locals                     outputs (informational, as in Terraform)
 #
 # `adopt` maps a Terraform resource type to a function (name -> args -> the
-# provider's import id). Each resource of such a type gets options.import, so
-# the first `pulumi up` adopts what is already deployed instead of creating it;
-# Pulumi refuses an adoption whose inputs differ from the live resource, which
-# makes that first run a check of the model against the live estate.
+# provider's import id, or { unresolved = "<why>"; } when the model does not
+# determine it; lib/pulumi/adopt.nix). With it, each resource of such a type
+# carries `adopt` (the id) or `adoptUnresolved` (the reason) beside `type`:
+# the Pulumi.nix resource shape (lib/pulumi/options.nix), for lib.pulumi.stacks,
+# which keeps the ids beside the program (adoptIds). That result is not a
+# Pulumi.yaml. Without `adopt` (the default) the result is the program alone.
+# `import` is never rendered, with or without it: an import left in a program
+# destroys the adopted resource on a later `up` (fleetkit#61).
 {
   lib,
   tf,
@@ -300,8 +304,8 @@ let
             ) body.depends_on
           else
             null;
-        import = if adopt ? ${type} then adopt.${type} name body else null;
       };
+      adoption = if adopt ? ${type} then adopt.${type} name body else null;
     in
     if unsupported != [ ] then
       throw "${where}: ${type}.${name}: lifecycle ${lib.concatStringsSep ", " unsupported} has no Pulumi translation here"
@@ -315,6 +319,12 @@ let
         }
         // lib.optionalAttrs (resKey type name != name) { inherit name; }
         // lib.optionalAttrs (options != { }) { inherit options; }
+        // lib.optionalAttrs (lib.isString adoption) { adopt = adoption; }
+        // lib.optionalAttrs (lib.isAttrs adoption) {
+          adoptUnresolved =
+            adoption.unresolved
+              or (throw "${where}: ${type}.${name}: an adopt rule returns an id or { unresolved = \"<why>\"; }");
+        }
       );
 
   mkProvider =

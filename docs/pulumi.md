@@ -42,10 +42,10 @@ pulumi = fleetkit.lib.pulumi.stacks {
 ```
 
 Per stack: `estate` (what `fleetkit deploy <estate>` runs), `packages`,
-`resources.<key> = { type; name?; properties; options; }`, `variables`,
+`resources.<key> = { type; name?; properties; options; adopt?; }`, `variables`,
 `outputs`, `backend`. Read-only: `program` (the checked program), `file` (it as
-`Pulumi.yaml` in the store, by `builtins.toFile`) and `secrets` (the sops
-files its invokes read).
+`Pulumi.yaml` in the store, by `builtins.toFile`), `secrets` (the sops
+files its invokes read), and `adoptIds` / `adoptUnresolved` (below).
 
 **Types.** Every resource's `properties` are checked against the pinned Pulumi
 schema of its `type` (`lib/pulumi/types.nix`). Types are built only for the
@@ -62,6 +62,79 @@ error: stacks.mini-guests: references to no resource or variable: nope
 Any property also takes a `"${...}"` reference string; references are checked
 to name a resource or variable of the stack, not typed. Packages with no pinned
 schema are not checked.
+
+## Adopting what already exists (`adopt`, `adoptIds`, `adoptUnresolved`)
+
+A declaration of something that already exists says so with its provider id,
+as data beside the program:
+
+```nix
+stacks.homelab-guests.resources.backup-pool = {
+  type = "proxmox:index/virtualEnvironmentPool:VirtualEnvironmentPool";
+  properties.poolId = "backup";
+  adopt = "backup";            # the id the provider imports it by
+};
+```
+
+- `resources.<key>.adopt` (string or null, default null): the provider id of
+  the existing resource this declaration describes. `fleetkit adopt` uses it
+  once, to import the resource into the stack's state. It is never rendered
+  into the program.
+- `<stack>.adoptIds` (read-only): `{ <resource key> = "<id>"; }` for every
+  resource whose `adopt` is set.
+- `<stack>.adoptUnresolved` (read-only): `{ <resource key> = "<why, and what
+  value is needed>"; }` for every resource whose id the model does not
+  determine (`resources.<key>.adoptUnresolved`, set by `fromModel`, while its
+  `adopt` is null). The command asks for those, or the estate sets
+  `resources.<key>.adopt` and the entry is gone.
+
+```sh
+nix eval --json <repo>#pulumi.homelab-guests.adoptIds
+nix eval --json <repo>#pulumi.homelab-github.adoptUnresolved
+```
+
+**No program carries `import`.** `options.import` is not an option:
+
+```
+error: stacks.mini-guests.resources.extra-pool.options.import is not supported: an import left in a program destroys the adopted resource on a later `up`. Set stacks.mini-guests.resources.extra-pool.adopt = "<id>" instead: ...
+```
+
+and the stack's evaluation checks the rendered program itself for an `import`
+option or any adoption field, so no other path can put one there. The reason
+is [issue 61]: a container adopted with `options.import` was destroyed by the
+next `up` because the `import` was still in the program (Pulumi planned a
+replace, and `protect` did not stop it). With the ids outside the program there
+is nothing to remember to remove.
+
+`fromModel { estate; github ? false; adopt ? true; }` computes the ids from the
+model (they are data, so by default; `adopt = false` leaves every one unset).
+An estate overrides one with the module system
+(`stacks.<s>.resources.<k>.adopt = lib.mkForce "..."`).
+
+| Resource | id | |
+|---|---|---|
+| container, VM (bpg/proxmox) | `<node>/<vmid>` | |
+| pool | `<pool_id>` | |
+| `github_repository` | `<name>` | |
+| `github_branch_default` | `<repository>` | |
+| `github_membership` | `<org>:<login>` | |
+| `github_team` | `<slug>` | unresolved unless the name is in slug form (`[a-z0-9]+(-[a-z0-9]+)*`, not all digits): the provider takes a slug or the numeric id, the model has the name |
+| `github_team_members` | `<team slug>` | as the team |
+| `github_team_repository` | `<team slug>:<repository>` | as the team |
+| `github_organization_settings` | the organisation's numeric id | always unresolved |
+| `github_actions_organization_permissions` | `<org>` | |
+| `github_repository_environment` | `<repository>:<environment>` (`:` in the environment as `??`) | |
+| `github_organization_ruleset` | the ruleset's numeric id | always unresolved |
+| `github_issue_label` | `<repository>:<label>` | |
+| `github_actions_variable` | `<repository>:<NAME>` | |
+| `github_repository_file` | `<repository>:<path>:<branch>` (`:` in the path as `??`; an unset branch is empty: the default branch) | |
+| `github_actions_secret` | `<repository>:<NAME>` | the import cannot read the value: the next run writes the model's (an update) |
+| `github_actions_organization_secret` | `<NAME>` | the same |
+
+The GitHub formats are those of integrations/github 6.13.0, each cited at its
+rule in `lib/pulumi/adopt.nix` (the provider's `docs/resources/<name>.md` and
+its importer at tag `v6.13.0`). An id the model does not determine is never
+guessed.
 
 ## Where the declaring and the type checking happen
 
@@ -253,7 +326,9 @@ put a TLS proxy in front of anything but loopback.
   at the PR head, statuses, one comment edited in place, forks, untrusted
   authors, drafts and other bases not previewed, deploy on merge with
   `trigger = pr`, a busy estate's preview queued); redaction.
-- `tests/pulumi_nix.sh` (gate): Pulumi.nix good and bad cases above.
+- `tests/pulumi_nix.sh` (gate): Pulumi.nix good and bad cases above; a
+  hand-written `adopt` and `adoptUnresolved`; `options.import` refused with the
+  error that names `adopt`.
 - `tests/deploy_e2e.sh` (networked, not a gate): a throwaway estate git repo
   whose pulumi.nix imports the model's stack and adds one composed from it;
   real pulumi previews of both, with state in PostgreSQL and garage
@@ -277,9 +352,15 @@ and the estate repo's own data.
   stage into a [Pulumi YAML] program, as a Nix attrset; the runner writes it as
   JSON (above).
 - `lib.mkPulumi { fleet; estate; adopt ? false; }` and
-  `lib.mkGithubPulumi { fleet; estate; }` are `toPulumi` over
+  `lib.mkGithubPulumi { fleet; estate; adopt ? false; }` are `toPulumi` over
   `lib.internal.guests` and `lib.internal.github`. Every model error those
   raise (two sites, offsite guest, missing token) surfaces unchanged.
+- With `adopt` (a map from Terraform type to `name: args: "<id>"` or
+  `{ unresolved = "<why>"; }`; `true` on the two wrappers selects the kit's
+  maps, `lib/pulumi/adopt.nix`) each resource also carries `adopt` or
+  `adoptUnresolved` beside `type`. That is the Pulumi.nix resource shape, what
+  `fromModel` hands to `lib.pulumi.stacks`; it is not a `Pulumi.yaml`. Without
+  it the result is the program alone. Neither ever has `import`.
 - The stage keeps the pinned Terraform providers' own argument names because
   those providers are what runs (through the bridge), and their schemas are
   what the guest model is checked against (`docs/guest-provider-map.md`).
@@ -341,7 +422,13 @@ know fails evaluation.
   that `prevent_destroy` becomes `protect`, that packages are the bridge at the
   pins, that every reference resolves, and that provider credentials are sops
   invoke references. It also checks that `split`/`offsite` are refused with
-  a message naming mkPulumi and that the name maps match their generator. Eight
+  a message naming mkPulumi and that the name maps match their generator. No
+  render has an `import`, with `adopt = true` either; and as Pulumi.nix stacks
+  the fixtures' `adoptIds` and `adoptUnresolved` are, key by key,
+  `tests/fixtures/adopt-expected.json` (`tests/pulumi_adopt.py`; gh-mini also
+  with `tests/fixtures/gh-adopt`, which renders all fifteen GitHub resource
+  types), every resource has an id or a reason, and neither the program nor its
+  store file names `import` or `adopt`. Eight
   hand mutations (shape flips, a typo, a literal token, a lost protect, a
   missing resource, a wrong pin, a dangling reference) are each caught.
 - `tests/pulumi_preview.sh` (networked, not a gate): `pulumi install` and
@@ -351,8 +438,9 @@ know fails evaluation.
   misspelt property (`vmid`) fails the preview, so the preview really is a type
   check.
 
-Not verified here: an actual `pulumi up` against Proxmox, `adopt` against a
-live estate, a GitHub preview (the provider authenticates against the GitHub
+Not verified here: an actual `pulumi up` against Proxmox, any adoption id
+against a live provider (the formats are the provider's documented ones; no
+import was run), a GitHub preview (the provider authenticates against the GitHub
 API at configure time), and the estate repo's real renders (its tenant input is
 a private repository this environment could not fetch).
 
@@ -376,14 +464,16 @@ a private repository this environment could not fetch).
   the bridge, so a fully Nix-built plugin cache would need a derivation for
   `pulumi-terraform-provider`.
 - **Parameterised packages need `pulumi install`** before `preview` or `up`.
-- **Moving an existing estate.** `mkPulumi { adopt = true; }` sets
-  `options.import` on every guest and pool, with the bpg import ids computed
-  from the model (`<node>/<vmid>`, `<pool_id>`), so the first `pulumi up`
-  adopts instead of creating. Pulumi refuses an adoption whose inputs differ
-  from the live resource, so that run doubles as a model-versus-live check.
-  Drop `adopt` after it. Terraform state is not converted.
+- **Moving an existing estate.** Adoption ids are data, not program: every
+  stack exposes `adoptIds` (computed from the model by `fromModel`:
+  `<node>/<vmid>`, `<pool_id>`, the GitHub ids above) and `adoptUnresolved`
+  (what the model cannot say). `fleetkit adopt` uses them once, to import what
+  is already deployed into the stack's state; the program it then previews is
+  the one every later `up` runs, with no `import` in it, so there is nothing to
+  remember to remove. Terraform state is not converted.
 - **Ordering, both engines.** A guest's `pool_id` is a plain string, not a
   reference to the pool resource, so neither engine orders the pool first on a
   fresh create. It is unchanged here, to keep the two renders equal.
 
 [Pulumi YAML]: https://www.pulumi.com/docs/iac/languages-sdks/yaml/
+[issue 61]: https://github.com/jeirslab/fleetkit/issues/61

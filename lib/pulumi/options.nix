@@ -5,15 +5,25 @@
 #   stacks.<name> = {
 #     estate = "homelab";                       # what `fleetkit deploy <estate>` runs
 #     packages.<pkg> = { source; version; parameters; };
-#     resources.<key> = { type; name?; properties; options; };
+#     resources.<key> = { type; name?; properties; options; adopt?; };
 #     variables.<key> = { "fn::invoke" = ...; };
 #     outputs.<key> = ...;
 #     backend = { type = "postgres" | "s3" | "local"; ... };
 #   }
 #
 # Read-only, per stack: `program` (the checked program as an attrset), `file`
-# (it as Pulumi.yaml in the store, from builtins.toFile) and `secrets` (the sops
-# files its invokes read, relative to the repo).
+# (it as Pulumi.yaml in the store, from builtins.toFile), `secrets` (the sops
+# files its invokes read, relative to the repo), `adoptIds` and
+# `adoptUnresolved`.
+#
+# Adoption. resources.<key>.adopt is the provider id of the existing resource
+# the declaration describes. It is data beside the program: `adoptIds` is
+# { <key> = "<id>"; } for every resource that has one, `fleetkit adopt` imports
+# those into the stack's state once, and no program ever carries `import`
+# (options.import is refused; a check on the rendered program holds the line).
+# An import left in a program destroyed an adopted container on the next `up`
+# (fleetkit#61). `adoptUnresolved` is { <key> = "<why>"; } for the resources
+# whose id the model does not determine.
 #
 # Every resource's properties are checked against the pinned Pulumi schema of
 # its type (./types.nix): a misspelt property, a value of the wrong type or a
@@ -116,15 +126,20 @@ let
                 default = null;
                 description = "\${<resource key>} references.";
               };
-              import = mkOption {
-                type = types.nullOr types.str;
-                default = null;
-                description = "Adopt the existing resource with this provider id.";
-              };
             };
           };
           default = { };
-          description = "Pulumi resource options.";
+          description = "Pulumi resource options. `import` is not one: see `adopt`.";
+        };
+        adopt = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "The provider id of the existing resource this declaration describes; used once by `fleetkit adopt`, never rendered into the program.";
+        };
+        adoptUnresolved = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Why `adopt` is not known from the model, and what value it needs; listed in the stack's adoptUnresolved while `adopt` is null.";
         };
       };
     };
@@ -135,6 +150,15 @@ let
     { name, config, ... }:
     let
       stack = name;
+      # options.import is refused wherever a resource is read (the program and
+      # the adoption ids): an estate that still sets it is told what to set.
+      resources = lib.mapAttrs (
+        key: r:
+        if r.options ? import then
+          throw "stacks.${stack}.resources.${key}.options.import is not supported: an import left in a program destroys the adopted resource on a later `up`. Set stacks.${stack}.resources.${key}.adopt = \"<id>\" instead: `fleetkit adopt` uses it once, and it is never rendered into the program."
+        else
+          r
+      ) config.resources;
       program = {
         name = config.project;
         runtime = "yaml";
@@ -157,18 +181,40 @@ let
             };
             options = prune r.options;
           }
-        ) config.resources;
+        ) resources;
       }
       // lib.optionalAttrs (config.description != null) { inherit (config) description; };
 
       # ${key...} references must name a resource or variable of this stack.
+      # "$${" is a literal "${" in Pulumi YAML, not a reference.
       keys = lib.attrNames config.resources ++ lib.attrNames config.variables;
       refs = lib.unique (
         map lib.head (
-          lib.filter lib.isList (builtins.split "\\$\\{([A-Za-z0-9_-]+)" (builtins.toJSON program.resources))
+          lib.filter lib.isList (
+            builtins.split "\\$\\{([A-Za-z0-9_-]+)" (
+              lib.replaceStrings [ "$\${" ] [ "" ] (builtins.toJSON program.resources)
+            )
+          )
         )
       );
       dangling = lib.filter (r: !lib.elem r keys) refs;
+
+      # The rendered program carries no import and no adoption data: a
+      # resource is type, name, properties and options, and its options have
+      # no `import`. Checked on what is rendered, whatever produced it.
+      leaked = lib.filter (
+        key:
+        let
+          r = program.resources.${key};
+        in
+        (r.options or { }) ? import
+        || removeAttrs r [
+          "type"
+          "name"
+          "properties"
+          "options"
+        ] != { }
+      ) (lib.attrNames program.resources);
     in
     {
       options = {
@@ -245,13 +291,29 @@ let
           readOnly = true;
           description = "Sops files the program's invokes read.";
         };
+        adoptIds = mkOption {
+          type = types.attrsOf types.str;
+          readOnly = true;
+          description = "{ <resource key> = \"<provider id>\"; } for every resource with `adopt` set: what `fleetkit adopt` imports. Never in the program.";
+        };
+        adoptUnresolved = mkOption {
+          type = types.attrsOf types.str;
+          readOnly = true;
+          description = "{ <resource key> = \"<why, and what value is needed>\"; } for every resource whose `adopt` is null and whose id the model does not determine.";
+        };
       };
       config = {
         program =
           if dangling != [ ] then
             throw "stacks.${stack}: references to no resource or variable: ${lib.concatStringsSep ", " dangling}"
+          else if leaked != [ ] then
+            throw "stacks.${stack}: the rendered program carries `import` or adoption data on: ${lib.concatStringsSep ", " leaked} (a bug in fleetkit: adoption ids are never rendered)"
           else
             program;
+        adoptIds = lib.mapAttrs (_: r: r.adopt) (lib.filterAttrs (_: r: r.adopt != null) resources);
+        adoptUnresolved = lib.mapAttrs (_: r: r.adoptUnresolved) (
+          lib.filterAttrs (_: r: r.adopt == null && r.adoptUnresolved != null) resources
+        );
         file = builtins.toFile "Pulumi.yaml" (builtins.toJSON config.program);
         secrets = lib.filter (x: x != null) (
           map (v: v."fn::invoke".arguments.sourceFile or null) (

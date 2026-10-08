@@ -10,6 +10,7 @@
       fleetLib = import ./lib;
       withLib = f: args: f ({ inherit (nixpkgs) lib; } // args);
       empty = fleetLib.mkFleet { inherit (nixpkgs) lib; };
+      adoptRules = import ./lib/pulumi/adopt.nix { inherit (nixpkgs) lib; };
     in
     {
       # mkFleet / fleet take { modules; tenants ? { }; }; nixpkgs' lib is
@@ -45,12 +46,14 @@
         # Pulumi YAML programs (builtins.toJSON into Pulumi.yaml) through
         # Pulumi's terraform-provider bridge at the pinned provider versions;
         # the fleetkit package runs them, then Colmena. See docs/pulumi.md.
-        # { tf; project; description ? null; } -> a Pulumi YAML program.
+        # { tf; project; description ? null; adopt ? { }; } -> a Pulumi YAML program.
         toPulumi = args: import ./lib/pulumi.nix ({ inherit (nixpkgs) lib; } // args);
         # { fleet; estate; adopt ? false; } -> the estate's guests and pools as a
-        # Pulumi program. adopt = true sets options.import on every guest and pool
-        # (bpg import ids <node>/<vmid> and <pool_id>), for moving an estate
-        # that is already deployed onto Pulumi without recreating it.
+        # Pulumi program. With adopt = true every guest and pool also carries
+        # `adopt`, the id the provider imports it by (<node>/<vmid>, <pool_id>;
+        # lib/pulumi/adopt.nix): the Pulumi.nix resource shape that
+        # lib.pulumi.fromModel feeds to lib.pulumi.stacks, not a Pulumi.yaml.
+        # `import` is never rendered (fleetkit#61).
         mkPulumi =
           {
             adopt ? false,
@@ -60,24 +63,24 @@
             inherit (nixpkgs) lib;
             tf = import ./lib/terraform.nix ({ inherit (nixpkgs) lib; } // removeAttrs args [ "adopt" ]);
             project = "${args.estate}-guests";
-            adopt = nixpkgs.lib.optionalAttrs adopt (
-              let
-                guest = _: a: "${a.node_name}/${toString a.vm_id}";
-              in
-              {
-                proxmox_virtual_environment_container = guest;
-                proxmox_virtual_environment_vm = guest;
-                proxmox_virtual_environment_pool = _: a: a.pool_id;
-              }
-            );
+            adopt = nixpkgs.lib.optionalAttrs adopt adoptRules.proxmox;
           };
-        # { fleet; estate; } -> the estate's GitHub organisation as a Pulumi program.
+        # { fleet; estate; adopt ? false; } -> the estate's GitHub organisation
+        # as a Pulumi program. adopt = true as for mkPulumi; a resource whose
+        # id the model does not determine carries `adoptUnresolved` instead.
         mkGithubPulumi =
-          args:
+          {
+            adopt ? false,
+            ...
+          }@args:
+          let
+            tf = import ./lib/github.nix ({ inherit (nixpkgs) lib; } // removeAttrs args [ "adopt" ]);
+          in
           import ./lib/pulumi.nix {
             inherit (nixpkgs) lib;
-            tf = import ./lib/github.nix ({ inherit (nixpkgs) lib; } // args);
+            inherit tf;
             project = "${args.estate}-github";
+            adopt = nixpkgs.lib.optionalAttrs adopt (adoptRules.github tf);
           };
         # The same two stages under their Terraform-era names: tests written
         # against unstable (tests/github.sh, tests/terraform.sh) read these.
