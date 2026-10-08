@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fleetkit-cli"
+version = "0.1.0"
+description = "Deploy an estate: Pulumi programs and a Colmena hive rendered by Nix, as a CLI and an HTTP API"
+requires-python = ">=3.11"
+dependencies = ["click", "fastapi", "uvicorn", "pydantic", "pulumi"]
+
+[project.scripts]
+fleetkit = "fleetkit_cli.main:main"
+
+[tool.setuptools]
+packages = ["fleetkit_cli"]

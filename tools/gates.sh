@@ -76,6 +76,14 @@ bash tests/github.sh >&2 || fidelity=fail
 bash tests/github_app.sh >&2 || fidelity=fail
 bash tests/workflow_caller.sh >&2 || fidelity=fail
 python3 tests/github_app_bootstrap.py >&2 || fidelity=fail
+# Experimental: the same renders as Pulumi programs, against the pinned
+# Pulumi schemas (tests/pulumi.sh; offline). tests/pulumi_preview.sh is the
+# networked end-to-end check and is not a gate.
+bash tests/pulumi.sh >&2 || fidelity=fail
+bash tests/pulumi_nix.sh >&2 || fidelity=fail
+# The runner's guest list (what its guard gates) covers every VM and container
+# type of the pinned provider: a provider bump cannot fail open.
+python3 tests/guest_types.py >&2 || fidelity=fail
 log "fidelity: $fidelity"
 
 ok=false

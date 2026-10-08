@@ -1,4 +1,8 @@
-# Rendering GitHub from the model (`lib.mkGithubTerraform`)
+# The GitHub provider arguments (`lib.internal.github`)
+
+This branch deploys with Pulumi: this stage is what `lib.mkGithubPulumi`
+compiles (see `docs/pulumi.md`). `mkGithubTerraform` below is
+`lib.internal.github`; nothing runs tofu.
 
 `lib.mkGithubTerraform { fleet, estate }` turns the evaluated model into an
 attrset that `builtins.toJSON` writes as a valid `main.tf.json` for the
@@ -13,16 +17,16 @@ estate repo.
 | ------ | ------------------- |
 | `terraform.required_providers` | `integrations/github` 6.13.0, plus `carlpett/sops` when a secret is read |
 | `provider.github` | `owner` is `git.org`; authentication from `git.auth`. `kind = "app"` renders an `app_auth` block (`id`, `installation_id`, `pem_file`), `kind = "token"` renders `token`. Every value is a `${data.sops_file...}` reference resolved from the estate's secret refs, with the same ref form and nested-key rule as `mkTerraform`; never a literal credential |
-| `resource.github_repository.<key>` | each `fleet.repos.<estate>.<key>`: `name` (the repo's `name`, else its key), `visibility`, `description`, `has_issues` / `has_wiki` / `has_projects` from `features`, merge settings from `merge`, `archived`. `archive_on_destroy` (true unless the repository sets `archiveOnDestroy = false`) and `lifecycle.prevent_destroy = true` |
+| `resource.github_repository.<key>` | each `fleet.repos.<estate>.<key>`: `name` (the repo's `name`, else its key), `visibility`, `description`, `has_issues` / `has_wiki` / `has_projects` from `features`, merge settings from `merge`, `archived`. `archive_on_destroy` (true unless the repository sets `archiveOnDestroy = false`) and `lifecycle.prevent_destroy = true`. Each optional setting the repository sets (see "Optional settings") |
 | `resource.github_branch_default.<key>` | repositories that set `defaultBranch` |
 | `resource.github_repository_environment.<key>_<environment>` | each environment of a repository (its `branches` are not rendered, see below); not rendered for a private repository when `git.plan` is `free` or unset |
 | `resource.github_actions_secret.<key>_<NAME>` | `repos.<estate>.<key>.actions.secrets.<NAME>.sourceRef`; `plaintext_value` is always a `${data.sops_file...}` reference |
 | `resource.github_actions_variable.<key>_<NAME>` | `repos.<estate>.<key>.actions.variables.<NAME>` (the value is plain text, not a secret) |
 | `resource.github_issue_label.<key>_<name>` | `repos.<estate>.<key>.labels.<name>` (`color`, optional `description`); one resource per label, so labels made by hand are left alone |
 | `resource.github_repository_file.<key>_<path>` | `repos.<estate>.<key>.files.<path>` (`content`, optional `branch`, `message`, `overwrite`): `file`, `content`, `overwrite_on_create`, and `branch` / `commit_message` when set (otherwise the default branch and the provider's message). Meant for a workflow file the lab keeps in a tenant repository |
-| `github_organization_settings` | `git.organization`, when `git.kind == "org"` |
+| `github_organization_settings` | `git.organization`, when `git.kind == "org"`: each key is the provider argument in camelCase (see "Optional settings" for the list) |
 | `github_membership` | one per member; the role comes from the `admin` / `member` lists, and a principal id is resolved to its `github` login through `fleet.operators.principals` |
-| `github_team`, `github_team_members`, `github_team_repository` | `git.teams`; membership is authoritative |
+| `github_team`, `github_team_members`, `github_team_repository` | `git.teams` (`name`, `privacy`, `description`, `members`, `maintainers`, `repos`); membership is authoritative |
 | `github_actions_organization_permissions` | `git.actions` |
 | `github_actions_organization_secret` | each `git.actions.secrets` entry; `plaintext_value` is a `${data.sops_file...}` reference, `visibility = "selected"` with `selected_repository_ids` referencing the rendered repositories. Not rendered at all when `git.plan` is `free` or unset and any selected repository is private |
 | `github_organization_ruleset` | each ruleset whose `requiresPlan` is satisfied by `git.plan` (`free` < `pro` < `team` < `enterprise`; a ruleset that required `team` still requires `team`) |
@@ -46,7 +50,9 @@ every render, for a caller that passes a fleet it did not check.
 Terraform reads every string in `main.tf.json` as a template. Text the estate
 supplies (a managed file's path, branch, content and commit message, an
 Actions variable's value, a label's name and description, a runner's name
-and labels) is rendered with `${` and
+and labels, a repository's `homepageUrl`, `topics`, `template` owner and
+repository and `pages` cname, branch and path, a team's `description`, every
+string of `git.organization`) is rendered with `${` and
 `%{` escaped (`$${`, `%%{`). A workflow file keeps its `${{ ... }}`
 expressions, and no value can turn into a reference to another part of the
 render, such as a secret. Only the kit's own expressions are templates.
@@ -77,6 +83,152 @@ secret "C" all render the resource name "app_B_C"`.
 A team, ruleset or Actions secret may only name repositories of the estate
 being rendered; a repository id of another estate is an evaluation error.
 
+## Optional settings
+
+Every option here is unset by default, and an unset option renders nothing:
+the argument is left out of the resource, so an estate that sets none of them
+renders exactly what it rendered before they existed. That matters at
+adoption, because the provider treats an argument the configuration leaves
+out as its own default (see "What leaving one out does" below).
+
+### Repository (`fleet.repos.<estate>.<key>`)
+
+| Option | Provider argument | Values |
+| ------ | ----------------- | ------ |
+| `homepageUrl` | `homepage_url` | text |
+| `topics` | `topics` | list of topics |
+| `isTemplate` | `is_template` | bool |
+| `template = { owner; repository; includeAllBranches ? false; }` | `template { owner, repository, include_all_branches }` | see "A repository created from a template" |
+| `pages = { buildType; source = { branch; path; }; cname; }` | `pages { build_type, source { branch, path }, cname }` | `buildType` is `legacy` or `workflow`; every member is optional, but a `source` needs its `branch` |
+| `vulnerabilityAlerts` | `vulnerability_alerts` | bool |
+| `hasDiscussions` | `has_discussions` | bool |
+| `allowAutoMerge` | `allow_auto_merge` | bool |
+| `allowUpdateBranch` | `allow_update_branch` | bool |
+| `webCommitSignoffRequired` | `web_commit_signoff_required` | bool |
+| `squashMergeCommitTitle` | `squash_merge_commit_title` | `PR_TITLE`, `COMMIT_OR_PR_TITLE` |
+| `squashMergeCommitMessage` | `squash_merge_commit_message` | `PR_BODY`, `COMMIT_MESSAGES`, `BLANK` |
+| `mergeCommitTitle` | `merge_commit_title` | `PR_TITLE`, `MERGE_MESSAGE` |
+| `mergeCommitMessage` | `merge_commit_message` | `PR_BODY`, `PR_TITLE`, `BLANK` |
+
+These sit beside `features` and `merge`, not inside them: those two blocks
+require all of their members once declared, and a repository must be able to
+state one of these settings without restating the rest.
+
+`pages` and `vulnerability_alerts` are the arguments of `github_repository`
+itself. Provider 6.13.0 marks both deprecated in favour of the separate
+`github_repository_pages` and `github_repository_vulnerability_alerts`
+resources; they still work, and a plan prints the deprecation warning. The
+kit keeps them on the repository so that adoption needs no further import
+ids.
+
+### Team (`git.teams.<team>`)
+
+| Option | Provider argument |
+| ------ | ----------------- |
+| `description` | `github_team.description` |
+| `name` | `github_team.name`: the display name (GitHub derives the slug from it); the key when unset |
+| `maintainers` | `github_team_members.members` with `role = "maintainer"`; `members` get `role = "member"` |
+
+### Organisation (`git.organization`)
+
+Each key is the `github_organization_settings` argument in camelCase. Besides
+the keys accepted before (`billingEmail`, `defaultRepositoryPermission`,
+`hasOrganizationProjects`, `hasRepositoryProjects`, `membersCanCreateRepositories`,
+`membersCanCreatePublicRepositories`, `membersCanCreatePrivateRepositories`,
+`dependabotAlertsEnabledForNewRepositories`,
+`dependencyGraphEnabledForNewRepositories`,
+`secretScanningEnabledForNewRepositories`,
+`secretScanningPushProtectionEnabledForNewRepositories`,
+`webCommitSignoffRequired`):
+
+| Option | Provider argument | Type |
+| ------ | ----------------- | ---- |
+| `name` | `name` | text |
+| `description` | `description` | text |
+| `company` | `company` | text |
+| `blog` | `blog` | text |
+| `email` | `email` | text |
+| `location` | `location` | text |
+| `twitterUsername` | `twitter_username` | text |
+| `membersCanCreateInternalRepositories` | `members_can_create_internal_repositories` | bool |
+| `membersCanCreatePages` | `members_can_create_pages` | bool |
+| `membersCanCreatePublicPages` | `members_can_create_public_pages` | bool |
+| `membersCanCreatePrivatePages` | `members_can_create_private_pages` | bool |
+| `membersCanForkPrivateRepositories` | `members_can_fork_private_repositories` | bool |
+| `advancedSecurityEnabledForNewRepositories` | `advanced_security_enabled_for_new_repositories` | bool |
+| `dependabotSecurityUpdatesEnabledForNewRepositories` | `dependabot_security_updates_enabled_for_new_repositories` | bool |
+
+A key outside the two lists is an evaluation error that names the allowed
+keys, and a new key of the wrong type is one too (`expected a string`,
+`expected true or false`).
+
+### What leaving one out does
+
+Read from the provider's source at 6.13.0
+(`github/resource_github_repository.go`); the pinned schema file carries the
+names and the `computed` flag but not the defaults.
+
+- Reset to the provider's default when left out of an adopted repository:
+  `homepage_url` (empty), `is_template` (false), `has_discussions` (false),
+  `allow_auto_merge` (false), `allow_update_branch` (false),
+  `squash_merge_commit_title` (`COMMIT_OR_PR_TITLE`),
+  `squash_merge_commit_message` (`COMMIT_MESSAGES`), `merge_commit_title`
+  (`MERGE_MESSAGE`), `merge_commit_message` (`PR_TITLE`), and a team's
+  `description` (empty). Declare what the live repository has.
+- Kept as they are when left out (optional and computed in the schema):
+  `topics`, `vulnerability_alerts`, `web_commit_signoff_required`. Declaring
+  them is still what makes a later change by hand show up in a plan. An
+  empty `topics = [ ]` is likely read as "not set" for the same reason, so it
+  does not clear the topics of a repository that has some.
+- `pages`: the provider reads a repository's Pages site only when the
+  configuration has a `pages` block. Left out, an existing site is neither
+  shown nor disabled. Declared and later removed, the site is disabled.
+- Every `github_organization_settings` argument but `billing_email` is
+  optional and not computed in the pinned schema, so an organisation setting
+  left out is planned as the provider's default.
+
+### A repository created from a template
+
+`template` records the template repository a repository was created from.
+What provider 6.13.0 does with it (`resource_github_repository.go`):
+
+- **No replacement.** Neither the `template` block nor any of its members is
+  `ForceNew` at this version; the resource's only forced replacements are
+  changes of `fork`, `source_owner` and `source_repo`. Changing, adding or
+  removing `template` plans an update in place. (Older provider releases did
+  force a replacement here; this holds for the pinned version only, so
+  re-check when the pin moves.)
+- **The update does nothing.** The block is read only when the repository is
+  created; the update call never sends it.
+- **It is read back.** On every refresh the provider sets `template` to the
+  live repository's template (`owner`, `repository`), or to nothing.
+
+So for an adopted repository that was created from a template: leaving
+`template` out never replaces or changes the repository, but the plan is
+never empty either, because each plan proposes to remove the block, the apply
+changes nothing, and the next refresh reads it back. The same holds for a
+declared owner or repository that is not the live one. Declare the template
+the repository really has and the difference is gone. The kit does not hide
+this difference with `ignore_changes`: an unset `template` renders nothing,
+like every other option here, and a non-empty plan on `template` is the
+signal that the declaration is incomplete.
+
+`includeAllBranches` is the one exception. The provider does not read it
+back (the API does not report it), so a declared `true` would differ from
+state on every plan after the first. When it is `true` the kit therefore
+renders `lifecycle.ignore_changes = [ "template[0].include_all_branches" ]`
+on that repository (`ignoreChanges: [ template.includeAllBranches ]` in the
+Pulumi program). It still takes effect when the repository is created.
+
+### In the Pulumi program
+
+`lib.mkGithubPulumi` compiles the same render, so every argument above is
+there under the bridge's name (`homepageUrl`, `isTemplate`,
+`vulnerabilityAlerts`, ...). `pages`, its `source` and `template` are
+one-item lists in Terraform and plain objects in Pulumi:
+`pages: { buildType, cname, source: { branch, path } }`,
+`template: { owner, repository, includeAllBranches }`.
+
 ## What the schema checks
 
 `modules/repos.nix` refuses these at evaluation, each with a message that
@@ -90,8 +242,17 @@ starts with the option path (`fleet.repos.<estate>.<key>...`):
 | `actions.secrets`, `actions.variables` | names are compared without regard to case, as GitHub does: the `GITHUB_` prefix is refused in any case, and two names of one repository that differ only in case are refused |
 | `labels.<name>.color` | exactly six hex digits, no leading `#` |
 | `files.<path>` | the path is relative to the repository root: not empty, no leading `/`, no `..` component |
+| `template` | `owner` and `repository` are both set and not empty |
+| `pages.source` | a declared source has a `branch` |
+| `pages.buildType` | `legacy` or `workflow` |
+| `topics` | each topic is lowercase letters, digits and hyphens, at most 50 characters, and does not start with a hyphen (the provider's own rule) |
+| `squashMergeCommitTitle`, `squashMergeCommitMessage`, `mergeCommitTitle`, `mergeCommitMessage` | one of the values GitHub has for that setting |
 | `runners.<name>.labels` | at least one label |
 | `runners.<name>.on` | a declared guest, and a guest of the same estate as the repository |
+
+`homepageUrl` is not checked for being a URL: GitHub stores whatever text the
+field is given, and an adopted repository must be able to declare the value
+it has.
 
 A file, secret, variable, label or runner can only be declared by the estate
 that owns the repository: `fleet.repos.<tenant>` is the only part of
@@ -268,7 +429,11 @@ An organisation that already exists is adopted, not recreated. In the estate
 repo, write `import` blocks for each rendered address (for example
 `import { to = github_repository.<key>; id = "<name>"; }`), then run
 `tofu plan`. Adoption is done when the plan is empty: adjust the model, not
-the state, until it is. The kit renders text only; it never runs tofu,
+the state, until it is. An argument the declaration leaves out is planned as
+the provider's default, so a live homepage, template flag, Pages site, merge
+message setting, team description or organisation profile field must be
+declared to survive; "Optional settings" lists them and says which ones the
+provider keeps on its own. The kit renders text only; it never runs tofu,
 imports resources or manages state.
 
 ## Check
@@ -281,6 +446,10 @@ skipped environment stay in `locals.fleet_unrendered`, that no
 credential is a literal and that every repository has `archive_on_destroy`.
 `tests/cases-github.json` holds the negative cases: one refused declaration
 per rule above, each pinned to the message of the validation that refuses it.
+Its positive case sets every optional setting; the render is checked
+argument by argument against the pinned schema and the declared values, and
+the same model is rendered as a Pulumi program and checked against the pinned
+Pulumi schema (`pages` and `template` as objects).
 Its `personal` entries render the fixture as a personal account
 (`git.kind` not `"org"`), once with `git.plan` unset (the private
 repository's environment is skipped, the reason names the account) and once

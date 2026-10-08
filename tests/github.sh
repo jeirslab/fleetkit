@@ -6,9 +6,12 @@
 #             environment, an organisation secret: both must be reported as
 #             skipped, not rendered);
 #   positive  the fixture plus a support module (a site, a guest) and every new
-#             block (repo secret, variable, label, managed file, runner), also
+#             block (repo secret, variable, label, managed file, runner) and
+#             every optional repository, team and organisation setting, also
 #             with another estate's repository carrying the same blocks, which
-#             must not reach estate gh's render;
+#             must not reach estate gh's render; rendered as a Pulumi program
+#             as well (lib.mkGithubPulumi), checked against the pinned Pulumi
+#             schema;
 #   personal  the fixture with its git block replaced by a personal account's
 #             (git.kind is not "org"), once with git.plan unset and once on
 #             "pro": the private repository's environment is skipped with the
@@ -62,7 +65,7 @@ render() {
   local name="$1" mods="" m
   shift
   for m in "$@"; do mods="$mods $TMP/$m.nix"; done
-  nix eval --impure --json "$ROOT#lib" --apply "l: l.mkGithubTerraform {
+  nix eval --impure --json "$ROOT#lib" --apply "l: l.${FN:-mkGithubTerraform} {
     fleet = l.fleet { modules = [ $ROOT/tests/fixtures/gh-mini $mods ]; tenants = { ${TENANTS:-} }; };
     estate = \"gh\";
   }" >"$TMP/$name.json" 2>"$TMP/$name.err"
@@ -76,10 +79,13 @@ else
   fail "base: evaluation"
 fi
 
-# positive, with another estate's blocks present
-if render positive support positive isolation; then
-  python3 "$ROOT/tests/github.py" "$TMP/positive.json" --full --cases "$CASES" >&2 || fail "positive"
+# positive, with another estate's blocks present; the same model as a Pulumi
+# program too (tests/pulumi.py: the pinned Pulumi schema, lists and objects).
+if render positive support positive isolation && FN=mkGithubPulumi render positive-pulumi support positive isolation; then
+  python3 "$ROOT/tests/github.py" "$TMP/positive.json" --full --cases "$CASES" --pulumi "$TMP/positive-pulumi.json" >&2 || fail "positive"
+  python3 "$ROOT/tests/pulumi.py" "$TMP/positive-pulumi.json" "$TMP/positive.json" >&2 || fail "positive: Pulumi program"
 else
+  tail -n 40 "$TMP/positive-pulumi.err" >&2
   tail -n 40 "$TMP/positive.err" >&2
   fail "positive: evaluation"
 fi

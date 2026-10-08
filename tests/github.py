@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Check a rendered main.tf.json (lib.mkGithubTerraform on tests/fixtures/gh-mini)
+"""Check a rendered main.tf.json (lib.internal.github on tests/fixtures/gh-mini)
 against the pinned integrations/github schema.
 
-  github.py RENDERED.json [--schema FILE] [--full --cases tests/cases-github.json]
+  github.py RENDERED.json [--schema FILE] [--full --cases tests/cases-github.json [--pulumi PROGRAM.json]]
   github.py RENDERED.json --personal NAME [--cases tests/cases-github.json]
 
 Fails (exit 1, problems on stderr) when:
@@ -29,7 +29,12 @@ and the organisation secret that selects only it are still rendered; the repo Ac
 labels and managed file are rendered with the pinned schema's argument names,
 the secret value is a sops reference, the runner appears in locals and not as
 a resource, and nothing of the other estate's repository (the case file's
-isolation.absent) is rendered.
+isolation.absent) is rendered; every optional repository, team and
+organisation setting of the positive case is rendered as declared (escaped
+where it is estate text) and none appears on a repository that does not
+declare it. With --pulumi PROGRAM as well (lib.mkGithubPulumi of the same
+model): pages and template are objects there, not one-item lists, and the
+arguments carry the bridge's names.
 With --personal NAME (the fixture with the git block of the case file's
 "personal" entry NAME, an estate whose git.kind is not "org"): the rendered
 environments and locals.fleet_skipped_environments are exactly the entry's
@@ -338,6 +343,8 @@ def check_full(doc, cases, all_skipped):
     if len(escf) != 1 or escf[0][1].get("branch") != "$${not_a_ref}":
         problems.append(f"github_repository_file docs/escaped.txt: branch is not escaped: {escf}")
 
+    problems += check_settings(resources)
+
     # The skipped resources are still reported (their absence is checked in check()).
     if "free" not in all_skipped.lower():
         problems.append("no locals.fleet_skipped_* gives the plan as the reason")
@@ -348,6 +355,153 @@ def check_full(doc, cases, all_skipped):
         # "thing" is also a word inside other strings; match it as a whole token.
         if re.search(rf'(?<![A-Za-z0-9_-]){re.escape(needle)}(?![A-Za-z0-9_-])', text):
             problems.append(f"the other estate's '{needle}' reached estate gh's render")
+    return problems
+
+
+# The optional settings of the positive case: every one rendered under the
+# pinned schema's argument name, estate text escaped, one-item blocks as
+# one-item lists.
+SITE_SETTINGS = {
+    "homepage_url": "https://site.example.invalid/?q=$${not_a_ref}",
+    "topics": ["docs", "static-site"],
+    "is_template": True,
+    "pages": [
+        {
+            "build_type": "legacy",
+            "cname": "www.example.invalid",
+            "source": [{"branch": "gh-pages", "path": "/docs"}],
+        }
+    ],
+    "vulnerability_alerts": True,
+    "has_discussions": True,
+    "allow_auto_merge": True,
+    "allow_update_branch": True,
+    "web_commit_signoff_required": True,
+    "squash_merge_commit_title": "PR_TITLE",
+    "squash_merge_commit_message": "PR_BODY",
+    "merge_commit_title": "PR_TITLE",
+    "merge_commit_message": "BLANK",
+}
+TEMPLATE = {"owner": "example-org", "repository": "service-template"}
+APP_SETTINGS = {
+    "template": [{**TEMPLATE, "include_all_branches": True}],
+    "vulnerability_alerts": False,
+    "pages": [{"build_type": "workflow"}],
+}
+MIRROR_SETTINGS = {"template": [{**TEMPLATE, "include_all_branches": False}]}
+REPO_SETTINGS = set(SITE_SETTINGS) | set(APP_SETTINGS)
+ORG_SETTINGS = {
+    "name": "Example Org",
+    "description": "An example $${not_a_ref}",
+    "company": "Example Co",
+    "blog": "https://blog.example.invalid",
+    "email": "hello@example.invalid",
+    "location": "Nowhere",
+    "twitter_username": "example",
+    "members_can_create_internal_repositories": False,
+    "members_can_create_pages": True,
+    "members_can_create_public_pages": True,
+    "members_can_create_private_pages": False,
+    "members_can_fork_private_repositories": False,
+    "advanced_security_enabled_for_new_repositories": False,
+    "dependabot_security_updates_enabled_for_new_repositories": True,
+    # What the fixture already set stays.
+    "billing_email": "billing@example.invalid",
+    "default_repository_permission": "read",
+    "members_can_create_repositories": False,
+    "web_commit_signoff_required": True,
+}
+
+
+def check_settings(resources):
+    problems = []
+    repos = resources.get("github_repository", {})
+    for key, want in (("site", SITE_SETTINGS), ("app", APP_SETTINGS), ("mirror", MIRROR_SETTINGS)):
+        r = repos.get(key, {})
+        for arg in sorted(REPO_SETTINGS):
+            got = r.get(arg)
+            if arg == "topics" and isinstance(got, list):
+                got = sorted(got)
+            if arg in want and got != want[arg]:
+                problems.append(f"github_repository.{key}: {arg} is {got!r}, not {want[arg]!r}")
+            # A setting the repository does not declare is not rendered at all.
+            if arg not in want and arg in r:
+                problems.append(f"github_repository.{key}: {arg} is rendered but not declared")
+    # A template's include_all_branches is not read back by the provider: a
+    # declared true is kept out of later plans, and nothing else is ignored.
+    want_lc = {
+        "app": {"prevent_destroy": True, "ignore_changes": ["template[0].include_all_branches"]},
+        "site": {"prevent_destroy": True},
+        "mirror": {"prevent_destroy": True},
+    }
+    for key, lc in want_lc.items():
+        if repos.get(key, {}).get("lifecycle") != lc:
+            problems.append(f"github_repository.{key}: lifecycle is {repos.get(key, {}).get('lifecycle')}, not {lc}")
+    team = resources.get("github_team", {}).get("core_devs", {})
+    if team.get("description") != "Core developers $${not_a_ref}":
+        problems.append(f"github_team.core_devs: description is {team.get('description')!r}")
+    if "description" in resources.get("github_team", {}).get("empty", {}):
+        problems.append("github_team.empty: a description appeared from nowhere")
+    org = resources.get("github_organization_settings", {}).get("org", {})
+    if org != ORG_SETTINGS:
+        diff = sorted(k for k in set(org) | set(ORG_SETTINGS) if org.get(k) != ORG_SETTINGS.get(k))
+        problems.append(f"github_organization_settings.org: differs from the declaration in {diff}")
+    return problems
+
+
+def check_pulumi(prog):
+    """The same settings in the Pulumi program: a one-item block is an object, names are the bridge's."""
+    problems = []
+    res = prog.get("resources", {})
+
+    # A logical name shared by two types is keyed <name>_<type>; find by both.
+    def one(name, kind):
+        for key, r in res.items():
+            if r.get("name", key) == name and r.get("type", "").endswith(f":{kind}"):
+                return r
+        problems.append(f"pulumi: no {kind} named {name}")
+        return {}
+
+    def props(name, kind="Repository"):
+        return one(name, kind).get("properties", {})
+
+    want_pages = {"buildType": "legacy", "cname": "www.example.invalid", "source": {"branch": "gh-pages", "path": "/docs"}}
+    if props("site").get("pages") != want_pages:
+        problems.append(f"pulumi site: pages is {props('site').get('pages')!r}, not {want_pages!r}")
+    if props("app").get("pages") != {"buildType": "workflow"}:
+        problems.append(f"pulumi app: pages is {props('app').get('pages')!r}")
+    want_tpl = {**TEMPLATE, "includeAllBranches": True}
+    if props("app").get("template") != want_tpl:
+        problems.append(f"pulumi app: template is {props('app').get('template')!r}, not {want_tpl!r}")
+    opts = one("app", "Repository").get("options", {})
+    if opts.get("ignoreChanges") != ["template.includeAllBranches"] or opts.get("protect") is not True:
+        problems.append(f"pulumi app: options are {opts}, not protect with ignoreChanges template.includeAllBranches")
+    if "ignoreChanges" in one("mirror", "Repository").get("options", {}):
+        problems.append("pulumi mirror: ignoreChanges appeared from nowhere")
+    site = props("site")
+    for name, want in (
+        ("homepageUrl", SITE_SETTINGS["homepage_url"]),
+        ("isTemplate", True),
+        ("vulnerabilityAlerts", True),
+        ("hasDiscussions", True),
+        ("allowAutoMerge", True),
+        ("allowUpdateBranch", True),
+        ("webCommitSignoffRequired", True),
+        ("squashMergeCommitTitle", "PR_TITLE"),
+        ("squashMergeCommitMessage", "PR_BODY"),
+        ("mergeCommitTitle", "PR_TITLE"),
+        ("mergeCommitMessage", "BLANK"),
+    ):
+        if site.get(name) != want:
+            problems.append(f"pulumi site: {name} is {site.get(name)!r}, not {want!r}")
+    if sorted(site.get("topics") or []) != ["docs", "static-site"]:
+        problems.append(f"pulumi site: topics is {site.get('topics')!r}")
+    if props("core_devs", "Team").get("description") != "Core developers $${not_a_ref}":
+        problems.append(f"pulumi core_devs: description is {props('core_devs', 'Team').get('description')!r}")
+    org = props("org", "OrganizationSettings")
+    for name, want in (("twitterUsername", "example"), ("membersCanCreatePrivatePages", False), ("description", "An example $${not_a_ref}")):
+        if org.get(name) != want:
+            problems.append(f"pulumi org: {name} is {org.get(name)!r}, not {want!r}")
     return problems
 
 
@@ -386,6 +540,7 @@ def main():
     ap.add_argument("--full", action="store_true", help="also check the new blocks of the positive case")
     ap.add_argument("--personal", metavar="NAME", help="check the render of the case file's personal entry NAME")
     ap.add_argument("--cases", default=f"{ROOT}/tests/cases-github.json")
+    ap.add_argument("--pulumi", metavar="PROGRAM", help="with --full: the same model as a Pulumi program (lib.mkGithubPulumi)")
     a = ap.parse_args()
     with open(a.schema, encoding="utf-8") as f:
         schema = json.load(f)[PROVIDER]
@@ -402,6 +557,9 @@ def main():
         problems = check_personal(doc, schema, case)
     else:
         problems = check(doc, schema, cases if a.full else None)
+        if a.full and a.pulumi:
+            with open(a.pulumi, encoding="utf-8") as f:
+                problems += check_pulumi(json.load(f))
     for p in problems:
         print(f"FAIL {p}", file=sys.stderr)
     sys.exit(1 if problems else 0)
