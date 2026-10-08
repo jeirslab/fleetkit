@@ -216,11 +216,16 @@ def deploy(ctx: click.Context, estate: str, goal: str, **kw) -> None:
 @click.option("--accept-update", multiple=True, metavar="KEY",
               help="Adopt KEY although its declaration differs, or the import does not record some of its "
                    "properties: it is updated in place (a guest REBOOTS).")
+@click.option("--accept-absent", multiple=True, metavar="KEY",
+              help="With --apply: the guest KEY, for which nothing was found by its id, really does not exist "
+                   "(repeat). Without it an absent guest refuses the apply: one that exists under another id "
+                   "would be created a second time by the next deploy.")
 @click.option("--apply", "apply_", is_flag=True, help="Adopt. Without it: the report only, nothing changes.")
 @click.option("--json", "as_json", is_flag=True, help="The report as one JSON document on stdout.")
 @click.pass_context
 def adopt_cmd(ctx: click.Context, estate: str, stacks: tuple[str, ...], resources: tuple[str, ...],
-              ids: tuple[str, ...], accept_update: tuple[str, ...], apply_: bool, as_json: bool) -> None:
+              ids: tuple[str, ...], accept_update: tuple[str, ...], accept_absent: tuple[str, ...], apply_: bool,
+              as_json: bool) -> None:
     """Import resources that already exist into a stack's state.
 
     For each resource with an adoption id that is not in state yet: `import`
@@ -229,9 +234,11 @@ def adopt_cmd(ctx: click.Context, estate: str, stacks: tuple[str, ...], resource
     record some properties: still an update, a reboot of a guest), `absent`
     (it does not exist: a deploy will create it), `secret` (not adopted unless
     named with --resource), `duplicate` (its id is in state under another
-    name: refused). --apply refuses an update that is not accepted with
-    --accept-update KEY, and any plan that creates, replaces or deletes. The
-    import id is only ever in a temporary program, never in the real one."""
+    name, in any stack of the estate, or twice in this run: refused). --apply
+    refuses an update that is not accepted with --accept-update KEY, an
+    absent guest that is not accepted with --accept-absent KEY, and any plan
+    that creates, replaces or deletes. The import id is only ever in a
+    temporary program, never in the real one."""
     s = _settings(ctx)
     pairs: dict[str, str] = {}
     for pair in ids:
@@ -251,7 +258,7 @@ def adopt_cmd(ctx: click.Context, estate: str, stacks: tuple[str, ...], resource
     try:
         with _signals(ev):
             report = adoption.run(s, estate, ev, list(stacks) or None, list(resources), pairs,
-                                  list(accept_update), apply_)
+                                  list(accept_update), apply_, list(accept_absent))
     except Cancelled as e:
         raise _cancelled(e)
     except KeyboardInterrupt:

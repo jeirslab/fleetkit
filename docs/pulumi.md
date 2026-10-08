@@ -187,7 +187,9 @@ One pipeline for the CLI, the API and GitOps:
    resource that is not `same`. Every stack is previewed, and every plan
    passes the guard (below), before any stack is applied; then
    `up --plan`, stack by stack: the engine is bound to the plan the guard
-   read. There is no `up` without one.
+   read. There is no `up` without one. Before the engine runs, the stack's
+   state is read: a **pending operation** in it refuses the preview and the
+   deploy ("Pending operations", below).
 4. **nixos**: `colmena apply <goal>` (`build` for a preview) on
    `hives.<hive>` (default: the estate), after infra.
 
@@ -226,16 +228,28 @@ to what was read: the refusals, the engine's update plan, and `protect`.
   beside the counts), in the job's result (`plan.<stack>`), in the CLI's
   output and in the PR comment.
 - **Guests** are every container and VM type of the provider
-  (`cli/fleetkit_cli/guests.py`): `virtualEnvironmentContainer`,
-  `virtualEnvironmentVm`, `virtualEnvironmentVm2`, `vm`, `clonedVm`,
-  `virtualEnvironmentClonedVm` (all `proxmox:index/...`). The list cannot fall
-  behind the provider: `tests/guest_types.py` (a gate) and
-  `cli/tests/test_guests.py` take every resource token of the pinned name map
-  (`providers/pulumi/names/bpg-proxmox-*.json`) whose name matches `vm`,
-  `container` or `lxc`, and fail when one is neither a guest nor in the
-  explicit not-a-guest list with its reason (the four LVM storage types, which
-  match on the `vm` in `Lvm`). A provider bump that adds a guest type fails
-  the gate instead of leaving it ungated.
+  (`cli/fleetkit_cli/guests.py`): `virtualEnvironmentContainer` (the
+  container family), and `virtualEnvironmentVm`, `virtualEnvironmentVm2`,
+  `vm`, `clonedVm`, `virtualEnvironmentClonedVm` (the VM family; all
+  `proxmox:index/...`). **HA resources** (`haresource`,
+  `virtualEnvironmentHaresource`) are gated like guests, and their `create`
+  as well, under `--allow-update`: an HA resource tells the HA manager which
+  state the guest it names must be in, so creating, changing or deleting one
+  can start, stop or move a guest. `harule` and `hagroup` are not gated.
+- **Every proxmox type is decided.** `guests.py` lists every resource token
+  of the pinned name map (`providers/pulumi/names/bpg-proxmox-*.json`) in
+  exactly one of four sets: guests, HA resources, not-a-guest with a reason
+  (the four LVM storage types, which match the guest pattern on the `vm` in
+  `Lvm`), and the rest, known and not gated. `tests/guest_types.py` (a gate)
+  and `cli/tests/test_guests.py` fail when the provider has a token that is in
+  none of them, when a listed token is not in the provider, and when a token
+  whose name matches `vm`, `container` or `lxc` is anywhere but in the guests
+  or the not-a-guest list. So a provider bump that adds a type, guest-like by
+  name or not, fails the gate until someone decides what it is. And at run
+  time the guard **refuses a resource whose type is of a `proxmox*` package
+  and in none of the sets** (in the program, or in state and about to be
+  deleted), whatever the request names: a program built against another
+  provider version cannot slip a type past the lists.
 - **Refused**, with nothing applied in any stack of the job, when the plan
   holds for a guest:
 
@@ -247,8 +261,18 @@ to what was read: the refusals, the engine's update plan, and `protect`.
 
   The flags repeat; a name allows that op for that resource only. The error
   lists each offending resource, its op and the flag it needs. A guest's
-  `create` is not gated, and nothing is gated for other resources (pools, DNS,
-  repositories): they are listed, always.
+  `create` is not gated (the `create` of an HA resource is: `--allow-update`),
+  and nothing is gated for other resources (pools, DNS, repositories): they
+  are listed, always.
+- **A guest that two state entries hold is never deleted.** When the plan
+  deletes a guest whose state id (compared by family and vmid) is also the id
+  of another state entry, in this stack or in any other stack of the run, the
+  delete is refused whatever is named, and the refusal prints no
+  `--allow-delete`: the two entries are one real guest (an adoption under a
+  second key, a guest moved between stacks without `pulumi state move`), and
+  deleting either destroys the guest the other still manages. It says which
+  entry, and how to drop the stray one from state (`pulumi state unprotect`,
+  `pulumi state delete`: neither touches anything real).
 - **Names are scoped to a stack.** `NAME` is `<stack>/<key>`, a URN, or a bare
   `<key>`. A bare key that is a resource of more than one stack of the request
   (in the program, or still in the state of a stack whose program dropped it)
@@ -286,12 +310,24 @@ to what was read: the refusals, the engine's update plan, and `protect`.
 
   No combination needed a fallback, and there is none: an `up` without a plan
   is refused in `infra.engine`.
-- **Unnamed guests are protected for the run.** The program the engine runs
-  is a copy of the estate's (never the estate's file, never the store) in
-  which every guest that is not named for a replace or a delete has
-  `options.protect = true`. The engine then refuses to replace or delete it
-  whatever the plan says, and the state records the flag. Consequences, all
-  seen with a real engine:
+- **Unnamed guests are protected, in the state and in the program.** What
+  the engine does with `protect` (seen with Pulumi 3.247, `random`): it
+  refuses to **delete** a resource the *state* protects, and to **replace**
+  one that the state *and* the program protect. `protect` in the program
+  alone does not stop a replace of a resource the state does not protect yet
+  (the first deploy after the guests were made by an older runner, or after
+  anything left one unprotected): this section used to say it did. So both
+  are set:
+  - before the first plan of a **deploy**, every guest in state that is not
+    named for a replace or a delete is protected in state (`pulumi state
+    protect`, one call per URN: a change of the state only), and so is one
+    the estate itself protects even when it is named. If that fails, the
+    deploy fails with nothing applied. A **preview** writes nothing;
+  - the program the engine runs is a copy of the estate's (never the estate's
+    file, never the store) in which the same guests have
+    `options.protect = true`.
+
+  Consequences, all seen with a real engine:
   - a change of `protect` alone is a `same` step: no update, no reboot;
   - a preview whose plan replaces or deletes a protected guest *fails in the
     engine*, with every step still in its events. The runner reads those and
@@ -299,13 +335,24 @@ to what was read: the refusals, the engine's update plan, and `protect`.
     protection it cannot explain (a resource the estate protects itself, or
     one that is no guest) is passed on as the engine's error;
   - a guest named with `--allow-replace` is not protected in the copy, and the
-    engine replaces it although the state still says protected;
+    engine replaces it although the state still says protected. The `up`
+    then records the copy's flag: the new guest is unprotected in state until
+    the end of the run (next point);
   - a guest named with `--allow-delete` that the program no longer has is
     protected in state only, where no program can clear it. Once every
     stack's plan has passed, the runner runs `pulumi state unprotect` on
     exactly those URNs, previews again (the plan must be the one that was
-    checked) and applies. If that deploy then fails, they stay unprotected in
-    state; the guard still refuses their delete unless named;
+    checked) and applies;
+  - **after the `up`, whatever became of it** (it succeeded, failed, was
+    cancelled, was refused at the second plan), every guest that is still in
+    state and not protected is protected again: one that was unprotected for
+    a delete that did not happen, one that was replaced. This used to be left
+    as it was ("they stay unprotected in state"), also for a guest the estate
+    itself protected. It is best effort: if a guest cannot be protected (the
+    state cannot be read, the backend is gone), the run says so in capitals in
+    its error, in an `error` event and in the result (`unprotected.<stack>`),
+    with the command to run by hand. An entry that waits to be deleted (the
+    old half of an interrupted replacement) is left alone;
   - a `protect` the estate sets is never removed: clear it in the estate.
 - **During the `up`** each step is still checked before it runs. If a gated
   step comes up that the request did not name (it would have had to pass both
@@ -333,8 +380,13 @@ applied whatever the last render had left there: another job's commit, a
 - every run (a deploy, a preview, an adoption, `fleetkit render`) renders into
   `<state>/runs/<time>-<pid>-<random>/`, which nothing else writes, and
   removes it when it ends (`fleetkit render` keeps its directory and prints
-  it; a directory whose process is gone is swept after a day). The Colmena
-  hive file is written there too;
+  it). The run holds a lock (`flock` on `.lock` in the directory) for as long
+  as it lives; a directory that is a day old and whose lock can be taken is
+  swept by the next run. (It used to be "whose pid is gone", which cannot
+  tell two runs of one `fleetkit serve` process apart, nor see a run on
+  another host that shares the state directory. Directories from before the
+  lock, without the file, are still judged by their pid.) The Colmena hive
+  file is written there too;
 - the store path and the sha256 of the estate's program, and the sha256 of the
   copy the engine runs, are recorded when the run renders; before each `up`
   both files are hashed again and the `up` is refused on a mismatch
@@ -362,8 +414,8 @@ stops it by signal:
 | | the engine (Pulumi 3.247, seen) |
 |---|---|
 | first cancel (`POST /v1/deploys/{id}/cancel`, Ctrl-C, SIGTERM, SIGHUP): one SIGINT | finishes the step in flight (however long: 9 s for an RSA key in the run that was watched), starts no other, saves the state, releases its own lock, exits. The runner waits for that; it cuts it short by itself only if `FLEETKIT_STOP_GRACE` (seconds) is set |
-| second cancel: a second SIGINT | prints `terminating`, but with a provider call in flight it does **not** exit (100 s and counting with the `tls` provider). So 10 s later the runner kills the engine's process group (the engine and its provider plugins) |
-| after a kill | the stack's lock file is still there, and the state has a pending operation for the step that was in flight. The runner removes neither and says so: check that no pulumi process runs, then `pulumi cancel` (which then does the one thing it does: remove the lock) |
+| second cancel: a second SIGINT | prints `terminating`, but with a provider call in flight it does **not** exit (100 s and counting with the `tls` provider). So 10 s later the runner kills every process of the engine's **session**: the engine and its plugins. Pulumi starts each plugin in a process group of its own inside that session, so killing the engine's process group, as the runner did before, left the provider plugin alive and executing the call in flight (seen: `pulumi-resource-tls` went on making its key). The session is read from `/proc`; whatever is still alive after the kill is named in the result (`STILL RUNNING after the kill: pid ...`) |
+| after a kill | the stack's lock file is still there, and the state has a pending operation for the step that was in flight. The runner removes neither and says so: check that no pulumi process runs, then `pulumi cancel` (which then does the one thing it does: remove the lock); and settle the pending operation (below) |
 
 The lock is the engine's and is left to it. A cancelled job's `result` has
 `stopped`: `{stack, verb, why, completed: [{op, key}], in_flight: [{op, key}],
@@ -372,8 +424,38 @@ is the sentence: `homelab-guests: the up was cancelled. Stopped after create
 web (1 step(s) completed). No step was in flight. The stack may be partly
 applied: preview it. The engine was told to stop after the step in flight.`
 A step that had started and not finished is listed as in flight, "whether
-they happened is not known". The same is said when the engine refuses a step
-(a plan violation), when the tripwire stops it, and when an `up` fails.
+they happened is not known", followed by what to do about the pending
+operation it may have left (next section). The same is said when the engine
+refuses a step (a plan violation), when the tripwire stops it, and when an
+`up` fails.
+
+### Pending operations
+
+A run that is killed, or loses its backend, in the middle of a step leaves
+that step in the state's `pending_operations` (`creating <urn>`, `updating`,
+`deleting`, ...). Pulumi only warns about it. Seen with 3.247: after a killed
+`create`, the next `up` **creates the resource again**, and the entry stays
+in the state afterwards; for a guest whose first create did reach Proxmox
+that is a second guest, made by an unattended deploy that named nothing.
+
+So `infra.plan` reads the state before every preview and every deploy (and
+before the preview that verifies an adoption), and **refuses while it holds
+a pending operation**: the error names each one (`creating vm
+(urn:pulumi:...)`), and says what to check and do:
+
+1. look at what is really there: does the resource exist (for a guest: a
+   container or VM with its vmid on the node)?
+2. if it exists, adopt it first (`fleetkit adopt <estate> --resource <key>
+   --apply`, with `--id <key>=<node>/<vmid>` if the model cannot compute the
+   id; adopt's own import runs with the pending operation in place, and its
+   verification then asks for step 3);
+3. remove the pending operation: `pulumi stack export --file state.json`,
+   delete the entry from `deployment.pending_operations`, `pulumi stack
+   import --file state.json`, with the stack's backend and passphrase.
+
+The job's result has `pending.<stack>: [{type, urn, key}]`. Nothing clears a
+pending operation automatically: whether the step happened is exactly what
+the runner cannot know.
 
 On the command line SIGINT, SIGTERM and SIGHUP are that cancel (`deploy`,
 `preview`, `adopt`): the run ends through its cleanup instead of dying where
@@ -414,6 +496,7 @@ fleetkit adopt homelab --stack homelab-guests --resource web --json
 fleetkit adopt homelab --id old-ct=pve2/300         # an id the model cannot compute
 fleetkit adopt homelab --apply                      # adopt what imports cleanly
 fleetkit adopt homelab --apply --accept-update web  # ... and web, updated in place
+fleetkit adopt homelab --apply --accept-absent new-ct   # new-ct really does not exist yet
 fleetkit adopt homelab --resource deploy-token --apply   # a secret: only when named
 ```
 
@@ -438,11 +521,30 @@ them yet adopts only by `--id`.
    same type; a guest's `<node>/<vmid>` also matches a state id that is the
    vmid. The refusal says how to rename in state instead (`pulumi state
    rename '<urn>' <key>`), and makes the command exit 1 with or without
-   `--apply`.
+   `--apply`. Three more cases are the same refusal:
+   - **the id is in the state of another stack of the estate**, selected or
+     not (`twinStack` in the entry). Every stack of the estate is rendered and
+     its state read before anything is adopted (only when there is something
+     to adopt); a stack whose state cannot be read fails the command. The
+     check used to look at the adopting stack alone, so a guest that moved
+     from one stack's program to another's was imported into the second while
+     the first still held it;
+   - **two resources of the run resolve to one real resource** (two keys with
+     one id, in one stack or in two): both are `duplicate` (`same` names the
+     others), neither is imported;
+   - **the type tokens of one family are one resource**: a VM is the same VM
+     under `virtualEnvironmentVm`, `virtualEnvironmentVm2`, `vm`, `clonedVm`
+     and `virtualEnvironmentClonedVm`, so a state entry of any of them with
+     that vmid is a duplicate (a container token and a VM token are not: one
+     vmid is one or the other).
 3. A **temporary program** is written to a temporary directory (the system's,
    not the state dir): the stack's program with `options.import` set on the
-   resources to adopt, and nothing else changed (every guest in it is
-   protected, as in any run).
+   resources to adopt. The adopted guests are protected in it, as in any run;
+   every other resource that is already in state carries exactly the
+   `protect` its state entry has, no more and no less. (It used to carry the
+   deploy's `protect` on every guest, and the adoption's `up`, which targets
+   what the adopted resources depend on, wrote that into the state of
+   resources it promised not to touch.)
 4. It is previewed with `--target` on those resources and on what they depend
    on (their provider; anything a property refers to). **The report**, per
    resource, its `status`:
@@ -454,10 +556,10 @@ them yet adopts only by `--id`.
    | `import+unrecorded` | the only differences are properties the import did not record, so no live value is known and the engine plans an update for them anyway. For a container that update still **reboots** it, even if every value matches; the report and the refusal say so, and `--accept-update` is still required. Known cases for bpg containers and VMs: `cpu`, `memory`, `vmId`, `timeoutStart`, `scsiHardware` |
    | `import+secret` | a GitHub secret named with `--resource`: its value cannot be read back, so adopting it writes the declared value. Naming it is the acceptance |
    | `secret` | a secret that was not named: listed, not adopted (`--resource KEY`) |
-   | `absent` | the provider's import finds nothing by this id (`does not exist`, `not found`, 404): "does not exist; a deploy will create it". Not an error, not in the import set, exit 0 |
+   | `absent` | the engine says, in exactly its own words and nothing besides, that nothing exists by this id: `resource '<id>' does not exist` (`Preview failed: ` before it), with the `import failed` of the step. "Does not exist; a deploy will create it". Not in the import set. For a resource that is no guest: not an error, exit 0. **For a guest, `--apply` refuses** unless the key is named with `--accept-absent KEY`: a guest that does exist, on another node or under another vmid, would be created a second time by the next deploy. (This used to be any message containing `does not exist`, `not found` or `404`: bpg's `Configuration file 'nodes/pve2/lxc/105.conf' does not exist` for a container that lives on another node, a proxy's `404 page not found` and a missing provider binary were all reported as absent, ok.) |
    | `duplicate` | its id is in state under another URN (2. above) |
    | `other` | the plan would create, replace or delete it |
-   | `error` | the import failed for another reason, with the provider's message |
+   | `error` | the import failed for any other reason, whatever its text mentions, with the provider's message |
    | `in-state`, `unresolved`, `no-id` | nothing to do; no id |
 
    A resource that cannot be imported ends the engine's run at that resource:
@@ -495,9 +597,9 @@ them yet adopts only by `--id`.
    It is what a person or an agent reads to make the declaration match what
    is there.
 
-   `--resource`, `--id` and `--accept-update` take a resource key. A key that
-   two of the selected stacks have is refused as ambiguous: run one stack
-   (`--stack`).
+   `--resource`, `--id`, `--accept-update` and `--accept-absent` take a
+   resource key. A key that two of the selected stacks have is refused as
+   ambiguous: run one stack (`--stack`).
 5. Without `--apply` that is all: nothing changed.
 6. With `--apply`, refusals, all before anything is applied in any stack:
    - a resource that would be `import+update` or `import+unrecorded` and is
@@ -508,7 +610,8 @@ them yet adopts only by `--id`.
      dependency that is not in state yet). The one exception is the `create`
      of a provider or of the stack itself in a new stack: those exist only in
      state;
-   - a `duplicate`, and an `error`.
+   - a `duplicate`, and an `error`;
+   - an `absent` guest that is not named with `--accept-absent KEY`.
 
    Then the temporary program is applied with the same targets, **bound to
    the update plan of the preview the report was made from** (as every `up`
@@ -517,7 +620,12 @@ them yet adopts only by `--id`.
    when an adopted resource is not `same`, **or when the preview deletes or
    replaces any guest, or any resource whose state id is one that was just
    adopted**, under whatever URN (`verify.differs`, `verify.destroys`). It
-   prints what; it does not try to fix it.
+   prints what; it does not try to fix it. **Every other stack of the estate
+   that has state is previewed as well** (`stacks.<stack>.verify`, with
+   `scope: "adopted ids"`): it must not delete or replace anything that holds
+   an adopted id (compared as in 2., and as the plain id string under any
+   type). A stack that cannot be previewed (a pending operation, a backend
+   that does not answer) is not verified, and the command exits non-zero.
 7. `import` is never written anywhere that lasts: only into the temporary
    program, whose directory is removed on every way out (a refusal, an error,
    an interrupt). SIGTERM and SIGHUP are an orderly exit too, like Ctrl-C
@@ -695,8 +803,42 @@ put a TLS proxy in front of anything but loopback.
   a second cancel with a provider call in flight ends in a kill, with the
   lock left and reported; the engine's `detailedDiff` reaching the plan (the
   kubernetes provider rendering YAML to a directory).
-- `tests/guest_types.py` (gate) and `cli/tests/test_guests.py`: the guest list
-  against the pinned provider's name map.
+- `tests/guest_types.py` (gate) and `cli/tests/test_guests.py`: the type lists
+  against the pinned provider's name map: every token in exactly one list,
+  none stale, and the gate itself failing on a name map with one more type.
+- `cli/tests/test_review2.py` (fake engine, and no engine) and
+  `cli/tests/test_real_review2.py` (the real engine, offline), for what the
+  second review found: a pending operation refuses preview and deploy, and a
+  stop with a step in flight says what to check; the state protects unnamed
+  guests before the first plan of a deploy (not of a preview), also one the
+  estate protects although it is named, and a state that cannot be protected
+  fails the deploy; a named delete whose up fails, is cancelled, or whose
+  second plan differs leaves the guest protected, and a failure to protect
+  again is in the error, an event and the result; the delete of a guest held
+  by a second state entry (same stack, another stack, another token of the VM
+  family) is refused without a flag, named or not; HA resources gated, their
+  create too; an unknown proxmox type refused; `absent` only for the engine's
+  exact words, eight messages; an absent guest refusing `--apply` unless
+  accepted, an absent pool not; two to-do entries with one id, in one stack
+  and across two; an id held by an unselected stack of the estate; the other
+  stacks previewed after an adoption; the temporary program leaving `protect`
+  of what is in state as it was; a run directory with a held lock not swept
+  whatever its pid, and swept once the lock is free; the kill of a session
+  reaching a child in another process group. With the real engine: an RSA
+  key of 16384 bits in flight when the run is cancelled twice, the engine
+  killed, and no `pulumi-resource-*` or `pulumi-language-*` process of its
+  session alive afterwards (read from `/proc` by the test itself); the
+  `creating` entry that leaves in the state refusing the next preview and
+  deploy, and the deploy creating the key once after the entry is removed by
+  export and import; first contact with a state nothing protects, the plan
+  check switched off: the engine refuses the replace; a named delete whose up
+  fails on another resource: both guests protected again; two keys with one
+  id and an id another stack holds, both refused before any engine run; a
+  state with one id under two keys: the delete refused without a flag, and
+  clean after `pulumi state delete`; an adoption whose dependency is in state
+  unprotected: still unprotected afterwards. Twenty-eight hand mutations of
+  these fixes (each undoing one piece) are each caught by a test here, eight
+  of them also run against the real-engine tests.
 - `tests/pulumi_nix.sh` (gate): Pulumi.nix good and bad cases above.
 - `tests/deploy_e2e.sh` (networked, not a gate): a throwaway estate git repo
   whose pulumi.nix imports the model's stack and adds one composed from it;
@@ -718,6 +860,23 @@ directories but not run again. The guard and `adopt` ran against the fake
 engine and against the real engine with the `random` and `tls` providers, not
 against Proxmox or GitHub. What that leaves open, each with how to check it
 live on a throwaway guest:
+
+- **The engine's words for an import id that does not exist, with the bpg
+  provider.** `absent` now needs exactly `resource '<id>' does not exist`
+  (with or without `Preview failed: `). That form is the engine's and was
+  seen before; no offline provider returns "not found" for an import, so it
+  was not re-run here against a real engine. If the form differs, the result
+  is `error` (a refusal), never a silent `absent`. Check: `fleetkit adopt
+  <estate> --id <throwaway-key>=<node>/<a vmid nothing has>`; expect
+  `absent`, and with `--apply` the refusal that names `--accept-absent`.
+- **Whether killing the bpg provider plugin stops the Proxmox task it
+  started.** The kill now reaches the plugin; a task already handed to
+  Proxmox (a clone, a create) runs on in Proxmox whatever happens to the
+  plugin. That is what the pending operation and its refusal are for.
+- **`pulumi state protect` against a `pg` or `s3` backend, and with a stale
+  lock present.** Seen with the file backend only, and never with the lock a
+  kill left in place; if it fails there, the run says which guests are left
+  unprotected.
 
 - **The events of the bridged bpg and GitHub providers for an import whose
   inputs differ.** Seen with `random`: an `import` step, then the steps of the

@@ -7,6 +7,7 @@ only place the model is read, and it is read as evaluated output.
 Every run (a deploy, a preview, an adoption, `fleetkit render`) renders into a
 directory of its own, which no other run writes:
 
+  <state>/runs/<time>-<pid>-<random>/.lock      held (flock) for the life of the run
   <state>/runs/<time>-<pid>-<random>/<stack>/
     program      ->  /nix/store/<hash>-Pulumi.yaml   (a GC root; what the estate declares)
     Pulumi.yaml       the program the engine runs: a copy of it in which the
@@ -31,6 +32,7 @@ re-encrypts the state with the new one. Keeping the file keeps one salt.)
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -46,9 +48,11 @@ from . import guard
 from .events import Emitter
 from .settings import Settings
 
-# A run directory nobody removed (a kill) is swept once its process is gone
-# and it is this old. `fleetkit render` keeps its directory for that long.
+# A run directory nobody removed (a kill) is swept once its run is over (its
+# lock can be taken) and it is this old. `fleetkit render` keeps its directory
+# for that long.
 STALE = 24 * 3600
+LOCK = ".lock"
 
 
 class RenderError(Exception):
@@ -134,7 +138,13 @@ def _alive(pid: int) -> bool:
 
 
 class Run:
-    """The directory of one run. `close()` removes it."""
+    """The directory of one run. `close()` removes it.
+
+    The run holds an exclusive flock on `.lock` in it from the start to
+    `close()` (or to the end of the process, however it ends: the kernel drops
+    the lock). That lock, not the pid in the name, is what says the run is
+    alive: a pid says nothing about another run of the same `serve` process,
+    nor about a run on another host that shares the state directory."""
 
     def __init__(self, s: Settings, kind: str, keep: bool = False):
         self.kind, self.keep = kind, keep
@@ -144,10 +154,15 @@ class Run:
         self.id = f"{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
         self.dir = root / self.id
         self.dir.mkdir(mode=0o700)
+        self._lock: Optional[int] = os.open(self.dir / LOCK, os.O_CREAT | os.O_RDWR | os.O_CLOEXEC, 0o600)
+        fcntl.flock(self._lock, fcntl.LOCK_EX | fcntl.LOCK_NB)  # a new file in a new directory: free
 
     def close(self) -> None:
         if not self.keep:
-            shutil.rmtree(self.dir, ignore_errors=True)
+            shutil.rmtree(self.dir, ignore_errors=True)  # while the lock is still held
+        if self._lock is not None:
+            os.close(self._lock)
+            self._lock = None
 
     def __enter__(self) -> "Run":
         return self
@@ -157,7 +172,10 @@ class Run:
 
 
 def sweep(root: Path) -> list[str]:
-    """Remove run directories whose process is gone and that are STALE old."""
+    """Remove run directories that are STALE old and whose run is over: its
+    lock can be taken. The lock is held while the directory is removed, so no
+    two sweeps take the same one. A directory without a lock file is of a
+    runner from before the lock: for those, as then, the pid in the name."""
     gone = []
     for d in root.iterdir() if root.is_dir() else []:
         parts = d.name.split("-")
@@ -165,9 +183,27 @@ def sweep(root: Path) -> list[str]:
             pid, age = int(parts[1]), time.time() - d.stat().st_mtime
         except (IndexError, ValueError, OSError):
             continue
-        if age > STALE and (pid == os.getpid() or not _alive(pid)):
+        if age <= STALE:
+            continue
+        try:
+            fd = os.open(d / LOCK, os.O_RDWR | os.O_CLOEXEC)
+        except FileNotFoundError:
+            if pid != os.getpid() and _alive(pid):
+                continue
+            fd = None
+        except OSError:
+            continue
+        try:
+            if fd is not None:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError:
+                    continue  # held: the run is alive, here or elsewhere
             shutil.rmtree(d, ignore_errors=True)
             gone.append(d.name)
+        finally:
+            if fd is not None:
+                os.close(fd)
     return gone
 
 

@@ -20,9 +20,12 @@ docs/pulumi.md and test_real_pulumi.py):
   given `plan=` refuses, before anything else, a resource whose steps are not
   the planned ones ("violates plan");
 - `protect`: an up records the program's flag in state; a replacement of a
-  resource the program protects, and a delete of one the state protects, are
-  error diagnostics that fail the run, with the steps still in the events of
-  a preview; `pulumi state unprotect`;
+  resource that the program AND the state protect, and a delete of one the
+  state protects, are error diagnostics that fail the run, with the steps
+  still in the events of a preview (a resource the program protects and the
+  state does not yet is replaced: seen with Pulumi 3.247); `pulumi state
+  protect` and `pulumi state unprotect`;
+- `pending_operations` in the export (`World.pending`);
 - stopping: `pulumi_command.stop()` (the signal infra.py sends) lets the step
   in flight finish and starts no other; `stop(hard=True)` ends the run at
   once, the step in flight not done. `cancel()` is Pulumi's `pulumi cancel`:
@@ -88,6 +91,9 @@ class World:
         self.stops = []        # "soft" / "hard": what pulumi_command.stop was asked
         self.pulumi_cancel = 0  # calls of `pulumi cancel`: must stay 0
         self.unprotected = []  # urns given to `pulumi state unprotect`
+        self.protected = []    # urns given to `pulumi state protect`
+        self.protect_fails = set()  # urns `pulumi state protect` fails for
+        self.pending = []      # the state's pending_operations: [{type, resource: {urn}}]
         self.destroyed = []    # keys whose real resource an up destroyed
         self.updated = []      # keys whose real resource an up changed
         self.created = []
@@ -121,16 +127,19 @@ class FakeStack:
         return SimpleNamespace(version=3, deployment={"resources": [
             {"urn": u, "type": r["type"], "id": r["id"], "inputs": r["inputs"],
              **({"importID": r["importID"]} if r.get("importID") else {}),
-             **({"protect": True} if r.get("protect") else {})} for u, r in self.w.state.items()]})
+             **({"protect": True} if r.get("protect") else {})} for u, r in self.w.state.items()],
+            **({"pending_operations": list(self.w.pending)} if self.w.pending else {})})
 
     def cancel(self):
         # `pulumi cancel` on a self-managed backend: removes the lock, stops nothing.
         self.w.pulumi_cancel += 1
 
     def _run_pulumi_cmd_sync(self, args, *a, **kw):
-        assert args[:2] == ["state", "unprotect"] and args[3:] == ["--yes"], args
-        self.w.state[args[2]]["protect"] = False
-        self.w.unprotected.append(args[2])
+        assert args[0] == "state" and args[1] in ("protect", "unprotect") and args[3:] == ["--yes"], args
+        if args[1] == "protect" and args[2] in self.w.protect_fails:
+            raise RuntimeError(f"error: could not protect {args[2]}")
+        self.w.state[args[2]]["protect"] = args[1] == "protect"
+        (self.w.protected if args[1] == "protect" else self.w.unprotected).append(args[2])
 
     def preview(self, **kw):
         return SimpleNamespace(change_summary=self._run("preview", kw))
@@ -210,12 +219,13 @@ class FakeStack:
                 forced = (self.w.drift.get(key) if up else None) or self.w.force.get(key)
                 st = self.w.state.get(u)
                 imp = (r.get("options") or {}).get("import")
+                was = bool(st and st.get("protect"))  # what the state said before this run
                 if st is not None and up:
                     st["protect"] = (r.get("options") or {}).get("protect") is True
                 if forced:
                     if leaves_plan(u, forced["steps"]):
                         return
-                    if protected(r) and st is not None and any("replace" in op for op in forced["steps"]):
+                    if protected(r) and was and any("replace" in op for op in forced["steps"]):
                         diag(u, f'unable to replace resource "{u}"\nas it is currently marked for protection. '
                                 f"To unprotect the resource, remove the `protect` flag from the resource in "
                                 f"your Pulumi program and run `pulumi up`")

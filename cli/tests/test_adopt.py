@@ -590,4 +590,9 @@ def test_a_key_that_two_stacks_have_is_refused_as_ambiguous(lab):
             run(estate, apply=True, **kw)
     assert w.calls == [] and w2.calls == []
     report = run(estate, apply=True, stacks=["mini-more"], accept_update=["web"])
-    assert report["applied"] and w2.updated == ["web"] and w.calls == []
+    assert report["applied"] and w2.updated == ["web"]
+    # The stack that was not selected: read, and previewed once after the
+    # adoption (does it delete what holds the adopted id?), nothing else.
+    assert [(c["verb"], c["imports"]) for c in w.calls] == [("preview", {})]
+    assert report["stacks"]["mini-guests"]["verify"] == {"ok": True, "differs": [], "destroys": [],
+                                                         "scope": "adopted ids"}

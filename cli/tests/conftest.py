@@ -99,6 +99,11 @@ def real(tmp_path, monkeypatch):
     monkeypatch.setenv("PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION", "true")
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     (tmp_path / "home").mkdir()
+    # `pulumi install` (infra.open_stack) asks api.github.com for the latest
+    # version of each provider: the plugins are beside the binary already,
+    # and nothing here may reach the network.
+    from pulumi import automation
+    monkeypatch.setattr(automation.LocalWorkspace, "install", lambda self, *a, **k: None)
     e = Estate(tmp_path, monkeypatch, fake=False)
     e.s.pulumi_home = tmp_path / "pulumi-home"
     e.s.pulumi_home.mkdir()

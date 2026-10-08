@@ -46,6 +46,8 @@ def _names(program: dict[str, Any], state: list[dict[str, Any]]) -> set[str]:
 
 
 def run(s: Settings, req: DeployRequest, ev: Emitter) -> dict[str, Any]:
+    # (`unprotected.<stack>` is added when guests could not be protected in
+    # state again after an up: infra.reprotect.)
     result: dict[str, Any] = {"infra": {}, "plan": {}, "refused": {}, "programs": {}, "program_sha256": {},
                               "applied": [], "nixos": None}
     # Everything this run writes goes into a directory of its own, removed at
@@ -85,11 +87,12 @@ def _infra(s: Settings, req: DeployRequest, ev: Emitter, rundir: render.Run, res
     result["program_sha256"] = {n: p.sha256 for n, p in projects.items()}
     # A bare name must mean one resource: refuse a request whose name is a
     # resource of two of its stacks before anything runs.
-    names = {}
+    names, states = {}, {}
     for n, p in projects.items():
         ev.check()
         st = infra.open_stack(s, p.wd, n, envs[n], ev, install=False)
-        names[n] = _names(guard.load_program(p.wd), infra.state(st))
+        states[n] = infra.state(st)
+        names[n] = _names(guard.load_program(p.wd), states[n])
     unclear = guard.ambiguous(allow, names)
     if unclear:
         raise guard.GuardError("refused, nothing was applied:\n  " + "\n  ".join(unclear))
@@ -97,11 +100,16 @@ def _infra(s: Settings, req: DeployRequest, ev: Emitter, rundir: render.Run, res
     labels = {n: (lambda key, n=n: f"{n}/{key}" if key in shared else key) for n in stacks}
     # Every stack is previewed, and every plan passes the guard, before
     # any stack is applied: a refusal leaves all of them as they were.
+    # (infra.plan reads the stack's state first: a pending operation refuses
+    # the run, and before a deploy every guest in state that is not named is
+    # protected there. `others`: what the other stacks of the run hold, so
+    # the delete of a guest another state entry still manages is refused.)
     planned = {}
     for n, p in projects.items():
         ev.check()
+        others = {m: st for m, st in states.items() if m != n}
         planned[n] = infra.plan(s, p.wd, n, envs[n], ev, req.preview, req.refresh, req.targets,
-                                guard.scope(allow, n), labels[n])
+                                guard.scope(allow, n), labels[n], others)
         result["infra"][n], result["plan"][n] = planned[n]["changes"], planned[n]["plan"]
         if planned[n]["refused"]:
             result["refused"][n] = planned[n]["refused"]
@@ -115,6 +123,8 @@ def _infra(s: Settings, req: DeployRequest, ev: Emitter, rundir: render.Run, res
         # planned; the engine is then bound to the plan (infra.apply).
         p.verify()
         done = infra.apply(s, p.wd, n, envs[n], ev, planned[n], req.refresh, req.targets,
-                           guard.scope(allow, n), labels[n])
+                           guard.scope(allow, n), labels[n], {m: st for m, st in states.items() if m != n})
         result["infra"][n] = done["changes"]
         result["applied"].append(n)
+        if done.get("unprotected"):
+            result.setdefault("unprotected", {})[n] = done["unprotected"]

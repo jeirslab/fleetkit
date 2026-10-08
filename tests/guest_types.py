@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""Gate: the runner's guest list covers the pinned provider.
+"""Gate: the runner's type lists cover the pinned provider.
 
-Every resource token of providers/pulumi/names/bpg-proxmox-*.json whose type
-name matches vm / container / lxc must be in GUEST_TYPES or in NOT_GUESTS
-(with a reason) of cli/fleetkit_cli/guests.py, and every token listed there
-must exist in the provider. A provider bump that adds a guest type fails here
-instead of leaving the guard open for it. Offline; exit 0 iff it holds.
-(cli/tests/test_guests.py is the same check inside the package build.)"""
+Every resource token of providers/pulumi/names/bpg-proxmox-*.json must be in
+exactly one of GUEST_TYPES, HA_TYPES, NOT_GUESTS (with a reason) and
+OTHER_TYPES of cli/fleetkit_cli/guests.py; a token whose type name matches
+vm / container / lxc must be a guest or in NOT_GUESTS, never in OTHER_TYPES;
+and every token listed there must exist in the provider. A provider bump that
+adds a type fails here until it is decided, instead of leaving the guard open
+for it (and the guard itself refuses a proxmox type it does not know).
+Offline; exit 0 iff it holds. (cli/tests/test_guests.py is the same check
+inside the package build.)
+
+  guest_types.py [NAMES_DIR]    the directory of the name maps (default: the repo's)"""
 import json
 import pathlib
 import re
@@ -15,17 +20,27 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ns: dict = {}
 exec((ROOT / "cli/fleetkit_cli/guests.py").read_text(), ns)  # data only, no imports
-GUESTS, NOT, PATTERN = ns["GUEST_TYPES"], ns["NOT_GUESTS"], ns["GUEST_PATTERN"]
+GUESTS, HA, NOT, OTHER, PATTERN = ns["GUEST_TYPES"], ns["HA_TYPES"], ns["NOT_GUESTS"], ns["OTHER_TYPES"], \
+    ns["GUEST_PATTERN"]
+SETS = {"GUEST_TYPES": set(GUESTS), "HA_TYPES": set(HA), "NOT_GUESTS": set(NOT), "OTHER_TYPES": set(OTHER)}
 
-files = sorted((ROOT / "providers/pulumi/names").glob("bpg-proxmox-*.json"))
+names = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "providers/pulumi/names"
+files = sorted(names.glob("bpg-proxmox-*.json"))
 if not files:
-    sys.exit("guest_types: no providers/pulumi/names/bpg-proxmox-*.json")
-tokens = sorted({r["token"] for f in files for r in json.loads(f.read_text())["resources"].values()
-                 if re.search(PATTERN, r["token"].rsplit(":", 1)[-1], re.I)})
+    sys.exit(f"guest_types: no bpg-proxmox-*.json in {names}")
+every = sorted({r["token"] for f in files for r in json.loads(f.read_text())["resources"].values()})
+tokens = [t for t in every if re.search(PATTERN, t.rsplit(":", 1)[-1], re.I)]
+listed = set().union(*SETS.values())
 bad = [f"undecided: {t} is neither in GUEST_TYPES nor in NOT_GUESTS" for t in tokens if t not in GUESTS and t not in NOT]
-bad += [f"stale: {t} is not a resource of the pinned provider" for t in sorted({*GUESTS, *NOT} - set(tokens))]
-bad += [f"both: {t}" for t in sorted(set(GUESTS) & set(NOT))]
+bad += [f"unknown: {t} is a resource of the pinned provider and in none of GUEST_TYPES, HA_TYPES, NOT_GUESTS, "
+        f"OTHER_TYPES (the guard would refuse it; decide what it is)" for t in every if t not in listed]
+bad += [f"stale: {t} is not a resource of the pinned provider" for t in sorted(listed - set(every))]
+bad += [f"twice: {t} is in {a} and in {b}" for a in SETS for b in SETS if a < b for t in sorted(SETS[a] & SETS[b])]
+bad += [f"no reason: {t}" for t, why in NOT.items() if len(why) <= 20]
+if set(ns["GATED_TYPES"]) != set(GUESTS) | set(HA) or set(ns["KNOWN_TYPES"]) != listed:
+    bad.append("GATED_TYPES / KNOWN_TYPES are not the unions of the lists")
 for line in bad:
     print(f"guest_types: FAIL {line}", file=sys.stderr)
-print(json.dumps({"guest_types": "fail" if bad else "pass", "tokens": len(tokens), "guests": len(GUESTS)}))
+print(json.dumps({"guest_types": "fail" if bad else "pass", "tokens": len(every), "guest_like": len(tokens),
+                  "guests": len(GUESTS), "ha": len(HA), "other": len(OTHER) + len(NOT)}))
 sys.exit(1 if bad else 0)

@@ -7,16 +7,26 @@ paths that force a replacement. The guard then refuses an `up` whose plan
 would replace, delete or update a guest (a Proxmox container or VM) that the
 request did not name for that op, and any `up` of a program that carries an
 `import` option (issue #61: a leftover `import` on an adopted container made
-the next `up` destroy it, although it was protected).
+the next `up` destroy it, although it was protected). HA resources are gated
+the same way, their create too (guests.py says why). Two more refusals take
+no name: a resource of a `proxmox*` package whose type the runner does not
+know (unknown_refusals), and the delete of a guest whose id a second state
+entry holds as well (Held).
 
 Three layers keep an `up` to what the guard read (infra.py runs them):
   1. the refusals below, on the plan of the preview;
   2. the engine itself, bound to that preview by an update plan
      (`preview --save-plan`, `up --plan`): a program or a state that changed
      in between is refused by Pulumi, step by step;
-  3. `protect` (below): in the program the runner runs, a copy, every guest
-     the request did not name for a replace or a delete is protected, so the
-     engine refuses to replace or delete it whatever the plan says.
+  3. `protect`. The engine refuses to delete a resource the STATE protects,
+     and to replace one that the state AND the program protect (seen with
+     Pulumi 3.247: `protect` in the program alone does not stop a replace of
+     a resource the state does not protect yet). So both are set: before the
+     first plan of a deploy every guest in state that the request did not
+     name for a replace or a delete is protected in state (to_protect, run by
+     infra.plan), and in the program the runner runs, a copy, the same guests
+     carry options.protect (protect, below). After the up, whatever became of
+     it, every guest still in state is protected again (infra.apply).
 """
 from __future__ import annotations
 
@@ -28,13 +38,19 @@ from typing import Any, Callable, Iterable, Optional
 
 from pydantic import BaseModel, Field
 
-from .guests import GUEST_TYPES  # noqa: F401 - the guests (guests.py says how the list is kept complete)
+# guests.py says how these lists are kept complete.
+from .guests import CONTAINER_TYPES, GUEST_TYPES, HA_TYPES, KNOWN_TYPES, VM_TYPES
 
 # Gated op family -> the request field (and CLI flag) that names a resource for it.
 FLAGS = {"replace": "allow_replace", "delete": "allow_delete", "update": "allow_update"}
 
 # Resources that exist only in Pulumi's state: creating one touches nothing real.
 STATE_ONLY = ("pulumi:providers:", "pulumi:pulumi:Stack")
+
+UNKNOWN_WHY = ("its type is of a proxmox package and is in none of the runner's lists (guests.py): it may be "
+               "a guest, or something that stops one, that nothing here gates. Nothing is applied while the "
+               "program or the state has it: update fleetkit (the list is checked against the pinned provider), "
+               "or use a type the runner knows")
 
 IMPORT_WHY = ("the program sets options.import; with it still present after an adoption the next up "
               "replaces (destroys) the resource (issue #61). Adopt with `fleetkit adopt`, which never "
@@ -98,16 +114,107 @@ def ambiguous(allow: Allow, names: dict[str, set[str]]) -> list[str]:
     return out
 
 
+def gated(type_: str) -> bool:
+    """Whether the guard gates this type: a guest, or an HA resource."""
+    return type_ in GUEST_TYPES or type_ in HA_TYPES
+
+
+def gate(type_: str, op: str) -> Optional[str]:
+    """The gated family of an engine op on a resource of this type. The
+    create of an HA resource is gated as an update: it puts the guest it names
+    under the HA manager, which starts, stops or moves it to match."""
+    if op == "create" and type_ in HA_TYPES:
+        return "update"
+    return family(op)
+
+
+def unknown(type_: str) -> bool:
+    """A type of a `proxmox*` package that is in none of the runner's lists."""
+    return type_.split(":", 1)[0].startswith("proxmox") and type_ not in KNOWN_TYPES and not gated(type_)
+
+
+def ident(type_: str, rid: Any) -> tuple[str, str]:
+    """What real resource an id of this type names: (family, id). A guest's
+    adoption id is `<node>/<vmid>` while its state id is the vmid, and a vmid
+    is one container or one VM whichever of the provider's tokens declares
+    it: guests compare by family and vmid."""
+    if type_ in GUEST_TYPES:
+        fam = "proxmox container" if type_ in CONTAINER_TYPES else "proxmox vm" if type_ in VM_TYPES else type_
+        return fam, str(rid).rsplit("/", 1)[-1]
+    return type_, str(rid)
+
+
+def state_ids(r: dict[str, Any]) -> set[str]:
+    """The ids a state resource is known by: its id and what it was imported by."""
+    return {str(r[k]) for k in ("id", "importID") if r.get(k) not in (None, "")}
+
+
+def same_resource(type_: str, rid: Any, r: dict[str, Any]) -> bool:
+    """Whether the state resource `r` is the real resource that the id `rid`
+    of a resource of `type_` names."""
+    want = ident(type_, rid)
+    return any(ident(r.get("type") or "", i) == want for i in state_ids(r))
+
+
+class Held:
+    """The states of every stack of a run (stack -> state resources), asked
+    whether a guest's id is in them more than once. Two state entries for one
+    real guest (an adoption under a second key, a guest moved between stacks
+    without `pulumi state move`) make the delete of either destroy the guest
+    the other still manages."""
+
+    def __init__(self, states: dict[str, list[dict[str, Any]]], stack: str):
+        self.states, self.stack = states, stack
+
+    def __call__(self, urn: str) -> Optional[str]:
+        """Why the delete of `urn` (of this stack) must not run, or None."""
+        me = next((r for r in self.states.get(self.stack) or [] if r["urn"] == urn and not r.get("delete")), None)
+        if me is None or me.get("type") not in GUEST_TYPES:
+            return None
+        for n, resources in self.states.items():
+            for r in resources:
+                if (n, r["urn"]) == (self.stack, urn) or r.get("delete"):
+                    continue
+                if any(same_resource(me["type"], i, r) for i in state_ids(me)):
+                    return (f"its id {me.get('id')} is also in the state of {n} as {r['urn']}: one real guest has two "
+                            f"state entries, and deleting this one destroys the guest the other still manages. No "
+                            f"flag allows it. Remove this state entry instead, which touches nothing real: "
+                            f"`pulumi state unprotect '{urn}'`, then `pulumi state delete '{urn}'` (with the "
+                            f"backend and passphrase of {self.stack}), and deploy again")
+        return None
+
+
+def to_protect(state: list[dict[str, Any]], allow: Allow, key: Callable[[str], str],
+               protected: Iterable[str] = ()) -> list[str]:
+    """URNs of the gated resources in `state` that it does not protect and
+    that `allow` (scoped to the stack) does not name for a replace or a
+    delete. `key`: URN -> the name a request would use. `protected`: URNs the
+    program that runs protects; one of those is protected in state although
+    it is named (the estate's own `protect` is never removed, and the engine
+    only honours it once the state has it). An entry that waits to be deleted
+    (the old half of an interrupted replacement) is left alone."""
+    named, kept = {*allow.replace, *allow.delete}, set(protected)
+    return [r["urn"] for r in state if gated(r.get("type") or "") and not r.get("protect") and not r.get("delete")
+            and (r["urn"] in kept or (r["urn"] not in named and key(r["urn"]) not in named))]
+
+
+def protected_urns(stack: str, program: dict[str, Any]) -> set[str]:
+    """URNs of the resources the program protects."""
+    return {urn_of(stack, program, k) for k, r in (program.get("resources") or {}).items()
+            if ((r or {}).get("options") or {}).get("protect") is True}
+
+
 def protect(stack: str, program: dict[str, Any], allow: Allow) -> tuple[dict[str, Any], list[str]]:
-    """-> (a copy of the program in which every guest that `allow` does not
-    name for a replace or a delete has options.protect = true, the keys it was
-    set on). The engine then refuses to replace or delete those itself. Never
+    """-> (a copy of the program in which every guest (and HA resource) that
+    `allow` does not name for a replace or a delete has options.protect =
+    true, the keys it was set on). With the state protecting them too
+    (to_protect), the engine refuses to replace or delete those itself. Never
     written to the estate's files; a protect the estate set is never removed."""
     out = json.loads(json.dumps(program))
     named = {*allow.replace, *allow.delete}
     added = []
     for key, r in (out.get("resources") or {}).items():
-        if (r or {}).get("type") not in GUEST_TYPES or key in named or urn_of(stack, out, key) in named:
+        if not gated((r or {}).get("type") or "") or key in named or urn_of(stack, out, key) in named:
             continue
         opts = r.setdefault("options", {})
         if opts.get("protect") is not True:
@@ -372,23 +479,41 @@ class Plan:
         return out
 
 
-def refusals(changes: list[dict[str, Any]], allow: Allow,
-             label: Optional[Callable[[str], str]] = None) -> list[dict[str, Any]]:
+def refusals(changes: list[dict[str, Any]], allow: Allow, label: Optional[Callable[[str], str]] = None,
+             held: Optional[Callable[[str], Optional[str]]] = None) -> list[dict[str, Any]]:
     """What a deploy refuses of a plan: [{key, urn, type, op, flag}], one per
-    guest and gated op that the request did not name. `allow` is already
-    scoped to the stack (`scope`); `label` writes the key in the flag (the
-    pipeline adds the stack when the key exists in another stack too)."""
+    guest (or HA resource) and gated op that the request did not name. `allow`
+    is already scoped to the stack (`scope`); `label` writes the key in the
+    flag (the pipeline adds the stack when the key exists in another stack
+    too). `held` (Held): the delete of a guest whose id a second state entry
+    holds is refused whatever the request names, with `why` and no flag."""
     label = label or (lambda key: key)
     out = []
     for c in changes:
-        if c["type"] not in GUEST_TYPES:
+        if not gated(c["type"]):
             continue
-        for fam in dict.fromkeys(f for f in map(family, c["steps"]) if f):
+        for fam in dict.fromkeys(f for f in (gate(c["type"], s) for s in c["steps"]) if f):
+            steps = [s for s in c["steps"] if gate(c["type"], s) == fam]
+            base = {"key": c["key"], "urn": c["urn"], "type": c["type"], "steps": steps,
+                    "op": "create" if steps == ["create"] else fam}
+            why = held(c["urn"]) if held and fam == "delete" else None
             named = getattr(allow, fam)
-            if c["key"] not in named and c["urn"] not in named:
-                out.append({"key": c["key"], "urn": c["urn"], "type": c["type"], "op": fam,
-                            "steps": [s for s in c["steps"] if family(s) == fam],
-                            "flag": f"{flag(fam)} {label(c['key'])}"})
+            if why:
+                out.append({**base, "flag": None, "why": why})
+            elif c["key"] not in named and c["urn"] not in named:
+                out.append({**base, "flag": f"{flag(fam)} {label(c['key'])}"})
+    return out
+
+
+def unknown_refusals(program: dict[str, Any], changes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Resources of the program, and resources the plan changes (one the
+    program no longer has is deleted from state), whose type is of a proxmox
+    package and unknown to the runner. Refused whatever the request names."""
+    res = program.get("resources") or {}
+    out = [{"key": k, "type": r.get("type", ""), "op": "unknown-type", "flag": None, "why": UNKNOWN_WHY}
+           for k, r in res.items() if unknown((r or {}).get("type") or "")]
+    out += [{"key": c["key"], "urn": c["urn"], "type": c["type"], "op": "unknown-type", "flag": None,
+             "why": UNKNOWN_WHY} for c in changes if unknown(c["type"]) and c["key"] not in res]
     return out
 
 
@@ -418,6 +543,13 @@ def _why(c: dict[str, Any]) -> str:
 def _refusal(r: dict[str, Any]) -> str:
     if r["op"] == "import":
         return f"import on {r['key']} ({r['type']}): {r['why']}"
+    if r["op"] == "unknown-type":
+        return f"{r['key']} ({r['type']}): {r['why']}"
+    if r["type"] in HA_TYPES:
+        return (f"{r['op']} of HA resource {r['key']} ({r['type']}) (the HA manager starts, stops or moves the "
+                f"guest it names to match): needs {r['flag']}")
+    if not r.get("flag"):
+        return f"{r['op']} of guest {r['key']} ({r['type']}): {r['why']}"
     note = " (an in-place update reboots a guest)" if r["op"] == "update" else ""
     return f"{r['op']} of guest {r['key']} ({r['type']}){note}: needs {r['flag']}"
 
