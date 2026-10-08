@@ -6,7 +6,10 @@
 # at the property's path. Adoption: a hand-written `adopt` is in adoptIds and
 # not in the program; `adoptUnresolved` is listed while `adopt` is null;
 # options.import fails evaluation (of the program and of adoptIds alone) with
-# an error that names `adopt`. Evaluation only. Prints
+# an error that names `adopt`. secretRoots: none by default, and the program
+# file is the same store path with and without them; the argument of `stacks`,
+# the module option and a stack's own add up, a path and a flake input become
+# strings. Evaluation only. Prints
 # {"pulumi_nix":"pass"|"fail"}.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -24,10 +27,10 @@ ev() { # props [module [what]] -> stdout json, or stderr in $TMP/err
   nix eval --impure --json --expr "
     let
       kit = builtins.getFlake (toString $ROOT);
-      stacks = kit.lib.pulumi.stacks {
+      stacks = kit.lib.pulumi.stacks ({
         fleet = kit.lib.fleet { modules = [ $ROOT/tests/fixtures/tf-mini ]; };
         modules = [ (import $ROOT/tests/fixtures/pulumi-nix $1) ${2:-} ];
-      };
+      } // ${STACKS_ARGS:-{ \}});
       s = stacks.mini-guests;
     in $what" 2>"$TMP/err"
 }
@@ -84,6 +87,24 @@ IMPORT_ERR="stacks\.mini-guests\.resources\.extra-pool\.options\.import is not s
 expect_fail import "$GOOD" "$IMPORT_ERR" "($(pool 'options.import = "extra"'))"
 expect_fail import-file "$GOOD" "$IMPORT_ERR" "($(pool 'options.import = "extra"'))" "s.file"
 expect_fail import-ids "$GOOD" "$IMPORT_ERR" "($(pool 'options.import = "extra"'))" "s.adoptIds"
+
+# Secret roots: where the runner looks up sops files besides the estate repo.
+ROOTS_VIEW='{ inherit (s) file secretRoots; }'
+plain=$(ev "$GOOD" "" "$ROOTS_VIEW") || { echo "FAIL roots-none: evaluation" >&2; status=fail; }
+rooted=$(STACKS_ARGS='{ secretRoots = [ kit "/srv/tenant" ]; }' ev "$GOOD" \
+  '{ secretRoots = [ /srv/all ]; stacks.mini-guests.secretRoots = [ "tenants/x" ]; }' "$ROOTS_VIEW") \
+  || { echo "FAIL roots: evaluation" >&2; tail -n 20 "$TMP/err" >&2; status=fail; }
+KIT_SRC=$(nix eval --impure --raw --expr "(builtins.getFlake (toString $ROOT)).outPath")
+python3 - "$plain" "$rooted" "$KIT_SRC" <<'PY' || { echo "FAIL roots: $plain / $rooted" >&2; status=fail; }
+import json, sys
+plain, rooted, kit = json.loads(sys.argv[1]), json.loads(sys.argv[2]), sys.argv[3]
+assert plain["secretRoots"] == [], plain
+# Declaring roots changes no program: the same file in the store.
+assert rooted["file"] == plain["file"], (plain["file"], rooted["file"])
+assert sorted(rooted["secretRoots"]) == sorted([kit, "/srv/tenant", "/srv/all", "tenants/x"]), rooted
+assert kit.startswith("/nix/store/")
+PY
+expect_fail roots-type "$GOOD" "secretRoots.*is not of type" '{ secretRoots = [ 7 ]; }' "s.secretRoots"
 
 printf '{"pulumi_nix":"%s"}\n' "$status"
 [[ $status == pass ]]

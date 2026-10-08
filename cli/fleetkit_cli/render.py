@@ -62,9 +62,12 @@ class RenderError(Exception):
 # Only what the runner needs of each stack, so the eval serialises no program.
 # adoptIds ({ <resource key> = <provider id>; }) and adoptUnresolved
 # ({ <resource key> = <why no id>; }) are what `fleetkit adopt` imports by;
-# a kit that does not expose them yet adopts only by --id.
+# a kit that does not expose them yet adopts only by --id. secretRoots are the
+# directories the estate's flake declares for its sops files (a tenant's
+# source, a store path of this commit's inputs); a kit without them has none.
 VIEW = ("s: builtins.mapAttrs (_: x: { inherit (x) estate project backend file secrets; "
-        "adoptIds = x.adoptIds or { }; adoptUnresolved = x.adoptUnresolved or { }; }) s")
+        "adoptIds = x.adoptIds or { }; adoptUnresolved = x.adoptUnresolved or { }; "
+        "secretRoots = x.secretRoots or [ ]; }) s")
 
 
 def nix_eval_json(s: Settings, attr: str, apply: str | None = None) -> Any:
@@ -83,6 +86,7 @@ def stacks(s: Settings) -> dict[str, dict[str, Any]]:
     for st in out.values():
         st["adoptIds"] = st.get("adoptIds") or {}
         st["adoptUnresolved"] = st.get("adoptUnresolved") or {}
+        st["secretRoots"] = st.get("secretRoots") or []
     return out
 
 
@@ -107,13 +111,32 @@ def stacks_of(s: Settings, estate: str, only: list[str] | None = None) -> dict[s
     return mine
 
 
-def find_secret(s: Settings, src: str) -> Path:
+def secret_roots(s: Settings, st: dict[str, Any] | None = None) -> list[Path]:
+    """Where a stack's sops files are looked up, in order: the checkout, the
+    roots its flake declares (`secretRoots`, as evaluated at this checkout:
+    never kept from another one), then FLEETKIT_SECRET_ROOTS. A declared root
+    is absolute or relative to the checkout, and must be a directory here."""
+    declared = []
+    for root in (st or {}).get("secretRoots") or []:
+        p = Path(root) if s.flake is None else s.flake / root
+        if not p.is_dir():
+            raise RenderError(
+                f"secret root {root} (declared by the estate's flake: secretRoots) is not a directory on "
+                f"this host" + (f" ({p})" if str(p) != str(root) else "") + "; a flake input's source is "
+                "there once it is fetched, anything else has to be built or copied first")
+        declared.append(p)
+    return ([s.flake] if s.flake else []) + declared + list(s.extra_secret_roots)
+
+
+def find_secret(s: Settings, src: str, st: dict[str, Any] | None = None) -> Path:
+    """`st`: the stack the file is of, for the roots its flake declares."""
     if Path(src).is_absolute():
         return Path(src)
-    hit = next((r / src for r in s.secret_roots if (r / src).is_file()), None)
+    roots = secret_roots(s, st)
+    hit = next((r / src for r in roots if (r / src).is_file()), None)
     if hit is None:
-        raise RenderError(f"secrets file {src} is under none of {', '.join(map(str, s.secret_roots))} "
-                          f"(FLEETKIT_SECRET_ROOTS adds more)")
+        raise RenderError(f"secrets file {src} is under none of {', '.join(map(str, roots))} "
+                          f"(secretRoots in the estate's flake, or FLEETKIT_SECRET_ROOTS, adds more)")
     return hit
 
 
@@ -293,6 +316,7 @@ def render(s: Settings, name: str, st: dict[str, Any], ev: Emitter, run: Run,
 
 def link_secrets(s: Settings, wd: Path, st: dict[str, Any]) -> None:
     """The sops files a program's invokes read, linked where it looks for them."""
+    secret_roots(s, st)  # a declared root that is not there fails here, whatever the stack reads
     for src in st["secrets"]:
         if Path(src).is_absolute():
             continue
@@ -300,4 +324,4 @@ def link_secrets(s: Settings, wd: Path, st: dict[str, Any]) -> None:
         link.parent.mkdir(parents=True, exist_ok=True)
         if link.is_symlink() or link.exists():
             link.unlink()
-        link.symlink_to(find_secret(s, src))
+        link.symlink_to(find_secret(s, src, st))

@@ -1,7 +1,10 @@
 # Pulumi.nix: an estate's Pulumi stacks as Nix modules. Evaluation only.
 #
-#   stacks { lib; fleet; modules; specialArgs ? { }; }
+#   stacks { fleet; modules; specialArgs ? { }; secretRoots ? [ ]; }
 #     -> { <stack> = { estate; backend; program; file; secrets; ...; }; }
+#     secretRoots: directories besides the estate repo where the runner looks
+#     up every stack's sops files (a tenant's source: a flake input). The same
+#     as the module option `secretRoots`; each stack carries the list.
 #   fromModel { estate; github ? false; adopt ? true; }
 #     -> a module: the stack <estate>-guests (or <estate>-github) rendered from
 #        the model, with its backend from fleet.backends. adopt: each
@@ -26,9 +29,14 @@ let
       fleet,
       modules,
       specialArgs ? { },
+      secretRoots ? [ ],
     }:
     (lib.evalModules {
-      modules = [ ./options.nix ] ++ modules;
+      modules = [
+        ./options.nix
+        { inherit secretRoots; }
+      ]
+      ++ modules;
       specialArgs = {
         inherit fleet;
         fleetkit = self;

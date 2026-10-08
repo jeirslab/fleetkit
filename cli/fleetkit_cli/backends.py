@@ -23,8 +23,8 @@ from .render import RenderError, find_secret
 from .settings import Settings
 
 
-def _sops(s: Settings, v: dict[str, Any], ev: Emitter) -> str:
-    path = find_secret(s, v["path"])
+def _sops(s: Settings, v: dict[str, Any], ev: Emitter, st: dict[str, Any] | None = None) -> str:
+    path = find_secret(s, v["path"], st)
     extract = "".join(f"[{json.dumps(k)}]" for k in v["extract"])
     env = s.base_env()
     p = subprocess.run([s.sops, "--decrypt", "--extract", extract, str(path)],
@@ -42,7 +42,9 @@ def _with_params(url: str, params: dict[str, str]) -> str:
     return urlunsplit((u.scheme, u.netloc, u.path, urlencode(q), u.fragment))
 
 
-def env_for(s: Settings, stack: str, backend: dict[str, Any] | None, ev: Emitter) -> dict[str, str]:
+def env_for(s: Settings, stack: str, backend: dict[str, Any] | None, ev: Emitter,
+            st: dict[str, Any] | None = None) -> dict[str, str]:
+    """`st`: the stack as evaluated, for the secret roots its flake declares."""
     env = s.base_env()
     ev.secret(s.passphrase)
     if backend is None:
@@ -59,13 +61,13 @@ def env_for(s: Settings, stack: str, backend: dict[str, Any] | None, ev: Emitter
         env["PULUMI_BACKEND_URL"] = f"file://{d}"
         where = str(d)
     elif t == "postgres":
-        url = _with_params(_sops(s, backend["urlSecret"], ev), backend.get("urlParams") or {})
+        url = _with_params(_sops(s, backend["urlSecret"], ev, st), backend.get("urlParams") or {})
         env["PULUMI_BACKEND_URL"] = ev.secret(url)
         where = "postgres (connection string from sops)"
     elif t == "s3":
         env["PULUMI_BACKEND_URL"] = backend["url"]
         for k, v in (backend.get("env") or {}).items():
-            env[k] = _sops(s, v, ev)
+            env[k] = _sops(s, v, ev, st)
         where = backend["url"]
     else:
         raise RenderError(f"stack {stack}: unknown backend type {t}")

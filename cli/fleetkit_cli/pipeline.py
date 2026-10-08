@@ -86,7 +86,7 @@ def _infra(s: Settings, req: DeployRequest, ev: Emitter, rundir: render.Run, res
     # each stack runs is a copy in which the guests this request does not
     # name are protected (guard.protect).
     projects = {n: render.render(s, n, st, ev, rundir, guard.scope(allow, n)) for n, st in stacks.items()}
-    envs = {n: backends.env_for(s, n, st["backend"], ev) for n, st in stacks.items()}
+    envs = {n: backends.env_for(s, n, st["backend"], ev, st) for n, st in stacks.items()}
     # The store path and sha256 of each program: exactly what this deploy ran.
     result["programs"] = {n: p.file for n, p in projects.items()}
     result["program_sha256"] = {n: p.sha256 for n, p in projects.items()}

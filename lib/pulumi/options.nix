@@ -9,7 +9,9 @@
 #     variables.<key> = { "fn::invoke" = ...; };
 #     outputs.<key> = ...;
 #     backend = { type = "postgres" | "s3" | "local"; ... };
+#     secretRoots = [ <dir> ];                  # more places its sops files are
 #   }
+#   secretRoots = [ inputs.tenant ];            # the same, for every stack
 #
 # Read-only, per stack: `program` (the checked program as an attrset), `file`
 # (it as Pulumi.yaml in the store, from builtins.toFile), `secrets` (the sops
@@ -28,10 +30,16 @@
 # Every resource's properties are checked against the pinned Pulumi schema of
 # its type (./types.nix): a misspelt property, a value of the wrong type or a
 # list where an object goes fails `nix eval` here, at the property's path.
-{ lib, ... }:
+{ lib, config, ... }:
 let
   inherit (lib) types mkOption;
   pt = import ./types.nix { inherit lib; };
+
+  # Directories where the runner looks up a stack's sops files, after the
+  # estate repo's checkout: a flake input (a tenant's source), a path, or a
+  # string. Evaluated per checkout, so a store path follows the commit.
+  secretRootsType = types.listOf (types.coercedTo types.path toString types.str);
+  everyStackRoots = config.secretRoots;
 
   sopsValue = types.submodule {
     options = {
@@ -280,6 +288,11 @@ let
           default = null;
           description = "Where the stack's state lives; null leaves it to the runner's environment.";
         };
+        secretRoots = mkOption {
+          type = secretRootsType;
+          default = [ ];
+          description = "Directories, besides the estate repo, where the stack's sops files (`secrets`, the backend's) are looked up: the top-level `secretRoots` and these. Absolute, or relative to the estate repo.";
+        };
         program = mkOption {
           type = types.raw;
           readOnly = true;
@@ -307,6 +320,7 @@ let
         };
       };
       config = {
+        secretRoots = everyStackRoots;
         program =
           if dangling != [ ] then
             throw "stacks.${stack}: references to no resource or variable: ${lib.concatStringsSep ", " dangling}"
@@ -332,5 +346,11 @@ in
     type = types.attrsOf (types.submodule stackModule);
     default = { };
     description = "Pulumi stacks, by name.";
+  };
+  options.secretRoots = mkOption {
+    type = secretRootsType;
+    default = [ ];
+    example = lib.literalExpression "[ inputs.tenant ]";
+    description = "Directories, besides the estate repo, where every stack's sops files are looked up (a tenant's source: a flake input). `stacks.<name>.secretRoots` adds more for one stack.";
   };
 }
