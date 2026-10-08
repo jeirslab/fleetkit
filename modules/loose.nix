@@ -183,7 +183,7 @@ let
     ++ typed (w "organization") "true or false" builtins.isBool orgBool (g.organization or { })
     ++ lib.concatLists (
       lib.mapAttrsToList (
-        t: typed (w "teams.${t}") "a string" builtins.isString [ "description" ]
+        t: typed (w "teams.${t}") "a string" builtins.isString [ "description" "name" ]
       ) teams
     )
     ++ keysOk (w "actions") [
@@ -201,7 +201,7 @@ let
     ++ lib.concatLists (
       lib.mapAttrsToList (
         t: team:
-        keysOk (w "teams.${t}") [ "description" "members" "privacy" "repos" ] team
+        keysOk (w "teams.${t}") [ "description" "maintainers" "members" "name" "privacy" "repos" ] team
         ++ keysOkEach (w "teams.${t}.repos") [ "repo" "permission" ] (team.repos or [ ])
       ) teams
     )
@@ -236,6 +236,7 @@ let
       lib.mapAttrsToList (
         t: team:
         principalRefs (w "teams.${t}.members") (team.members or [ ])
+        ++ principalRefs (w "teams.${t}.maintainers") (team.maintainers or [ ])
         ++ lib.concatMap (
           r:
           [

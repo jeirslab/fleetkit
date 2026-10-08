@@ -26,7 +26,7 @@ estate repo.
 | `resource.github_repository_file.<key>_<path>` | `repos.<estate>.<key>.files.<path>` (`content`, optional `branch`, `message`, `overwrite`): `file`, `content`, `overwrite_on_create`, and `branch` / `commit_message` when set (otherwise the default branch and the provider's message). Meant for a workflow file the lab keeps in a tenant repository |
 | `github_organization_settings` | `git.organization`, when `git.kind == "org"`: each key is the provider argument in camelCase (see "Optional settings" for the list) |
 | `github_membership` | one per member; the role comes from the `admin` / `member` lists, and a principal id is resolved to its `github` login through `fleet.operators.principals` |
-| `github_team`, `github_team_members`, `github_team_repository` | `git.teams` (`privacy`, `description`, `members`, `repos`); membership is authoritative |
+| `github_team`, `github_team_members`, `github_team_repository` | `git.teams` (`name`, `privacy`, `description`, `members`, `maintainers`, `repos`); membership is authoritative |
 | `github_actions_organization_permissions` | `git.actions` |
 | `github_actions_organization_secret` | each `git.actions.secrets` entry; `plaintext_value` is a `${data.sops_file...}` reference, `visibility = "selected"` with `selected_repository_ids` referencing the rendered repositories. Not rendered at all when `git.plan` is `free` or unset and any selected repository is private |
 | `github_organization_ruleset` | each ruleset whose `requiresPlan` is satisfied by `git.plan` (`free` < `pro` < `team` < `enterprise`; a ruleset that required `team` still requires `team`) |
@@ -126,6 +126,8 @@ ids.
 | Option | Provider argument |
 | ------ | ----------------- |
 | `description` | `github_team.description` |
+| `name` | `github_team.name`: the display name (GitHub derives the slug from it); the key when unset |
+| `maintainers` | `github_team_members.members` with `role = "maintainer"`; `members` get `role = "member"` |
 
 ### Organisation (`git.organization`)
 

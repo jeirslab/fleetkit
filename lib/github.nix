@@ -369,18 +369,26 @@ let
   teamResources = namedAttrs "teams" (
     t: team:
     {
-      name = t;
+      # The display name; GitHub derives the slug from it. The key is used
+      # when the estate gives none.
+      name = tfText (team.name or t);
     }
     // lib.optionalAttrs (team ? privacy) { inherit (team) privacy; }
     // lib.optionalAttrs (team ? description) { description = tfText team.description; }
   ) teams;
   teamMembers = namedAttrs "teams" (t: team: {
     team_id = ref "github_team.${tfName t}.id";
-    members = map (p: {
-      username = loginOf p;
-      role = "member";
-    }) team.members;
-  }) (lib.filterAttrs (_: team: (team.members or [ ]) != [ ]) teams);
+    # maintainers are members with the maintainer role; one listed in both is a maintainer.
+    members =
+      map (p: {
+        username = loginOf p;
+        role = "maintainer";
+      }) (team.maintainers or [ ])
+      ++ map (p: {
+        username = loginOf p;
+        role = "member";
+      }) (lib.filter (p: !(lib.elem p (team.maintainers or [ ]))) (team.members or [ ]));
+  }) (lib.filterAttrs (_: team: (team.members or [ ]) ++ (team.maintainers or [ ]) != [ ]) teams);
   teamRepos = named "team repositories" (
     lib.concatLists (
       lib.mapAttrsToList (
