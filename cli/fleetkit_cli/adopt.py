@@ -3,29 +3,42 @@
 `import` is never part of a rendered program (a leftover one made the next
 `up` destroy the adopted guest, issue #61). It lives only here, for one run:
 
-  1. render the stacks; read each selected stack's state. `todo` = resources
-     with an adoption id (the stack's adoptIds, or --id) that are not in state.
-     A resource already in state is never touched;
-  2. a temporary project dir (outside the state dir) holds the stack's program
-     with options.import set on the `todo` resources only;
+  1. render the stacks into this run's own directory; read each selected
+     stack's state. `todo` = resources with an adoption id (the stack's
+     adoptIds, or --id) that are not in state. A resource already in state is
+     never touched, and a resource whose id is already in state under another
+     URN (a renamed key) is refused: importing it again would leave two state
+     entries for one guest, and the next deploy would delete the live one;
+  2. a temporary project dir (the system's, outside the state dir) holds the
+     stack's program with options.import set on the `todo` resources only;
   3. a preview of it, targeted at `todo` and what they depend on, gives the
-     report: per resource `import` (the declaration equals the live resource),
-     `import+update` (with each differing property, live and declared), or the
-     provider's error;
+     report, per resource: `import` (the declaration equals the live
+     resource), `import+update` (with each differing property, live and
+     declared), `import+unrecorded` (the import did not record some
+     properties, so the engine plans an update for them: a reboot of a
+     guest), `absent` (it does not exist; a deploy will create it), or the
+     provider's error. A resource that fails stops the engine before it has
+     compared the others, so the preview is run again without it until the
+     rest is complete;
   4. with apply: refused if a resource would be updated and is not accepted, or
      if the plan holds anything but import / update / same. Otherwise the
-     temporary program is applied with the same targets, the temporary dir is
-     removed, and a preview of the real program must show every adopted
-     resource as `same`.
+     temporary program is applied with the same targets, bound to the update
+     plan of that preview, the temporary dir is removed, and a preview of the
+     real program must show every adopted resource as `same` and no delete or
+     replace of any guest or of anything that was adopted.
 
-The temporary dir is removed on every way out, and nothing is written to the
-real project dir but Pulumi's own stack settings file when the stack is new.
+The temporary dir is removed on every way out (SIGTERM and SIGHUP included:
+main.py turns them into a cancel), and one a kill left behind is swept by the
+next run.
 """
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
 import tempfile
+import time
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, Optional
@@ -36,6 +49,32 @@ from .settings import Settings
 
 # Engine ops an adoption may contain.
 ADOPT_OPS = ("same", "import", "update", "read", "refresh")
+
+# Resources whose value the provider's import cannot read back (GitHub never
+# returns a secret): adopting one always writes the declared value. They get
+# their own status and are adopted only when named with --resource.
+SECRET_TYPES = frozenset({
+    "github:index/actionsSecret:ActionsSecret",
+    "github:index/actionsOrganizationSecret:ActionsOrganizationSecret",
+    "github:index/actionsEnvironmentSecret:ActionsEnvironmentSecret",
+    "github:index/dependabotSecret:DependabotSecret",
+    "github:index/dependabotOrganizationSecret:DependabotOrganizationSecret",
+    "github:index/codespacesSecret:CodespacesSecret",
+    "github:index/codespacesOrganizationSecret:CodespacesOrganizationSecret",
+    "github:index/codespacesUserSecret:CodespacesUserSecret",
+})
+
+# Properties of a bpg container or VM that its import is known not to record
+# (seen on real guests): the engine then plans an update for them whatever
+# the declaration says. Named in the report; the classification itself is by
+# data (no live value in what the import read).
+KNOWN_UNRECORDED = ("cpu", "memory", "vmId", "timeoutStart", "scsiHardware")
+
+# How a provider (or the engine: "resource '<id>' does not exist") says that
+# there is nothing to import by this id.
+ABSENT_RE = re.compile(r"does not exist|not found|\b404\b", re.I)
+
+TEMP_PREFIX = "fleetkit-adopt-"
 
 
 class AdoptError(Exception):
@@ -50,58 +89,177 @@ def with_imports(program: dict[str, Any], ids: dict[str, str]) -> dict[str, Any]
     return out
 
 
-def temp_project(s: Settings, stack: str, st: dict[str, Any], real: Path, program: dict[str, Any],
-                 tmp: ExitStack) -> Path:
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+def sweep_temp(max_age: float = 3600) -> list[str]:
+    """Remove temporary programs (they carry `import`) that a killed run left
+    in the system's temporary directory: those of a process that is gone, and
+    those of before the pid was in the name once they are an hour old."""
+    gone = []
+    for d in Path(tempfile.gettempdir()).glob(TEMP_PREFIX + "*"):
+        try:
+            if not d.is_dir() or d.is_symlink() or d.stat().st_uid != os.getuid():
+                continue
+            pid = d.name[len(TEMP_PREFIX):].split("-", 1)[0]
+            if pid.isdigit():
+                if int(pid) == os.getpid() or _alive(int(pid)):
+                    continue
+            elif time.time() - d.stat().st_mtime < max_age:
+                continue
+        except OSError:
+            continue
+        shutil.rmtree(d, ignore_errors=True)
+        gone.append(str(d))
+    return gone
+
+
+def temp_project(s: Settings, stack: str, st: dict[str, Any], tmp: ExitStack) -> Path:
     """A project dir for one run, removed when `tmp` closes."""
-    wd = Path(tmp.enter_context(tempfile.TemporaryDirectory(prefix=f"fleetkit-adopt-{stack}-")))
-    (wd / "Pulumi.yaml").write_text(json.dumps(program))
+    wd = Path(tmp.enter_context(tempfile.TemporaryDirectory(prefix=f"{TEMP_PREFIX}{os.getpid()}-{stack}-")))
     render.link_secrets(s, wd, st)
     # Pulumi's settings of the stack (the passphrase salt): the same stack, from here.
-    settings = real / f"Pulumi.{s.stack}.yaml"
-    if settings.is_file():
-        shutil.copy(settings, wd / settings.name)
+    render.settings_in(s, stack, wd)
     return wd
-
-
-def _state_urns(st: Any) -> set[str]:
-    deployment = st.export_stack().deployment or {}
-    return {r["urn"] for r in deployment.get("resources") or []}
 
 
 def _state_only(type_: str) -> bool:
     return type_.startswith(guard.STATE_ONLY)
 
 
+def _ids(r: dict[str, Any]) -> set[str]:
+    return {str(r[k]) for k in ("id", "importID") if r.get(k) not in (None, "")}
+
+
+def _same_resource(type_: str, rid: str, r: dict[str, Any]) -> bool:
+    """Whether the state resource `r` is the real resource the id `rid` names.
+    A guest's adoption id is `<node>/<vmid>` while its state id is the vmid, so
+    guests are compared by vmid (unique in a cluster)."""
+    if r.get("type") != type_:
+        return False
+    ids = _ids(r)
+    if rid in ids:
+        return True
+    if type_ in guard.GUEST_TYPES:
+        vmid = rid.rsplit("/", 1)[-1]
+        return any(i.rsplit("/", 1)[-1] == vmid for i in ids)
+    return False
+
+
 def _diff(ev: Emitter, entry: dict[str, Any], declared: dict[str, Any]) -> list[dict[str, Any]]:
-    """Each differing property: its path, the live value and the declared one."""
+    """Each differing property: its path, the live value and the declared one,
+    whenever the engine gave them (a false, a 0 and an empty value are values;
+    `liveKnown` / `declaredKnown` say whether there is one), and its kind:
+    `real` (the live value is known and the engine says it differs) or
+    `unrecorded` (the import recorded no live value for it)."""
     out = []
     for path in entry["diff"]:
         d: dict[str, Any] = {"path": path}
-        for name, src in (("live", entry.get("live")), ("declared", entry.get("declared") or declared)):
+        # The inputs of an imported resource leave out what equals the zero
+        # value (false, 0, ""): what was read from the provider has them.
+        for where, src in (("inputs", entry.get("live")), ("state", entry.get("liveOutputs"))):
             found, v = guard.lookup(src or {}, path)
             if found:
-                d[name] = ev.redact(guard.scrub(v))
+                d["live"], d["liveFrom"] = ev.redact(guard.scrub(v)), where
+                break
+        for where, src in (("declaration", entry.get("declared")), ("declaration", declared),
+                           ("provider default", entry.get("declaredOutputs"))):
+            found, v = guard.lookup(src or {}, path)
+            if found:
+                d["declared"], d["declaredFrom"] = ev.redact(guard.scrub(v)), where
+                break
+        d["liveKnown"], d["declaredKnown"] = "live" in d, "declared" in d
+        d["kind"] = "real" if d["liveKnown"] else "unrecorded"
+        if entry.get("kinds", {}).get(path):
+            d["engine"] = entry["kinds"][path]  # the engine's detailedDiff kind, when it sends one
         out.append(d)
     return out
 
 
 def _resource(ev: Emitter, p: guard.Plan, program: dict[str, Any], key: str, urn: str, rid: str,
               failed: Optional[str]) -> dict[str, Any]:
-    r: dict[str, Any] = {"key": key, "type": program["resources"][key]["type"], "urn": urn, "id": rid}
+    type_ = program["resources"][key]["type"]
+    r: dict[str, Any] = {"key": key, "type": type_, "urn": urn, "id": rid}
     entry = p.entry(urn)
-    errors = p.errors.get(urn) or []
+    # `protect` refusing a replacement is not why it cannot be adopted: the
+    # steps say that (status `other`).
+    errors = [e for e in p.errors.get(urn) or [] if not guard.PROTECT_RE.search(e)]
     steps = [s for s in (entry or {}).get("steps", []) if s != "same"]
-    if errors or not steps:
-        why = "; ".join(errors) or failed or "the preview has no step for this resource"
-        return {**r, "status": "error", "error": ev.redact(why)}
+    if errors:
+        why = ev.redact("; ".join(errors))
+        if any(ABSENT_RE.search(e) for e in errors):
+            return {**r, "status": "absent", "detail": why,
+                    "note": "does not exist (nothing to import by this id); a deploy will create it"}
+        return {**r, "status": "error", "error": why}
+    if not steps:
+        return {**r, "status": "error",
+                "error": ev.redact(failed or "the preview has no step for this resource")}
     assert entry is not None
     r["steps"] = steps
+    declared = program["resources"][key].get("properties") or {}
     if any(s not in ADOPT_OPS for s in steps):
-        return {**r, "status": "other", "diff": _diff(ev, entry, program["resources"][key].get("properties") or {})}
+        return {**r, "status": "other", "diff": _diff(ev, entry, declared)}
+    if "import" in steps and "import" not in entry["done"]:
+        # Only the start of its import was seen: the engine stopped (another
+        # resource failed) before it compared this one. Never report it clean.
+        return {**r, "status": "error",
+                "error": ev.redact(failed or "the preview stopped before it compared this resource")}
     if "update" in steps or entry["diff"]:
-        return {**r, "status": "import+update",
-                "diff": _diff(ev, entry, program["resources"][key].get("properties") or {})}
+        diff = _diff(ev, entry, declared)
+        if type_ in SECRET_TYPES:
+            return {**r, "status": "import+secret", "diff": diff,
+                    "note": "a secret's value cannot be read back: adopting it writes the declared value"}
+        if diff and all(d["kind"] == "unrecorded" for d in diff):
+            return {**r, "status": "import+unrecorded", "diff": diff}
+        return {**r, "status": "import+update", "diff": diff}
     return {**r, "status": "import"}
+
+
+def _preview(s: Settings, n: str, st: dict[str, Any], program: dict[str, Any], env: dict[str, str],
+             todo: dict[str, str], all_urns: dict[str, str], wd: Path, ev: Emitter) -> dict[str, Any]:
+    """Preview the temporary program until the resources that are left all
+    compare. -> {p, remaining, dropped: {key: report entry}, failed, targets}."""
+    remaining, dropped = dict(todo), {}
+    while True:
+        ev.check()
+        (wd / "Pulumi.yaml").write_text(json.dumps(with_imports(program, remaining)))
+        deps = {d for k in remaining for d in guard.depends_on(program, k)} - set(remaining)
+        targets = [all_urns[k] for k in [*remaining, *sorted(deps)]]
+        p = guard.Plan(s.stack, program)
+        plan_file = wd / infra.PLAN_FILE
+        plan_file.unlink(missing_ok=True)
+        failed = None
+        try:
+            tst = infra.open_stack(s, wd, n, env, ev)
+            infra.engine(tst, ev, n, "preview", p, targets=targets, plan_file=plan_file)
+        except Cancelled:
+            raise
+        except Exception as e:  # noqa: BLE001 - the provider refusing an import is a result
+            failed = str(e).strip()[-1500:]
+            if not isinstance(e, infra.EngineError):
+                failed = f"{type(e).__name__}: {failed}"
+        bad = [k for k in remaining
+               if [e for e in p.errors.get(all_urns[k]) or [] if not guard.PROTECT_RE.search(e)]]
+        if not bad:
+            return {"p": p, "remaining": remaining, "dropped": dropped, "failed": failed, "targets": targets,
+                    "plan_file": plan_file}
+        # A resource that cannot be imported (it does not exist, or the
+        # provider failed) ends the engine's run: the others were not, or not
+        # all, compared. Report it, and preview again without it.
+        for k in bad:
+            dropped[k] = _resource(ev, p, program, k, all_urns[k], remaining[k], failed)
+        remaining = {k: v for k, v in remaining.items() if k not in bad}
+        if not remaining:
+            plan_file.unlink(missing_ok=True)
+            return {"p": guard.Plan(s.stack, program), "remaining": {}, "dropped": dropped, "failed": None,
+                    "targets": [], "plan_file": plan_file}
 
 
 def run(s: Settings, estate: str, ev: Emitter, stacks: list[str] | None = None,
@@ -110,93 +268,135 @@ def run(s: Settings, estate: str, ev: Emitter, stacks: list[str] | None = None,
     """-> the report: {estate, apply, applied, ok, stacks: {<stack>: {program,
     resources: [...], other: [...], error?, verify?}}, refused: [...]}."""
     ids, accept, only = dict(ids or {}), set(accept_update or []), list(resources or [])
+    sweep_temp()
     sts = render.stacks_of(s, estate, stacks)
-    workdirs = {n: render.render(s, n, st, ev) for n, st in sts.items()}
-    envs = {n: backends.env_for(s, n, st["backend"], ev) for n, st in sts.items()}
-    programs = {n: guard.load_program(workdirs[n]) for n in sts}
-    known = {k for p in programs.values() for k in (p.get("resources") or {})}
-    for what, keys in (("--id", ids), ("--resource", only), ("--accept-update", accept)):
-        missing = sorted(set(keys) - known)
-        if missing:
-            raise AdoptError(f"{what}: no resource {', '.join(missing)} in {', '.join(sorted(sts))}")
-    for n, program in programs.items():
-        if guard.imports(program):
-            raise AdoptError(f"{n}: the rendered program already sets options.import on "
-                             f"{', '.join(guard.imports(program))}; a program must not carry import "
-                             f"(update fleetkit, or drop `adopt` from the stack)")
-
     report: dict[str, Any] = {"estate": estate, "apply": apply, "applied": False, "ok": True,
                               "stacks": {}, "refused": []}
-    work: dict[str, dict[str, Any]] = {}
-    with ExitStack() as tmp:
-        for n, st in sts.items():
-            ev.check()
-            program = programs[n]
-            res = program.get("resources") or {}
-            out: dict[str, Any] = {"program": st["file"], "resources": [], "other": []}
-            report["stacks"][n] = out
-            have = {**{k: v for k, v in (st.get("adoptIds") or {}).items() if k in res},
-                    **{k: v for k, v in ids.items() if k in res}}
-            unresolved = {k: why for k, why in (st.get("adoptUnresolved") or {}).items()
-                          if k in res and k not in have}
-            wanted = [k for k in res if k in have or k in unresolved or k in only]
-            if only:
-                wanted = [k for k in wanted if k in only]
-            if not wanted:
-                continue
-            real = infra.open_stack(s, workdirs[n], n, envs[n], ev)
-            in_state = _state_urns(real)
-            all_urns = guard.urns(s.stack, program)
-            todo: dict[str, str] = {}
-            for k in wanted:
-                base = {"key": k, "type": res[k]["type"], "urn": all_urns[k]}
-                if all_urns[k] in in_state:
-                    out["resources"].append({**base, "status": "in-state",
-                                             "note": "already in state; adopt does not touch it"})
-                elif k in have:
-                    todo[k] = have[k]
-                elif k in unresolved:
-                    out["resources"].append({**base, "status": "unresolved", "why": unresolved[k]})
-                else:
-                    out["resources"].append({**base, "status": "no-id",
-                                             "why": "no adoption id: pass --id " + k + "=<provider id>"})
-            if not todo:
-                continue
-            # The temporary program: the only place import is ever written.
-            wd = temp_project(s, n, st, workdirs[n], with_imports(program, todo), tmp)
-            deps = {d for k in todo for d in guard.depends_on(program, k)} - set(todo)
-            targets = [all_urns[k] for k in [*todo, *sorted(deps)]]
-            p = guard.Plan(s.stack, program)
-            failed = None
-            try:
-                tst = infra.open_stack(s, wd, n, envs[n], ev)
-                infra.engine(tst, ev, n, "preview", p, targets=targets)
-            except Cancelled:
-                raise
-            except Exception as e:  # noqa: BLE001 - the provider refusing an import is a result
-                failed = f"{type(e).__name__}: {str(e).strip()[-1500:]}"
-                out["error"] = ev.redact(failed)
-            for k, rid in todo.items():
-                out["resources"].append(_resource(ev, p, program, k, all_urns[k], rid, failed))
-            todo_urns = {all_urns[k] for k in todo}
-            out["other"] = [c for c in p.changes() if c["urn"] not in todo_urns]
-            work[n] = {"wd": wd, "todo": todo, "targets": targets, "urns": todo_urns}
-            ev.emit("adopt", "plan", stack=n, resources=out["resources"], other=out["other"])
+    # The real programs go into this run's own directory (render.Run): nothing
+    # here is written where a deploy reads, and no deploy writes here.
+    with render.Run(s, "adopt") as rundir:
+        projects = {n: render.render(s, n, st, ev, rundir) for n, st in sts.items()}
+        envs = {n: backends.env_for(s, n, st["backend"], ev) for n, st in sts.items()}
+        # The program the engine runs: every guest protected (guard.protect).
+        programs = {n: guard.load_program(projects[n].wd) for n in sts}
+        known = {k for p in programs.values() for k in (p.get("resources") or {})}
+        for what, keys in (("--id", ids), ("--resource", only), ("--accept-update", accept)):
+            missing = sorted(set(keys) - known)
+            if missing:
+                raise AdoptError(f"{what}: no resource {', '.join(missing)} in {', '.join(sorted(sts))}")
+            # A key names one resource: not the same key in two stacks.
+            for k in sorted(set(keys)):
+                hits = sorted(n for n, p in programs.items() if k in (p.get("resources") or {}))
+                if len(hits) > 1:
+                    raise AdoptError(f"{what} {k} is ambiguous: {k} is a resource of {', '.join(hits)}; "
+                                     f"run one stack at a time (--stack)")
+        for n, program in programs.items():
+            if guard.imports(program):
+                raise AdoptError(f"{n}: the rendered program already sets options.import on "
+                                 f"{', '.join(guard.imports(program))}; a program must not carry import "
+                                 f"(update fleetkit, or drop `adopt` from the stack)")
 
-        _judge(report, accept)
-        if apply and report["ok"] and work:
-            for n, w in work.items():
+        work: dict[str, dict[str, Any]] = {}
+        with ExitStack() as tmp:
+            for n, st in sts.items():
                 ev.check()
-                _up(s, n, w, programs[n], envs[n], accept, ev)
-            report["applied"] = True
-    # The temporary programs are gone. What was adopted must now be `same` in
-    # a preview of the real program; if not, say what differs and stop.
-    if report["applied"]:
-        for n, w in work.items():
-            report["stacks"][n]["verify"] = _verify(s, n, w, workdirs[n], envs[n], ev)
-            if not report["stacks"][n]["verify"]["ok"]:
-                report["ok"] = False
+                work_n = _stack(s, n, st, programs[n], projects[n], envs[n], ids, only, tmp, ev, report)
+                if work_n:
+                    work[n] = work_n
+            # A secret named with --resource is accepted by being named.
+            accept |= {r["key"] for out in report["stacks"].values() for r in out["resources"]
+                       if r["status"] == "import+secret"}
+            _judge(report, accept)
+            if apply and report["ok"] and work:
+                for n, w in work.items():
+                    ev.check()
+                    _up(s, n, w, programs[n], envs[n], accept, ev)
+                report["applied"] = True
+        # The temporary programs are gone. What was adopted must now be `same`
+        # in a preview of the real program, and that preview must not delete
+        # or replace a guest or anything that was adopted; if it does, say
+        # what and stop.
+        if report["applied"]:
+            for n, w in work.items():
+                report["stacks"][n]["verify"] = _verify(s, n, w, projects[n], envs[n], ev)
+                if not report["stacks"][n]["verify"]["ok"]:
+                    report["ok"] = False
     return report
+
+
+def _stack(s: Settings, n: str, st: dict[str, Any], program: dict[str, Any], project: render.Project,
+           env: dict[str, str], ids: dict[str, str], only: list[str], tmp: ExitStack, ev: Emitter,
+           report: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """The report of one stack; -> what an apply needs, or None."""
+    res = program.get("resources") or {}
+    out: dict[str, Any] = {"program": st["file"], "resources": [], "other": []}
+    report["stacks"][n] = out
+    have = {**{k: v for k, v in (st.get("adoptIds") or {}).items() if k in res},
+            **{k: v for k, v in ids.items() if k in res}}
+    unresolved = {k: why for k, why in (st.get("adoptUnresolved") or {}).items()
+                  if k in res and k not in have}
+    wanted = [k for k in res if k in have or k in unresolved or k in only]
+    if only:
+        wanted = [k for k in wanted if k in only]
+    if not wanted:
+        return None
+    real = infra.open_stack(s, project.wd, n, env, ev)
+    in_state = infra.state(real)
+    state_urns = {r["urn"] for r in in_state}
+    all_urns = guard.urns(s.stack, program)
+    todo: dict[str, str] = {}
+    for k in wanted:
+        base = {"key": k, "type": res[k]["type"], "urn": all_urns[k]}
+        if all_urns[k] in state_urns:
+            out["resources"].append({**base, "status": "in-state",
+                                     "note": "already in state; adopt does not touch it"})
+        elif k in have:
+            twin = next((r for r in in_state if r["urn"] != all_urns[k]
+                         and _same_resource(res[k]["type"], have[k], r)), None)
+            if twin is not None:
+                # The id is in state already, under another URN: a renamed key
+                # (or project, or stack). A second import would give the state
+                # two entries for one real resource, and the next deploy would
+                # delete the one the program no longer has: the live guest.
+                out["resources"].append({**base, "id": have[k], "status": "duplicate", "twin": twin["urn"], "why": (
+                    f"its id {have[k]} is already in state as {twin['urn']} (id {twin.get('id')}): importing it "
+                    f"again would leave two state entries for one real resource, and the next deploy would "
+                    f"delete it. Rename it in state instead: `pulumi state rename '{twin['urn']}' {k}` (with "
+                    f"the stack's backend and passphrase; `pulumi state move` for another project or stack), "
+                    f"then run adopt again: it will find it in state")})
+            elif res[k]["type"] in SECRET_TYPES and k not in only:
+                out["resources"].append({**base, "id": have[k], "status": "secret", "note": (
+                    f"a secret's value cannot be read back, so adopting it always writes the declared value; "
+                    f"not adopted unless named: --resource {k}")})
+            else:
+                todo[k] = have[k]
+        elif k in unresolved:
+            out["resources"].append({**base, "status": "unresolved", "why": unresolved[k]})
+        else:
+            out["resources"].append({**base, "status": "no-id",
+                                     "why": "no adoption id: pass --id " + k + "=<provider id>"})
+    if not todo:
+        return None
+    # The temporary program: the only place import is ever written.
+    wd = temp_project(s, n, st, tmp)
+    pv = _preview(s, n, st, program, env, todo, all_urns, wd, ev)
+    p, remaining = pv["p"], pv["remaining"]
+    if pv["failed"] and not p.only_protect_errors():
+        out["error"] = ev.redact(pv["failed"])
+    for k, rid in todo.items():
+        out["resources"].append(pv["dropped"].get(k) or _resource(ev, p, program, k, all_urns[k], rid, pv["failed"]))
+    todo_urns = {all_urns[k] for k in remaining}
+    out["other"] = [c for c in p.changes() if c["urn"] not in todo_urns]
+    ev.emit("adopt", "plan", stack=n, resources=out["resources"], other=out["other"])
+    if not remaining:
+        return None
+    plan_file = pv["plan_file"]
+    bound = None
+    if plan_file.is_file():
+        os.chmod(plan_file, 0o600)
+        bound = {"plan_sha256": guard.sha256(plan_file), "program_sha256": guard.sha256(wd / "Pulumi.yaml")}
+    return {"wd": wd, "todo": remaining, "targets": pv["targets"], "urns": todo_urns, "plan_file": plan_file,
+            "bound": bound}
 
 
 def _judge(report: dict[str, Any], accept: set[str]) -> None:
@@ -204,20 +404,30 @@ def _judge(report: dict[str, Any], accept: set[str]) -> None:
     refused = report["refused"]
     for n, out in report["stacks"].items():
         for r in out["resources"]:
+            guest = r["type"] in guard.GUEST_TYPES
             if r["status"] == "error":
                 refused.append({"stack": n, "key": r["key"], "kind": "error",
                                 "why": f"cannot import: {r['error']}"})
+            elif r["status"] == "duplicate":
+                refused.append({"stack": n, "key": r["key"], "kind": "duplicate", "why": r["why"]})
             elif r["status"] == "other":
                 refused.append({"stack": n, "key": r["key"], "kind": "plan",
                                 "why": f"the plan would {', '.join(r['steps'])} it; adopt only imports"})
             elif r["status"] == "import+update" and r["key"] not in accept:
                 paths = ", ".join(d["path"] for d in r["diff"]) or "see the preview"
-                reboot = (" It is a guest: the update reboots it."
-                          if r["type"] in guard.GUEST_TYPES else "")
+                reboot = " It is a guest: the update reboots it." if guest else ""
                 refused.append({"stack": n, "key": r["key"], "kind": "update", "why": (
                     f"the declaration differs from the live resource ({paths}), so importing it also "
                     f"updates it in place.{reboot} Make the declaration match, or pass "
                     f"--accept-update {r['key']}")})
+            elif r["status"] == "import+unrecorded" and r["key"] not in accept:
+                paths = ", ".join(d["path"] for d in r["diff"])
+                reboot = (" It is a guest: that update REBOOTS it, even if every value already matches."
+                          if guest else "")
+                refused.append({"stack": n, "key": r["key"], "kind": "update", "why": (
+                    f"the import does not record {paths}, so the engine cannot compare them with the "
+                    f"declaration and plans an update in place for them.{reboot} The declaration cannot be "
+                    f"made to match: check the values by hand, then pass --accept-update {r['key']}")})
         for c in out["other"]:
             if c["op"] == "create" and _state_only(c["type"]):
                 continue  # a provider or the stack itself: state only
@@ -225,9 +435,11 @@ def _judge(report: dict[str, Any], accept: set[str]) -> None:
                             "why": f"the plan would also {c['op']} {c['key']} ({c['type']}); adopt only imports"})
         if out.get("error") and not any(r["stack"] == n for r in refused):
             refused.append({"stack": n, "key": None, "kind": "error", "why": out["error"]})
-    # Without apply, a difference is the report's content, not a failure;
-    # a resource that cannot be imported at all is one either way.
-    report["ok"] = not [r for r in refused if report["apply"] or r["kind"] == "error"]
+    # Without apply, a difference is the report's content, not a failure; a
+    # resource that cannot be imported at all, or that is in state under
+    # another name, is one either way. A resource that does not exist is
+    # neither: a deploy creates it.
+    report["ok"] = not [r for r in refused if report["apply"] or r["kind"] in ("error", "duplicate")]
 
 
 def _up(s: Settings, n: str, w: dict[str, Any], program: dict[str, Any], env: dict[str, str],
@@ -243,27 +455,57 @@ def _up(s: Settings, n: str, w: dict[str, Any], program: dict[str, Any], env: di
             return f"update of {entry['key']} (not accepted)"
         return None
 
-    st = infra.open_stack(s, w["wd"], n, env, ev, install=False)
-    infra.engine(st, ev, n, "up", p, targets=w["targets"], tripwire=tripwire)
+    # The up is bound to the plan of the preview the report was made from: the
+    # engine refuses anything else. No plan (the preview failed), no up.
+    bound, wd, plan_file = w["bound"], w["wd"], w["plan_file"]
+    if not bound:
+        raise guard.GuardError(f"refused: {n}: the adoption preview made no update plan; nothing was applied")
+    if guard.sha256(wd / "Pulumi.yaml") != bound["program_sha256"] or not plan_file.is_file() \
+            or guard.sha256(plan_file) != bound["plan_sha256"]:
+        raise guard.GuardError(f"refused: {n}: the temporary program or its plan changed after the preview; "
+                               f"nothing was applied")
+    st = infra.open_stack(s, wd, n, env, ev, install=False)
+    infra.engine(st, ev, n, "up", p, targets=w["targets"], tripwire=tripwire, plan_file=plan_file)
     ev.emit("adopt", "applied", stack=n, resources=sorted(w["todo"]))
 
 
-def _verify(s: Settings, n: str, w: dict[str, Any], real: Path, env: dict[str, str], ev: Emitter) -> dict[str, Any]:
-    program = guard.load_program(real)
+def _destroys(c: dict[str, Any]) -> bool:
+    return any(guard.family(x) in ("replace", "delete") for x in c["steps"])
+
+
+def _verify(s: Settings, n: str, w: dict[str, Any], project: render.Project, env: dict[str, str],
+            ev: Emitter) -> dict[str, Any]:
+    """Preview the real program (no import) after the adoption. ok only if
+    every adopted resource is `same` AND the plan deletes or replaces no guest
+    and nothing whose state id is one that was just adopted."""
+    program = guard.load_program(project.wd)
     if guard.imports(program):  # cannot happen: adopt never writes there
         raise AdoptError(f"{n}: the real program carries import")
-    p = guard.Plan(s.stack, program)
-    st = infra.open_stack(s, real, n, env, ev, install=False)
     try:
-        infra.engine(st, ev, n, "preview", p)
+        project.verify()
+        planned = infra.plan(s, project.wd, n, env, ev, True)
+        now = infra.state(infra.open_stack(s, project.wd, n, env, ev, install=False))
     except Cancelled:
         raise
     except Exception as e:  # noqa: BLE001 - reported as the verification's failure
-        return {"ok": False, "differs": [], "error": ev.redact(f"{type(e).__name__}: {str(e).strip()[-1500:]}")}
-    differs = [c for c in p.changes() if c["urn"] in w["urns"]]
-    v = {"ok": not differs, "differs": differs}
+        return {"ok": False, "differs": [], "destroys": [],
+                "error": ev.redact(f"{type(e).__name__}: {str(e).strip()[-1500:]}")}
+    (project.wd / infra.PLAN_FILE).unlink(missing_ok=True)
+    adopted = set(w["todo"].values())
+    hot = {r["urn"] for r in now if _ids(r) & adopted} | w["urns"]
+    differs = [c for c in planned["plan"] if c["urn"] in w["urns"]]
+    destroys = [c for c in planned["plan"] if c not in differs and _destroys(c)
+                and (c["type"] in guard.GUEST_TYPES or c["urn"] in hot)]
+    v = {"ok": not differs and not destroys, "differs": differs, "destroys": destroys}
     ev.emit("adopt", "verify", stack=n, **v)
     return v
+
+
+def _value(d: dict[str, Any], side: str) -> str:
+    if not d.get(f"{side}Known", side in d):
+        return "not recorded by the import" if side == "live" else "not set"
+    note = "" if d.get(f"{side}From") in (None, "inputs", "declaration") else f" ({d[side + 'From']})"
+    return json.dumps(d[side]) + note
 
 
 def text(report: dict[str, Any]) -> list[str]:
@@ -275,14 +517,24 @@ def text(report: dict[str, Any]) -> list[str]:
             out.append("  nothing to adopt")
         for r in st["resources"]:
             status = r["status"]
+            guest = r["type"] in guard.GUEST_TYPES
             if status == "import":
                 out.append(f"  {r['key']}: import {r['id']}  ({r['type']}): clean, the declaration equals the live resource")
-            elif status == "import+update":
-                out.append(f"  {r['key']}: import {r['id']} + update  ({r['type']}): the declaration differs")
+            elif status in ("import+update", "import+unrecorded", "import+secret"):
+                head = {"import+update": "+ update: the declaration differs",
+                        "import+unrecorded": "+ update of what the import does not record"
+                                             + (": it REBOOTS the guest" if guest else ""),
+                        "import+secret": "+ write of the secret: its value cannot be read back"}[status]
+                out.append(f"  {r['key']}: import {r['id']} {head}  ({r['type']})")
                 for d in r["diff"]:
-                    live = json.dumps(d["live"]) if "live" in d else "?"
-                    decl = json.dumps(d["declared"]) if "declared" in d else "?"
-                    out.append(f"      {d['path']}: live {live}, declared {decl}")
+                    out.append(f"      {d['path']}: live {_value(d, 'live')}, declared {_value(d, 'declared')}"
+                               + ("" if d["kind"] == "real" else "  [unrecorded]"))
+            elif status == "absent":
+                out.append(f"  {r['key']}: absent: {r['id']} {r['note']}  ({r['type']})")
+            elif status == "secret":
+                out.append(f"  {r['key']}: secret, not adopted: {r['note']}")
+            elif status == "duplicate":
+                out.append(f"  {r['key']}: REFUSED: {r['why']}")
             elif status == "in-state":
                 out.append(f"  {r['key']}: {r['note']}")
             elif status in ("unresolved", "no-id"):
@@ -296,15 +548,18 @@ def text(report: dict[str, Any]) -> list[str]:
         v = st.get("verify")
         if v is not None:
             if v["ok"]:
-                out.append("  verified: a preview of the real program shows every adopted resource as same")
+                out.append("  verified: a preview of the real program shows every adopted resource as same, "
+                           "and no delete or replace of a guest")
             else:
-                out.append("  NOT VERIFIED: a preview of the real program (no import) still changes what was adopted:")
-                out += [f"      {c['op']} {c['key']}" + (f" [{', '.join(c['diff'])}]" if c["diff"] else "")
-                        for c in v["differs"]]
+                out.append("  NOT VERIFIED: a preview of the real program (no import):")
+                out += [f"      still changes what was adopted: {c['op']} {c['key']}"
+                        + (f" [{', '.join(c['diff'])}]" if c["diff"] else "") for c in v["differs"]]
+                out += [f"      WOULD {c['op'].upper()} {c['key']} ({c['type']}): do not deploy this stack "
+                        f"until the state is fixed" for c in v.get("destroys") or []]
                 if v.get("error"):
                     out.append(f"      {v['error']}")
     for r in report["refused"]:
-        word = "refused" if report["apply"] else "an apply would refuse"
+        word = "refused" if report["apply"] or r["kind"] in ("error", "duplicate") else "an apply would refuse"
         out.append(f"{word}: {r['stack']}" + (f" {r['key']}" if r["key"] else "") + f": {r['why']}")
     if report["applied"]:
         out.append("adopted" if report["ok"] else "adopted, but not verified: fix the declaration (nothing was changed to fix it)")

@@ -127,7 +127,16 @@
               py.pytestCheckHook
               py.httpx
               pkgs.git
+              # tests/test_real_pulumi.py runs the real engine, offline (a file
+              # backend, the random and tls providers that ship beside it).
+              pkgs.pulumi-bin
             ];
+            # The guest list is checked against the pinned provider's name map
+            # (tests/test_guests.py), which is not under cli/.
+            preCheck = ''
+              export FLEETKIT_PROVIDER_NAMES=${./providers/pulumi/names}
+              export HOME=$TMPDIR
+            '';
             makeWrapperArgs = [
               "--suffix"
               "PATH"

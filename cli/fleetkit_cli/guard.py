@@ -8,22 +8,27 @@ would replace, delete or update a guest (a Proxmox container or VM) that the
 request did not name for that op, and any `up` of a program that carries an
 `import` option (issue #61: a leftover `import` on an adopted container made
 the next `up` destroy it, although it was protected).
+
+Three layers keep an `up` to what the guard read (infra.py runs them):
+  1. the refusals below, on the plan of the preview;
+  2. the engine itself, bound to that preview by an update plan
+     (`preview --save-plan`, `up --plan`): a program or a state that changed
+     in between is refused by Pulumi, step by step;
+  3. `protect` (below): in the program the runner runs, a copy, every guest
+     the request did not name for a replace or a delete is protected, so the
+     engine refuses to replace or delete it whatever the plan says.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 from pydantic import BaseModel, Field
 
-# The guests: what a replace or a delete destroys, and an in-place update
-# reboots. Tokens of the bridged bpg/proxmox provider at the pinned version
-# (providers/pulumi/names/bpg-proxmox-*.json).
-GUEST_TYPES = frozenset({
-    "proxmox:index/virtualEnvironmentContainer:VirtualEnvironmentContainer",
-    "proxmox:index/virtualEnvironmentVm:VirtualEnvironmentVm",
-})
+from .guests import GUEST_TYPES  # noqa: F401 - the guests (guests.py says how the list is kept complete)
 
 # Gated op family -> the request field (and CLI flag) that names a resource for it.
 FLAGS = {"replace": "allow_replace", "delete": "allow_delete", "update": "allow_update"}
@@ -41,11 +46,78 @@ SECRET_SIG = "4dabf18193072939515e22adb298388d"
 _RANK = ("replace", "delete", "import", "update", "create")
 
 
+# What the engine says when `protect` stops it (a preview fails with these too).
+PROTECT_RE = re.compile(r"cannot be deleted because it is protected|"
+                        r"unable to replace resource .* as it is currently marked for protection")
+# What it says when an `up` leaves its update plan.
+VIOLATION_RE = re.compile(r"violates plan|not allowed by the plan|is constrained to")
+# Un-attributed lines that only repeat that the run failed.
+_GENERIC_RE = re.compile(r"^(preview|update) failed$")
+
+
 class Allow(BaseModel):
-    """Resources (program keys, or URNs) a deploy may replace, delete or update."""
+    """Resources a deploy may replace, delete or update. A name is
+    `<stack>/<key>`, a URN, or a bare program key; a bare key that names a
+    resource in more than one stack of the request is refused (`ambiguous`)."""
     replace: list[str] = Field(default_factory=list)
     delete: list[str] = Field(default_factory=list)
     update: list[str] = Field(default_factory=list)
+
+
+def _split(name: str) -> tuple[Optional[str], str]:
+    """An allow name -> (stack or None, key or URN)."""
+    if name.startswith("urn:pulumi:") or "/" not in name:
+        return None, name
+    stack, _, key = name.partition("/")
+    return stack, key
+
+
+def scope(allow: Allow, stack: str) -> Allow:
+    """The names of `allow` that can mean a resource of `stack`, without the
+    stack prefix: `<stack>/<key>` for this stack, URNs, and bare keys."""
+    def mine(names: list[str]) -> list[str]:
+        return [key for st, key in map(_split, names) if st in (None, stack)]
+    return Allow(replace=mine(allow.replace), delete=mine(allow.delete), update=mine(allow.update))
+
+
+def ambiguous(allow: Allow, names: dict[str, set[str]]) -> list[str]:
+    """Why the names of a request cannot be used as they are: a bare key that
+    is a resource (in the program or in state) of more than one stack, or a
+    `<stack>/` that is not a stack of the request. `names`: stack -> keys."""
+    out = []
+    for fam in FLAGS:
+        for name in getattr(allow, fam):
+            st, key = _split(name)
+            if st is not None and st not in names:
+                out.append(f"{flag(fam)} {name}: no stack {st} in this request (stacks: {', '.join(sorted(names))})")
+            elif st is None and not key.startswith("urn:pulumi:"):
+                hits = sorted(n for n, keys in names.items() if key in keys)
+                if len(hits) > 1:
+                    out.append(f"{flag(fam)} {key} is ambiguous: {key} is a resource of {', '.join(hits)}; "
+                               f"name it with its stack: " + " or ".join(f"{flag(fam)} {n}/{key}" for n in hits))
+    return out
+
+
+def protect(stack: str, program: dict[str, Any], allow: Allow) -> tuple[dict[str, Any], list[str]]:
+    """-> (a copy of the program in which every guest that `allow` does not
+    name for a replace or a delete has options.protect = true, the keys it was
+    set on). The engine then refuses to replace or delete those itself. Never
+    written to the estate's files; a protect the estate set is never removed."""
+    out = json.loads(json.dumps(program))
+    named = {*allow.replace, *allow.delete}
+    added = []
+    for key, r in (out.get("resources") or {}).items():
+        if (r or {}).get("type") not in GUEST_TYPES or key in named or urn_of(stack, out, key) in named:
+            continue
+        opts = r.setdefault("options", {})
+        if opts.get("protect") is not True:
+            opts["protect"] = True
+            added.append(key)
+    return out, added
+
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 class GuardError(Exception):
@@ -194,34 +266,89 @@ class Plan:
         """The program's key; for a resource the program no longer has, its name in state."""
         return self.by_urn.get(urn) or urn.rsplit("::", 1)[-1]
 
-    def step(self, m: Any) -> dict[str, Any]:
-        """Record one step (the metadata of a pre, outputs or failed event)."""
+    def step(self, m: Any, phase: str = "pre") -> dict[str, Any]:
+        """Record one step: the metadata of a pre, outputs (`done`) or `failed` event."""
         r = self._r.setdefault(m.urn, {"key": self.key(m.urn), "urn": m.urn, "type": m.type, "steps": [],
-                                       "diff": [], "replaceReasons": [], "live": None, "declared": None})
+                                       "done": [], "failed": [], "diff": [], "kinds": {}, "replaceReasons": [],
+                                       "live": None, "liveOutputs": None, "declared": None,
+                                       "declaredOutputs": None})
         op = str(getattr(m.op, "value", m.op))
         if op not in r["steps"]:
             r["steps"].append(op)
+        if phase in ("done", "failed") and op not in r[phase]:
+            r[phase].append(op)
         detailed = m.detailed_diff or {}
         for p in [*detailed, *([] if detailed else (m.diffs or []))]:
             if p not in r["diff"]:
                 r["diff"].append(p)
         for p, d in detailed.items():
             kind = d.get("diffKind", "") if isinstance(d, dict) else str(getattr(d.diff_kind, "value", d.diff_kind))
+            r["kinds"][p] = kind
             if kind.endswith("-replace") and p not in r["replaceReasons"]:
                 r["replaceReasons"].append(p)
         for p in m.keys or []:
             if p not in r["replaceReasons"]:
                 r["replaceReasons"].append(p)
-        # For an import the engine reports the live resource as `old` and the
-        # declaration as `new`; the outputs event (after the read) is the full one.
-        if m.old is not None and m.old.inputs is not None:
-            r["live"] = m.old.inputs
-        if m.new is not None and m.new.inputs is not None:
-            r["declared"] = m.new.inputs
+        # What Pulumi 3.247 sends for an adoption (seen with a real engine): an
+        # `import` step whose outputs event has the live resource as `old` AND
+        # as `new`, then, when the declaration differs, an `update` (or the
+        # steps of a replacement) with the live resource as `old`, the
+        # declaration as `new` and the differing keys in `diffs`. So the
+        # declaration is only taken from a step that is not the import.
+        # `inputs` of an imported resource leave out what equals the provider's
+        # zero value (a false, a 0): `outputs` has those, so both are kept.
+        if m.old is not None:
+            if m.old.inputs is not None:
+                r["live"] = m.old.inputs
+            if getattr(m.old, "outputs", None):
+                r["liveOutputs"] = m.old.outputs
+        if m.new is not None and (op != "import" or m.diffs or detailed):
+            if m.new.inputs is not None:
+                r["declared"] = m.new.inputs
+            if getattr(m.new, "outputs", None):
+                r["declaredOutputs"] = m.new.outputs
         return r
 
     def error(self, urn: str, message: str) -> None:
-        self.errors.setdefault(urn or "", []).append(message)
+        self.errors.setdefault(urn or "", []).append(" ".join(message.split()))
+
+    def protected(self) -> set[str]:
+        """URNs the engine refused to replace or delete because of `protect`."""
+        return {u for u, msgs in self.errors.items() if u and any(PROTECT_RE.search(m) for m in msgs)}
+
+    def only_protect_errors(self) -> bool:
+        """Whether every error of the run is `protect` stopping the engine (the
+        steps of such a run are still all there: seen with a real engine)."""
+        real = [m for u, msgs in self.errors.items() for m in msgs
+                if not PROTECT_RE.search(m) and not (not u and _GENERIC_RE.match(m))]
+        return bool(self.protected()) and not real
+
+    def violations(self) -> list[str]:
+        """What the engine refused because it left the update plan."""
+        return [m for msgs in self.errors.values() for m in msgs if VIOLATION_RE.search(m)]
+
+    def counts(self) -> dict[str, int]:
+        """Steps by op, `same` included: what the engine's summary would say
+        (used when a preview failed and gave none)."""
+        out: dict[str, int] = {}
+        for r in self._r.values():
+            for op in r["steps"]:
+                out[op] = out.get(op, 0) + 1
+        return out
+
+    def progress(self) -> dict[str, list[dict[str, str]]]:
+        """What is known of a run that stopped: the steps that finished, and
+        those that had started and had not (they may or may not have happened)."""
+        done, flying = [], []
+        for r in self._r.values():
+            for op in r["steps"]:
+                if op in ("same", "refresh", "read"):
+                    continue
+                if op in r["done"]:
+                    done.append({"op": op, "key": r["key"]})
+                elif op not in r["failed"]:
+                    flying.append({"op": op, "key": r["key"]})
+        return {"completed": done, "in_flight": flying}
 
     def entry(self, urn: str) -> Optional[dict[str, Any]]:
         return self._r.get(urn)
@@ -237,14 +364,21 @@ class Plan:
                 continue
             fams = [family(s) or s for s in steps]
             op = next((o for o in _RANK if o in fams), fams[0])
-            out.append({"key": r["key"], "urn": r["urn"], "type": r["type"], "op": op, "steps": steps,
-                        "diff": list(r["diff"]), "replaceReasons": list(r["replaceReasons"])})
+            c = {"key": r["key"], "urn": r["urn"], "type": r["type"], "op": op, "steps": steps,
+                 "diff": list(r["diff"]), "replaceReasons": list(r["replaceReasons"])}
+            if r["urn"] in self.protected():
+                c["protected"] = True  # the engine refuses it: protect is set
+            out.append(c)
         return out
 
 
-def refusals(changes: list[dict[str, Any]], allow: Allow) -> list[dict[str, Any]]:
+def refusals(changes: list[dict[str, Any]], allow: Allow,
+             label: Optional[Callable[[str], str]] = None) -> list[dict[str, Any]]:
     """What a deploy refuses of a plan: [{key, urn, type, op, flag}], one per
-    guest and gated op that the request did not name."""
+    guest and gated op that the request did not name. `allow` is already
+    scoped to the stack (`scope`); `label` writes the key in the flag (the
+    pipeline adds the stack when the key exists in another stack too)."""
+    label = label or (lambda key: key)
     out = []
     for c in changes:
         if c["type"] not in GUEST_TYPES:
@@ -253,7 +387,8 @@ def refusals(changes: list[dict[str, Any]], allow: Allow) -> list[dict[str, Any]
             named = getattr(allow, fam)
             if c["key"] not in named and c["urn"] not in named:
                 out.append({"key": c["key"], "urn": c["urn"], "type": c["type"], "op": fam,
-                            "steps": [s for s in c["steps"] if family(s) == fam], "flag": f"{flag(fam)} {c['key']}"})
+                            "steps": [s for s in c["steps"] if family(s) == fam],
+                            "flag": f"{flag(fam)} {label(c['key'])}"})
     return out
 
 

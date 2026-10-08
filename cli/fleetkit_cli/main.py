@@ -13,8 +13,10 @@ encrypts its secrets; SOPS_AGE_KEY_FILE decrypts the model's.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -31,6 +33,36 @@ def _settings(ctx: click.Context) -> Settings:
         return Settings.from_env(ctx.obj["flake"], ctx.obj["state_dir"])
     except SettingsError as e:
         raise click.ClickException(str(e))
+
+
+@contextlib.contextmanager
+def _signals(ev: Emitter):
+    """SIGINT, SIGTERM and SIGHUP become a cancel of the run instead of
+    killing the process where it stands: the engine (started in its own
+    session, infra.OwnedPulumi) is told to stop after the step in flight, the
+    run ends through its `finally` blocks (the temporary program of an
+    adoption is removed, the run's directory too), and what was done is
+    reported. A second signal makes the engine terminate at once."""
+    def handler(signum, frame):  # noqa: ARG001
+        click.secho(f"{signal.Signals(signum).name}: stopping (again: at once)", fg="red", err=True)
+        ev.cancel()
+
+    old = {}
+    try:
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            old[sig] = signal.signal(sig, handler)
+    except ValueError:  # not the main thread: the caller owns the signals
+        pass
+    try:
+        yield
+    finally:
+        for sig, h in old.items():
+            signal.signal(sig, h)
+
+
+def _cancelled(e: Exception) -> click.ClickException:
+    text = str(e)
+    return click.ClickException("cancelled" if text in ("", "cancelled") else f"cancelled: {text}")
 
 
 def _printer(as_json: bool):
@@ -74,12 +106,17 @@ def estates(ctx: click.Context) -> None:
 @click.argument("stack", required=False)
 @click.pass_context
 def render_cmd(ctx: click.Context, estate: str, stack: str | None) -> None:
-    """Write the Pulumi project of each stack and print its directory."""
+    """Write the Pulumi project of each stack and print its directory.
+
+    The directory is this command's own (<state>/runs/...): no deploy reads
+    it. It is the program a deploy would run, every guest protected, and is
+    removed by a later run once it is a day old."""
     s = _settings(ctx)
     ev = Emitter(lambda e: None)
+    run = render.Run(s, "render", keep=True)
     for name, st in render.stacks_of(s, estate, [stack] if stack else None).items():
-        wd = render.render(s, name, st, ev)
-        click.echo(f"{wd}  (program {st['file']})")
+        project = render.render(s, name, st, ev, run)
+        click.echo(f"{project.wd}  (program {st['file']} sha256 {project.sha256})")
 
 
 def _deploy_options(f):
@@ -91,12 +128,15 @@ def _deploy_options(f):
         click.option("--on", multiple=True, help="Colmena --on (node or @tag; repeat)."),
         click.option("--refresh", is_flag=True, help="Refresh Pulumi state first."),
         click.option("--target", "targets", multiple=True, help="Pulumi --target URN (repeat)."),
-        click.option("--allow-replace", multiple=True, metavar="KEY",
-                     help="A guest (resource key) this deploy may replace: destroy and recreate (repeat)."),
-        click.option("--allow-delete", multiple=True, metavar="KEY",
-                     help="A guest (resource key) this deploy may delete (repeat)."),
-        click.option("--allow-update", multiple=True, metavar="KEY",
-                     help="A guest (resource key) this deploy may update in place: a reboot (repeat)."),
+        click.option("--allow-replace", multiple=True, metavar="[STACK/]KEY",
+                     help="A guest this deploy may replace: destroy and recreate (repeat). STACK/KEY, a URN, or a KEY "
+                          "that only one stack of the run has."),
+        click.option("--allow-delete", multiple=True, metavar="[STACK/]KEY",
+                     help="A guest this deploy may delete (repeat). STACK/KEY, a URN, or a KEY "
+                          "that only one stack of the run has."),
+        click.option("--allow-update", multiple=True, metavar="[STACK/]KEY",
+                     help="A guest this deploy may update in place: a reboot (repeat). STACK/KEY, a URN, or a KEY "
+                          "that only one stack of the run has."),
         click.option("--json", "as_json", is_flag=True, help="Events as JSON lines on stdout."),
     ]):
         f = opt(f)
@@ -113,18 +153,24 @@ def _run(ctx: click.Context, estate: str, preview: bool, goal: str, kw: dict) ->
         allow_update=list(kw["allow_update"]))
     ev = Emitter(_printer(kw["as_json"]))
     try:
-        result = pipeline.run(s, req, ev)
-    except Cancelled:
-        raise click.ClickException("cancelled")
+        with _signals(ev):
+            result = pipeline.run(s, req, ev)
+    except Cancelled as e:
+        if kw["as_json"] and e.result is not None:
+            click.echo(json.dumps({"cancelled": True, **ev.redact(e.result)}))
+        raise _cancelled(e)
     except KeyboardInterrupt:
         ev.cancel()
         raise click.ClickException("interrupted")
     except guard.GuardError as e:
         if kw["as_json"] and e.result is not None:
-            click.echo(json.dumps({"refused": True, **e.result}))
-        raise click.ClickException(str(e))
+            click.echo(json.dumps({"refused": True, **ev.redact(e.result)}))
+        raise click.ClickException(ev.redact(str(e)))
     except Exception as e:  # noqa: BLE001 - shown as the command's error
-        raise click.ClickException(f"{type(e).__name__}: {e}")
+        if ev.cancelled:
+            raise click.ClickException(ev.redact(f"cancelled ({type(e).__name__}: {e})"))
+        text = str(e) if type(e).__name__ == "EngineError" else f"{type(e).__name__}: {e}"
+        raise click.ClickException(ev.redact(text))
     click.secho(json.dumps(result), fg="green", err=not kw["as_json"])
 
 
@@ -151,7 +197,11 @@ def deploy(ctx: click.Context, estate: str, goal: str, **kw) -> None:
     Every stack is previewed first. A plan that replaces, deletes or updates a
     guest (a Proxmox container or VM) is refused, with nothing applied, unless
     the guest is named: --allow-replace KEY, --allow-delete KEY,
-    --allow-update KEY (an in-place update reboots a container)."""
+    --allow-update KEY (an in-place update reboots a container). KEY is
+    STACK/KEY, a URN, or a key only one stack of the run has. Each up is bound
+    to the plan of its preview (the engine refuses anything else), and every
+    guest that is not named is protected for the run. Ctrl-C stops the engine
+    after the step in flight; again, at once."""
     _run(ctx, estate, False, goal, kw)
 
 
@@ -159,11 +209,13 @@ def deploy(ctx: click.Context, estate: str, goal: str, **kw) -> None:
 @click.argument("estate")
 @click.option("--stack", "stacks", multiple=True, help="Pulumi stack (repeat; default all).")
 @click.option("--resource", "resources", multiple=True, metavar="KEY",
-              help="Only these resources (repeat; default every resource with an adoption id).")
+              help="Only these resources (repeat; default every resource with an adoption id but secrets, "
+                   "which are adopted only when named here).")
 @click.option("--id", "ids", multiple=True, metavar="KEY=ID",
               help="The provider's import id of a resource (repeat); overrides the stack's adoptIds.")
 @click.option("--accept-update", multiple=True, metavar="KEY",
-              help="Adopt KEY although its declaration differs: it is updated in place (a guest reboots).")
+              help="Adopt KEY although its declaration differs, or the import does not record some of its "
+                   "properties: it is updated in place (a guest REBOOTS).")
 @click.option("--apply", "apply_", is_flag=True, help="Adopt. Without it: the report only, nothing changes.")
 @click.option("--json", "as_json", is_flag=True, help="The report as one JSON document on stdout.")
 @click.pass_context
@@ -172,8 +224,12 @@ def adopt_cmd(ctx: click.Context, estate: str, stacks: tuple[str, ...], resource
     """Import resources that already exist into a stack's state.
 
     For each resource with an adoption id that is not in state yet: `import`
-    (the declaration equals the live resource) or `import + update` with what
-    differs. --apply refuses an update that is not accepted with
+    (the declaration equals the live resource), `import+update` with what
+    differs (live and declared), `import+unrecorded` (the import does not
+    record some properties: still an update, a reboot of a guest), `absent`
+    (it does not exist: a deploy will create it), `secret` (not adopted unless
+    named with --resource), `duplicate` (its id is in state under another
+    name: refused). --apply refuses an update that is not accepted with
     --accept-update KEY, and any plan that creates, replaces or deletes. The
     import id is only ever in a temporary program, never in the real one."""
     s = _settings(ctx)
@@ -193,14 +249,17 @@ def adopt_cmd(ctx: click.Context, estate: str, stacks: tuple[str, ...], resource
 
     ev = Emitter(sink)
     try:
-        report = adoption.run(s, estate, ev, list(stacks) or None, list(resources), pairs,
-                              list(accept_update), apply_)
-    except Cancelled:
-        raise click.ClickException("cancelled")
+        with _signals(ev):
+            report = adoption.run(s, estate, ev, list(stacks) or None, list(resources), pairs,
+                                  list(accept_update), apply_)
+    except Cancelled as e:
+        raise _cancelled(e)
     except KeyboardInterrupt:
         ev.cancel()
         raise click.ClickException("interrupted")
     except Exception as e:  # noqa: BLE001 - shown as the command's error
+        if ev.cancelled:
+            raise click.ClickException(ev.redact(f"cancelled ({type(e).__name__}: {e})"))
         raise click.ClickException(ev.redact(f"{type(e).__name__}: {e}"))
     if as_json:
         click.echo(json.dumps(report, indent=1))

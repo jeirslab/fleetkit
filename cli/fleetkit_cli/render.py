@@ -4,20 +4,51 @@ as a Pulumi project directory. The repo exposes them as `pulumi.<stack>`
 `file`, the checked program already written to the store by Nix. This is the
 only place the model is read, and it is read as evaluated output.
 
-  <state>/work/<stack>/
-    Pulumi.yaml  ->  /nix/store/<hash>-Pulumi.yaml   (a GC root; the program, JSON)
+Every run (a deploy, a preview, an adoption, `fleetkit render`) renders into a
+directory of its own, which no other run writes:
+
+  <state>/runs/<time>-<pid>-<random>/<stack>/
+    program      ->  /nix/store/<hash>-Pulumi.yaml   (a GC root; what the estate declares)
+    Pulumi.yaml       the program the engine runs: a copy of it in which the
+                      guests the request did not name are protected (guard.protect)
     secrets/...  ->  the sops files its invokes read (relative to here)
-    Pulumi.<stack>.yaml                               (Pulumi's own, on stack init)
+    Pulumi.<stack>.yaml   Pulumi's settings of the stack, copied in from
+                          <state>/stacks/<stack>/ (below)
+    update-plan.json      the plan the `up` is bound to (infra.py)
+
+It used to be <state>/work/<stack>/, one directory per stack whose Pulumi.yaml
+link every render repointed: a deploy then applied whatever the last render
+(another job, a preview, an adoption) had left there, not what it previewed.
+The run records the sha256 of both files when it renders, and the `up` is
+refused if either differs by then (`Project.verify`).
+
+Pulumi's settings file of a stack (`Pulumi.<stack>.yaml`, the passphrase
+salt) is the one thing that outlives a run: it is kept in
+<state>/stacks/<stack>/ and copied into each run's directory. (Checked with
+Pulumi 3.247 and a file backend: without it a new salt is made, the state's
+secrets still decrypt, since the state carries its own salt, and the next `up`
+re-encrypts the state with the new one. Keeping the file keeps one salt.)
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import shutil
 import subprocess
+import time
+import uuid
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
+from . import guard
 from .events import Emitter
 from .settings import Settings
+
+# A run directory nobody removed (a kill) is swept once its process is gone
+# and it is this old. `fleetkit render` keeps its directory for that long.
+STALE = 24 * 3600
 
 
 class RenderError(Exception):
@@ -92,16 +123,136 @@ def _root(s: Settings, link: Path, target: str) -> None:
         raise RenderError(f"cannot root {target}: {p.stderr.strip()[-2000:]}")
 
 
-def render(s: Settings, name: str, st: dict[str, Any], ev: Emitter) -> Path:
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+class Run:
+    """The directory of one run. `close()` removes it."""
+
+    def __init__(self, s: Settings, kind: str, keep: bool = False):
+        self.kind, self.keep = kind, keep
+        root = s.state_dir / "runs"
+        root.mkdir(parents=True, exist_ok=True)
+        sweep(root)
+        self.id = f"{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+        self.dir = root / self.id
+        self.dir.mkdir(mode=0o700)
+
+    def close(self) -> None:
+        if not self.keep:
+            shutil.rmtree(self.dir, ignore_errors=True)
+
+    def __enter__(self) -> "Run":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self.close()
+
+
+def sweep(root: Path) -> list[str]:
+    """Remove run directories whose process is gone and that are STALE old."""
+    gone = []
+    for d in root.iterdir() if root.is_dir() else []:
+        parts = d.name.split("-")
+        try:
+            pid, age = int(parts[1]), time.time() - d.stat().st_mtime
+        except (IndexError, ValueError, OSError):
+            continue
+        if age > STALE and (pid == os.getpid() or not _alive(pid)):
+            shutil.rmtree(d, ignore_errors=True)
+            gone.append(d.name)
+    return gone
+
+
+@dataclass
+class Project:
+    """A stack rendered for one run: where, and what exactly."""
+    stack: str
+    wd: Path
+    file: str        # the store path of the estate's program
+    sha256: str      # of that file
+    run_sha256: str  # of wd/Pulumi.yaml, the program the engine runs
+    protected: list[str] = field(default_factory=list)  # guests the run protected
+
+    def verify(self) -> None:
+        """Refuse (GuardError) unless the directory still holds what was
+        rendered: called before every `up`."""
+        why = []
+        try:
+            if guard.sha256(self.wd / "Pulumi.yaml") != self.run_sha256:
+                why.append(f"{self.wd / 'Pulumi.yaml'} is not the program that was planned")
+            if guard.sha256(self.wd / "program") != self.sha256:
+                why.append(f"{self.wd / 'program'} no longer is {self.file} as planned")
+        except OSError as e:
+            why.append(f"the rendered program cannot be read: {e}")
+        if why:
+            raise guard.GuardError(
+                f"refused, nothing was applied: {self.stack}: the program changed between the plan and the "
+                f"up ({'; '.join(why)}; planned: {self.file} sha256 {self.sha256})")
+
+
+def settings_file(s: Settings, name: str) -> Path:
+    """Where Pulumi's settings of a stack are kept between runs."""
+    return s.state_dir / "stacks" / name / f"Pulumi.{s.stack}.yaml"
+
+
+def settings_in(s: Settings, name: str, wd: Path) -> None:
+    """Copy the kept settings file into a run's project dir."""
+    kept = settings_file(s, name)
+    if not kept.is_file():
+        legacy = s.state_dir / "work" / name / kept.name  # where it lived before per-run dirs
+        if not legacy.is_file():
+            return
+        _keep(legacy, kept)
+    shutil.copyfile(kept, wd / kept.name)
+
+
+def settings_out(s: Settings, name: str, wd: Path) -> None:
+    """Keep the settings file Pulumi made on the stack's first run. The first
+    one stays: a later run never overwrites it."""
+    made, kept = wd / f"Pulumi.{s.stack}.yaml", settings_file(s, name)
+    if made.is_file() and not kept.is_file():
+        _keep(made, kept)
+
+
+def _keep(src: Path, kept: Path) -> None:
+    kept.parent.mkdir(parents=True, exist_ok=True)
+    tmp = kept.with_name(f".{kept.name}.{os.getpid()}.{uuid.uuid4().hex[:6]}")
+    shutil.copyfile(src, tmp)
+    try:
+        os.link(tmp, kept)  # atomic, and fails if another run kept one first
+    except FileExistsError:
+        pass
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def render(s: Settings, name: str, st: dict[str, Any], ev: Emitter, run: Run,
+           allow: Optional[guard.Allow] = None) -> Project:
+    """Lay the stack out in the run's directory. `allow` (scoped to the stack)
+    names the guests that are NOT protected in the program the engine runs."""
+    ev.check()
     ev.emit("render", "start", stack=name)
-    wd = s.state_dir / "work" / name
-    wd.mkdir(parents=True, exist_ok=True)
-    for stale in ("Pulumi.json", "Main.json", "Main.yaml"):
-        (wd / stale).unlink(missing_ok=True)
-    _root(s, wd / "Pulumi.yaml", st["file"])
+    wd = run.dir / name
+    wd.mkdir(mode=0o700)
+    _root(s, wd / "program", st["file"])
+    raw = (wd / "program").read_bytes()
+    program, protected = guard.protect(s.stack, json.loads(raw), allow or guard.Allow())
+    text = json.dumps(program)
+    (wd / "Pulumi.yaml").write_text(text)
     link_secrets(s, wd, st)
-    ev.emit("render", "done", stack=name, project=st["project"], program=st["file"], workdir=str(wd))
-    return wd
+    settings_in(s, name, wd)
+    ev.emit("render", "done", stack=name, project=st["project"], program=st["file"], workdir=str(wd),
+            protected=protected)
+    return Project(stack=name, wd=wd, file=st["file"], sha256=hashlib.sha256(raw).hexdigest(),
+                   run_sha256=hashlib.sha256(text.encode()).hexdigest(), protected=protected)
 
 
 def link_secrets(s: Settings, wd: Path, st: dict[str, Any]) -> None:

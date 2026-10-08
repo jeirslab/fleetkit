@@ -123,11 +123,15 @@ if FLEETKIT_FLAKE="$E" "$FK" preview mini --hive example --json >"$TMP/preview.j
   sum() { tools jq -s --arg s "$1" 'map(select(.kind=="summary" and .stack==$s))[0].changes.create' "$TMP/preview.jsonl"; }
   [[ $(sum mini-guests) == 6 ]] || fail "mini-guests: $(sum mini-guests) creates, not 6"
   [[ $(sum mini-extra) == 3 ]] || fail "mini-extra: $(sum mini-extra) creates, not 3 (stack, provider, pool)"
-  wd="$TMP/state/work/mini-guests"
-  [[ $(readlink "$wd/Pulumi.yaml") == /nix/store/*-Pulumi.yaml ]] || fail "Pulumi.yaml is not the program in the store"
+  # Every run has a directory of its own, removed at its end; `render` keeps its.
+  [[ -z $(ls -A "$TMP/state/runs" 2>/dev/null) ]] || fail "the preview left its run directory"
+  wd="$(FLEETKIT_FLAKE="$E" "$FK" render mini mini-guests | cut -d' ' -f1)"
+  [[ $wd == "$TMP"/state/runs/*/mini-guests ]] || fail "render did not write to a run directory: $wd"
+  [[ $(readlink "$wd/program") == /nix/store/*-Pulumi.yaml ]] || fail "program is not the program in the store"
+  [[ -f $wd/Pulumi.yaml && ! -L $wd/Pulumi.yaml ]] || fail "Pulumi.yaml is not the run's own copy"
   [[ $(readlink "$wd/secrets/tf.json") == "$E/secrets/tf.json" ]] || fail "the secrets file is not linked"
   grep -q '00000000-0000-0000-0000-000000000000' "$TMP/preview.jsonl" && fail "token in the events"
-  grep -q "^build -f $TMP/state/work/_hives/example.nix --impure$" "$TMP/colmena.calls" || fail "colmena build call"
+  grep -Eq "^build -f $TMP/state/runs/[^/ ]+/_hives/example.nix --impure$" "$TMP/colmena.calls" || fail "colmena build call"
 else
   tail -n 40 "$TMP/preview.err" "$TMP/preview.jsonl" >&2
   fail "fleetkit preview"
@@ -258,7 +262,7 @@ fi
 grep -q 'is not on main' "$TMP/b.summary" || { cat "$TMP/b.log" >&2; fail "action: refusal not reported"; }
 # A commit on main deploys (the Colmena stage only here, with the stand-in).
 if act c push '{}' FLEETKIT_INFRA=false GITHUB_SHA="$two"; then
-  grep -q "^apply switch -f $TMP/gstate/work/_hives/example.nix --impure$" "$TMP/colmena.calls" \
+  grep -Eq "^apply switch -f $TMP/gstate/runs/[^/ ]+/_hives/example.nix --impure$" "$TMP/colmena.calls" \
     || fail "action: colmena apply not run"
 else
   cat "$TMP/c.log" >&2; fail "action: deploy of a commit on main"
@@ -269,7 +273,9 @@ act d pull_request "$fork" FLEETKIT_API_TOKEN= || fail "action: fork PR failed i
 grep -q '^skipped$' "$TMP/d.output" || fail "action: fork PR not reported skipped"
 
 # 4.
-if nix shell nixpkgs#colmena --command colmena eval -f "$TMP/state/work/_hives/example.nix" --impure \
+# The hive file the runner writes (into its run directory, gone by now).
+echo "(builtins.getFlake (toString $E)).hives.example" >"$TMP/hive-example.nix"
+if nix shell nixpkgs#colmena --command colmena eval -f "$TMP/hive-example.nix" --impure \
   -E '{ nodes, ... }: builtins.attrNames nodes' >"$TMP/colmena-eval.out" 2>"$TMP/colmena-eval.err"; then
   echo "colmena nodes: $(cat "$TMP/colmena-eval.out")" >&2
 else

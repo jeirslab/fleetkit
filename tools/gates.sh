@@ -81,6 +81,9 @@ python3 tests/github_app_bootstrap.py >&2 || fidelity=fail
 # networked end-to-end check and is not a gate.
 bash tests/pulumi.sh >&2 || fidelity=fail
 bash tests/pulumi_nix.sh >&2 || fidelity=fail
+# The runner's guest list (what its guard gates) covers every VM and container
+# type of the pinned provider: a provider bump cannot fail open.
+python3 tests/guest_types.py >&2 || fidelity=fail
 log "fidelity: $fidelity"
 
 ok=false

@@ -11,7 +11,12 @@ Sink = Callable[[dict[str, Any]], None]
 
 
 class Cancelled(Exception):
-    pass
+    """The run was asked to stop. `result` is what is known of it by then (the
+    plan, and `stopped`: which steps finished and which were in flight)."""
+
+    def __init__(self, message: str = "cancelled", result: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.result = result
 
 
 def _redact(v: Any, secrets: list[str]) -> Any:
@@ -59,6 +64,9 @@ class Emitter:
         return value
 
     def cancel(self) -> None:
+        """Ask the run to stop. The hooks are called on every call: a second
+        cancel is how a caller insists (infra.py then stops the engine at
+        once instead of letting the step in flight finish)."""
         self._cancel.set()
         with self._lock:
             hooks = list(self._on_cancel)
