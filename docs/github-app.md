@@ -32,6 +32,32 @@ permission list, pinned in `github/permission-names.txt` (`actions`, `administra
 `members`, `metadata`, `organization_administration`, `pull_requests`,
 `secrets`, `statuses`, `actions_variables`, `workflows`).
 
+### Rendering the manifest in Actions
+
+`.github/workflows/github-app-manifest.yml` is a reusable workflow that renders
+the manifest for one organisation from a pinned commit of the kit and
+publishes it as the artifact `github-app-manifest`, with the permissions in
+the job summary. It takes no secret: the manifest is a name, a URL and the
+permissions asked for. A caller:
+
+```yaml
+name: github-app-manifest
+on: workflow_dispatch
+permissions: {}
+jobs:
+  manifest:
+    uses: jeirslab/fleetkit/.github/workflows/github-app-manifest.yml@<40-hex commit>
+    with:
+      org: acme
+      kit_ref: <the same 40-hex commit>
+      runs_on: '["ubuntu-latest"]'
+```
+
+Registering the App stays a step a person runs
+(`docs/github-app-bootstrap.md`): an organisation owner confirms it in a
+browser and the answer is the App's private key, which must not pass through
+a workflow log or an artifact.
+
 ## An App is per org
 
 The App is private, owned by the org that registered it, and installed by an
