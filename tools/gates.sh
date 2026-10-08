@@ -76,6 +76,7 @@ bash tests/github.sh >&2 || fidelity=fail
 bash tests/github_app.sh >&2 || fidelity=fail
 bash tests/workflow_caller.sh >&2 || fidelity=fail
 python3 tests/github_app_bootstrap.py >&2 || fidelity=fail
+python3 tests/deploy_key.py >&2 || fidelity=fail
 # Experimental: the same renders as Pulumi programs, against the pinned
 # Pulumi schemas (tests/pulumi.sh; offline). tests/pulumi_preview.sh is the
 # networked end-to-end check and is not a gate.
