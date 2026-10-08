@@ -162,6 +162,10 @@ let
       program = {
         name = config.project;
         runtime = "yaml";
+        # No invented names: Pulumi otherwise fills an unset `name` input with
+        # "<key>-<random>", which for a resource that describes something that
+        # exists (the organisation's settings) would rename it.
+        config."pulumi:autonaming".value.mode = "disabled";
         inherit (config) packages variables outputs;
         resources = lib.mapAttrs (
           key: r:
