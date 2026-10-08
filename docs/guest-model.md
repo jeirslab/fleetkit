@@ -48,8 +48,8 @@ Read-only, derived fleet-wide:
   blocks are dropped; lxc `mount_point` is always present (the baselines
   render `[]`). `lifecycle` holds the Terraform meta-arguments
   (`prevent_destroy`, `ignore_changes`; the latter also holds what the kit
-  ignores by itself, `clone` and `description`, see "Adopting existing
-  guests"), `companions.lxc_extra_conf` the raw lxc.conf lines. This is what the parity test compares with the legacy
+  ignores by itself, `clone`, `description` and what an import does not
+  record, see "Adopting existing guests"), `companions.lxc_extra_conf` the raw lxc.conf lines. This is what the parity test compares with the legacy
   terraform baselines and what the slice-3 renderer will emit.
 - `fleet.report.guestOptionPaths`: every guest option path (`*` = list
   element); the fidelity test requires a map line for each.
@@ -57,6 +57,9 @@ Read-only, derived fleet-wide:
   fed by the derived `ipv4`.
 - `fleet.report.lxcExtraConfIdmap`: per guest id, the `lxc.idmap` lines its
   `lxcExtraConf` carries (declare them as `idmap` instead).
+- `fleet.report.unrecordedIgnored`: per guest id with `adoption.unrecorded =
+  "ignore"`, the provider arguments that puts under `ignore_changes`: what
+  the engine does not apply to that guest ("Adoption without a reboot").
 
 `providerView` uses a recursive JSON value type. It is read-only and never
 set by config, so it is not a loose block (nothing a user writes is
@@ -97,7 +100,7 @@ not extend them).
    `nic.name` / `nic.bridge` for interface 0 / every interface's bridge.
 3. Estate defaults, `fleet.estates.<estate>.guestDefaults`: the same knob
    set as a guest (`description tags pool protect protection ignoreChanges
-   startOnBoot started startup cpu memory features unprivileged console
+   adoption startOnBoot started startup cpu memory features unprivileged console
    environment defaultDatastore initialization source vm`).
 4. The guest.
 
@@ -182,7 +185,8 @@ with one exception (the description of a container with `lxcExtraConf`,
 below). What the provider does is from its source at tag v0.115.0
 (`proxmoxtf/resource/container/container.go`, `proxmoxtf/resource/vm/vm.go`,
 `proxmoxtf/resource/pool/pool.go`, `proxmox/nodes/containers/containers_types.go`);
-none of it was run against a cluster here.
+none of it was run against a cluster here, except where "Adoption without a
+reboot" says what was seen.
 
 ```nix
 fleet.estates.<estate>.pools.proxmox.<pool>.comment = "guests of the lab";
@@ -205,7 +209,102 @@ fleet.guests.<estate>.<vm>.vm = {
   efiDisk = { datastore = "<site>/<storage>"; fileFormat = "raw"; type = "4m"; preEnrolledKeys = true; };
   cloudInit = { interface = "ide2"; upgrade = true; };
 };
+
+# what an import does not record: ignored, for every guest of the estate ...
+fleet.estates.<estate>.guestDefaults.adoption.unrecorded = "ignore";
+# ... and applied again for one guest (a reboot, once)
+fleet.guests.<estate>.<guest>.adoption.unrecorded = "apply";
 ```
+
+### Adoption without a reboot (`adoption.unrecorded`)
+
+The options above make a declaration equal to the live guest. Some arguments
+cannot be made equal: the provider's import does not record them, so state
+has nothing where the declaration has a value, and the adoption carries an
+update in place for them **even when the live values already match**. The
+provider reboots a container to apply it, and stops and starts a running VM.
+
+`adoption.unrecorded` is a guest knob, layered like the others (a guest's own
+value over `guestDefaults`; `null` is silent):
+
+| value | |
+|---|---|
+| `"apply"` | the effective default, and what an estate that sets nothing gets: nothing is rendered for it. The adoption carries the update and the reboot (`fleetkit adopt`: `import+unrecorded`, `--accept-update`) |
+| `"ignore"` | the arguments below are added to the guest's `lifecycle.ignore_changes` (Pulumi: `options.ignoreChanges`), after whatever `ignoreChanges` and the kit already put there, none twice. They are still rendered, and still used when the guest is created from scratch |
+
+| kind | ignored | from |
+|---|---|---|
+| container | `cpu`, `memory`, `vm_id`, `console` | seen on a real container (2026-10-08, [issue 61]) |
+| vm | `cpu`, `memory`, `scsi_hardware`, `agent`, `operating_system`, `efi_disk` | the provider source, **not observed** |
+
+**The cost.** While a guest is under `"ignore"`, the engine does not apply a
+change to those arguments on it: more cores or memory, another console, a
+VM's controller, agent, OS type or EFI disk in the model change nothing on the
+guest, and its preview says `same`. To apply one, set `adoption.unrecorded =
+"apply"` on that guest and deploy: the engine then sees every one of those
+arguments as new (state never had them) and the provider **reboots the guest
+once** (a container; a running VM is stopped and started), whatever changed.
+That is a deliberate step, named in the model. State has them from then on,
+so leave that guest on `"apply"`: back on `"ignore"` it would only stop being
+managed again. `fleet.report.unrecordedIgnored` lists, per guest id, the
+arguments ignored this way: what the engine is not managing.
+
+**Container: what was seen.** A container was imported with the bridged
+provider; the import had no `cpu`, `memory` or `vmId`, and a `console` only
+when it is not the provider's default, so the adoption planned an update for
+them with every value matching, and the provider rebooted the container. With
+those four (and `operatingSystem`, `initialization`, which that estate ignores
+itself) under `ignoreChanges` in the real program, `fleetkit adopt --apply
+--accept-update <key>` left one difference, `timeoutStart`, which the provider
+applied with no task on the node and no reboot; the next preview, also with
+`--refresh`, was all `same`. `fleetkit adopt` now applies such a difference
+without `--accept-update` (`import+local`, `pulumi.md`).
+
+What the source says about it (`container.go`, `containerRead`): `cpu`,
+`memory` and `console` are set only when state already has the block or a live
+value differs from the provider's default (1 core, no limit, no units,
+`amd64`; 512 MiB and no swap; enabled, `tty`, 2 ttys), and `vm_id` only to
+repair a legacy `-1`. So a container whose cpu or memory is not the default
+may have that block recorded by its import; the ignore is then not needed for
+it, and costs the same. `containerUpdate` sets `rebootRequired` for any
+change of `console`, `cpu` or `memory`.
+
+**VM: what the source says** (`proxmoxtf/resource/vm/vm.go` at v0.115.0,
+`vmReadCustom`, which `vmRead` and so the import call; an import starts with
+the id and `node_name` only, and no `clone` in state):
+
+- `cpu`: set only when state has the block or a live value differs from the
+  provider's default (1 core, 1 socket, type `qemu64`, no architecture, flags,
+  hotplugged vcpus, limit or units);
+- `memory`: likewise (512 MiB dedicated, no floating or shared memory, no
+  hugepages);
+- `agent`: likewise (not enabled, no trim, type `virtio`), so a VM with the
+  agent off has none after an import and a declared `vm.agent = false` is a
+  block added;
+- `operating_system`: an empty list when the type is the provider's default
+  `other`;
+- `efi_disk`: set only when it differs from the default (`local-lvm`, `raw`,
+  `2m`, no pre-enrolled keys);
+- `scsi_hardware`: set only when the VM's config has a `scsihw` line. Without
+  one the provider's default `virtio-scsi-pci` is a difference whether the
+  model declares a controller or not, and applying it is a real change of
+  controller (Proxmox's own default is `lsi`);
+- `vm_id` is always set there ("during import these core attributes might not
+  be set"), unlike the container's, so it is not in the VM's list; all eight
+  `timeout_*` arguments are filled in with their defaults, so a VM has no
+  `timeoutStart` left over.
+
+`vmUpdate` sets `rebootRequired` for a change of each of the six (for `cpu`
+unless only the hotplugged vcpus change and the VM hot-plugs cpu, for `memory`
+unless it only grows and the VM hot-plugs memory). A running VM is then
+stopped and started (`vmPowerOffForPendingChanges`, then
+`vmFinalizePowerState`), unless `reboot_after_update` is false, which the kit
+does not render. The one VM adoption that was run fits this: a
+stopped VM, adopted with an update for `cpu`, `memory` and `scsiHardware`, was
+not started. A running VM was not tried.
+
+Arguments the kit does not render (`vga`, `watchdog`, `rng`, ...) are read the
+same way; nothing is declared for them, so they are not in the list.
 
 ### Container id mapping (`idmap`)
 
@@ -431,3 +530,5 @@ stateful tags, llm-1's `hostpci` (never rendered by the legacy emitter) and
 its explicit `firewall = false`, and four guests with no terraform resource
 (homelab llm-cold; xgcs vpn, xg-caddy, xg-ntfy in the platform-edge stack the
 baseline does not carry).
+
+[issue 61]: https://github.com/jeirslab/fleetkit/issues/61

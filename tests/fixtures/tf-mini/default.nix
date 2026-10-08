@@ -7,7 +7,10 @@
 # adopting existing guests: a pool with a comment, a container with an idmap,
 # no console block and in no pool, a container with lxc_extra_conf (description
 # ignored), a VM with scsi hardware, an EFI disk, a cloud-init drive slot and a
-# clone source (clone ignored). "split" has guests on two sites and must not render; "offsite" has a placement on s1 and a guest on s2, and must not render. Generic
+# clone source (clone ignored). "quiet" (no placement) sets
+# adoption.unrecorded = "ignore" in its guestDefaults: a container and a VM
+# take it, a container that already ignores some arguments takes it without
+# duplicates, and a container and a VM set it back to "apply". "split" has guests on two sites and must not render; "offsite" has a placement on s1 and a guest on s2, and must not render. Generic
 # names only; nothing here is a real address.
 _: {
   fleet = {
@@ -182,8 +185,55 @@ _: {
         guestDefaults.defaultDatastore = "s1/local";
       };
 
+      quiet = {
+        owner = "Quiet";
+        guestDefaults = {
+          defaultDatastore = "s1/local";
+          adoption.unrecorded = "ignore";
+        };
+      };
+
     };
     guests = {
+      quiet =
+        let
+          guest = kind: vmid: host: extra: {
+            inherit kind vmid;
+            on = "s1/n1";
+            networkInterfaces = [
+              {
+                network = "lan";
+                address = "192.0.2.${toString host}";
+              }
+            ];
+            disks = [
+              (
+                {
+                  role = "root";
+                  size = 8;
+                }
+                // (if kind == "vm" then { interface = "scsi0"; } else { })
+              )
+            ];
+          }
+          // extra;
+        in
+        {
+          # The estate's default: what an import does not record is ignored.
+          ct = guest "lxc" 9601 81 { };
+          machine = guest "vm" 9602 82 { };
+          # Beside what the guest ignores itself; cpu is not listed twice.
+          mixed = guest "lxc" 9603 83 {
+            ignoreChanges = [
+              "operating_system"
+              "cpu"
+            ];
+          };
+          # Set back for one guest: nothing is added.
+          loudct = guest "lxc" 9604 84 { adoption.unrecorded = "apply"; };
+          loudvm = guest "vm" 9605 85 { adoption.unrecorded = "apply"; };
+        };
+
       tenant.tbox = {
         vmid = 9101;
         kind = "lxc";

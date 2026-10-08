@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Experimental. Renders lib.mkPulumi for the estates of tests/fixtures/tf-mini
-# ("gaps" among them: every option added for adopting existing guests)
+# ("gaps" among them: every option added for adopting existing guests; and
+# "quiet": adoption.unrecorded, whose ignored arguments must be these
+# options.ignoreChanges, in the bridge's names)
 # and lib.mkGithubPulumi for gh-mini, and checks each against its Terraform
 # render and the pinned Pulumi schemas (tests/pulumi.py); that the estates
 # the internal stage refuses (split, offsite) are refused by mkPulumi with a
@@ -34,9 +36,33 @@ pair() { # tfFn pulumiFn fixture estate
     status=fail
   fi
 }
-for estate in mini tenant bare gaps; do
+for estate in mini tenant bare gaps quiet; do
   pair internal_guests mkPulumi tf-mini "$estate"
 done
+
+# adoption.unrecorded = "ignore" in the Pulumi program: exactly these paths,
+# in the bridge's names, and none on the guests that set it back to "apply".
+if [[ -s $TMP/quiet.mkPulumi.json ]] && ! python3 - "$TMP/quiet.mkPulumi.json" <<'PY' >&2; then
+import json, sys
+res = json.load(open(sys.argv[1]))["resources"]
+ct = ["cpu", "memory", "vmId", "console"]
+want = {
+    "ct": ct,
+    "machine": ["cpu", "memory", "scsiHardware", "agent", "operatingSystem", "efiDisk"],
+    "mixed": ["operatingSystem", "cpu", "memory", "vmId", "console"],
+    "loudct": None,
+    "loudvm": None,
+}
+bad = [f"{k}: options.ignoreChanges is {(res.get(k, {}).get('options') or {}).get('ignoreChanges')}, expected {v}"
+       for k, v in want.items() if (res.get(k, {}).get("options") or {}).get("ignoreChanges") != v]
+bad += [f"{k}: {p} is ignored but no longer rendered" for k in ("ct", "mixed") for p in ("vmId", "console")
+        if p not in res.get(k, {}).get("properties", {})]
+for b in bad:
+    print(f"pulumi: quiet: {b}", file=sys.stderr)
+sys.exit(1 if bad else 0)
+PY
+  status=fail
+fi
 pair internal_github mkGithubPulumi gh-mini gh
 
 # What the internal stage refuses, mkPulumi refuses, naming mkPulumi.
