@@ -1,0 +1,74 @@
+{
+  "mini-guests": {
+    "adoptIds": {
+      "box": "n1/9001",
+      "machine": "n1/9002",
+      "tuned": "n1/9004",
+      "main": "main"
+    },
+    "adoptUnresolved": {}
+  },
+  "tenant-guests": {
+    "adoptIds": {
+      "tbox": "n1/9101",
+      "tpool": "tpool"
+    },
+    "adoptUnresolved": {}
+  },
+  "bare-guests": {
+    "adoptIds": {
+      "bbox": "n1/9201"
+    },
+    "adoptUnresolved": {}
+  },
+  "gh-github": {
+    "adoptIds": {
+      "alice": "example-org:alice-example",
+      "bob": "example-org:bob-example",
+      "carol": "example-org:carol-example",
+      "app_repository": "app",
+      "app_branch_default": "app",
+      "site": "site-public",
+      "mirror": "mirror",
+      "empty": "empty",
+      "org_actions_organization_permissions": "example-org"
+    },
+    "adoptUnresolved": {
+      "core_devs_app": "adopt = \"<team>:app\", <team> being the team's slug or numeric id (GET /orgs/example-org/teams); the name \"core.devs\" is not certainly its slug",
+      "core_devs_team": "adopt = the team's slug or numeric id (GET /orgs/example-org/teams); the name \"core.devs\" is not certainly its slug",
+      "core_devs_team_members": "adopt = the team's slug or numeric id (GET /orgs/example-org/teams); the name \"core.devs\" is not certainly its slug",
+      "org_organization_settings": "adopt = the organisation's numeric id (GET /orgs/example-org, field id)"
+    }
+  },
+  "gh-github+gh-adopt": {
+    "adoptIds": {
+      "alice": "example-org:alice-example",
+      "bob": "example-org:bob-example",
+      "carol": "example-org:carol-example",
+      "app_repository": "app",
+      "app_branch_default": "app",
+      "site": "site-public",
+      "mirror": "mirror",
+      "empty": "empty",
+      "org_actions_organization_permissions": "example-org",
+      "CI_TOKEN": "CI_TOKEN",
+      "app_REPO_TOKEN": "app:REPO_TOKEN",
+      "app_DEPLOY_TARGET": "app:DEPLOY_TARGET",
+      "app_bug": "app:bug",
+      "app_kind____x_": "app:kind: ${x}",
+      "app_prod": "app:prod",
+      "app__github_workflows_signal_yml": "app:.github/workflows/signal.yml:",
+      "app_docs_a_b_txt": "app:docs/a??b.txt:release/1.x",
+      "platform_team": "platform",
+      "platform_team_members": "platform",
+      "platform_site": "platform:site-public"
+    },
+    "adoptUnresolved": {
+      "core_devs_app": "adopt = \"<team>:app\", <team> being the team's slug or numeric id (GET /orgs/example-org/teams); the name \"core.devs\" is not certainly its slug",
+      "core_devs_team": "adopt = the team's slug or numeric id (GET /orgs/example-org/teams); the name \"core.devs\" is not certainly its slug",
+      "core_devs_team_members": "adopt = the team's slug or numeric id (GET /orgs/example-org/teams); the name \"core.devs\" is not certainly its slug",
+      "org_organization_settings": "adopt = the organisation's numeric id (GET /orgs/example-org, field id)",
+      "protect-main": "adopt = the numeric id of the ruleset named \"protect-main\" (GET /orgs/example-org/rulesets)"
+    }
+  }
+}

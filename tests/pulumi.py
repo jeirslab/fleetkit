@@ -16,7 +16,9 @@ Fails (exit 1, problems on stderr) when:
   - a packages entry is not the terraform-provider bridge at the provider and
     version the Terraform render pins;
   - a provider credential is a literal instead of a sops invoke reference, or
-    a lifecycle meta-argument is lost (prevent_destroy -> protect).
+    a lifecycle meta-argument is lost (prevent_destroy -> protect);
+  - a resource has an `import` option or any key other than type, name,
+    properties and options: adoption ids are never part of a program.
 Evaluation only; no network.
 """
 import json
@@ -99,6 +101,13 @@ for key, r in res.items():
         props = s["resources"][tok].get("inputProperties", {})
         seen.add((tok, r.get("name", key)))
     check_props(f"resources.{key}", r.get("properties", {}), props, s.get("types", {}))
+
+# No import, no adoption data: a leftover import destroys what it adopted.
+for key, r in res.items():
+    if "import" in (r.get("options") or {}):
+        bad.append(f"resources.{key}.options.import: an import in the program")
+    for k in sorted(set(r) - {"type", "name", "properties", "options"}):
+        bad.append(f"resources.{key}.{k}: not a Pulumi resource field")
 
 want = set()
 pins = (tf.get("terraform") or {}).get("required_providers") or {}
