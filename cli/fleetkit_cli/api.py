@@ -5,7 +5,7 @@
   GET  /v1/deploys/{id}            one job
   GET  /v1/deploys/{id}/events     events with seq >= ?after (long-polls ?wait s)
   GET  /v1/deploys/{id}/stream     the same as server-sent events, to the end
-  POST /v1/deploys/{id}/cancel     ask a running job to stop
+  POST /v1/deploys/{id}/cancel     ask a running job to stop (again: at once)
   GET  /v1/estates                 estates and their stacks (evaluates the repo)
   GET  /healthz                    liveness, no auth
 

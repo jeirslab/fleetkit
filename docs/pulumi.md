@@ -168,31 +168,39 @@ garage `bucket`; `schemaPrefix` (a tofu notion) is not used.
 One pipeline for the CLI, the API and GitOps:
 
 1. **render**: `nix eval` of `<repo>#pulumi` (estate, backend, file, secrets
-   of each stack). Each stack of the estate gets a project dir:
+   of each stack). Each stack of the estate gets a project dir, in a
+   directory that belongs to this run alone ("A directory per run", below):
    ```
-   <state>/work/<stack>/
-     Pulumi.yaml  ->  /nix/store/<hash>-Pulumi.yaml   (a GC root; JSON)
+   <state>/runs/<time>-<pid>-<random>/<stack>/
+     program      ->  /nix/store/<hash>-Pulumi.yaml   (a GC root; what the estate declares)
+     Pulumi.yaml       the program the engine runs: a copy, the unnamed guests protected
      secrets/...  ->  the sops files its invokes read
+     Pulumi.<stack>.yaml   Pulumi's settings (the passphrase salt), copied in
+     update-plan.json      the plan the up is bound to
    ```
 2. **backends**: every stack's backend resolved and its secrets decrypted.
    Steps 1 and 2 finish for every stack before anything runs: a model that does
    not evaluate, or a secret that does not decrypt, changes nothing.
 3. **infra**: per stack, the Pulumi Automation API (`install`, then
-   `preview`), engine events to the event stream, `show_secrets` off. The
-   preview's step events become the stack's **plan**: one entry per resource
-   that is not `same`. Every stack is previewed, and every plan passes the
-   guard (below), before any stack is applied; then `up`, stack by stack.
+   `preview --save-plan`), engine events to the event stream, `show_secrets`
+   off. The preview's step events become the stack's **plan**: one entry per
+   resource that is not `same`. Every stack is previewed, and every plan
+   passes the guard (below), before any stack is applied; then
+   `up --plan`, stack by stack: the engine is bound to the plan the guard
+   read. There is no `up` without one.
 4. **nixos**: `colmena apply <goal>` (`build` for a preview) on
    `hives.<hive>` (default: the estate), after infra.
 
-Every deploy's result names each program's store path: what ran, exactly.
+Every deploy's result names each program's store path and sha256
+(`programs`, `program_sha256`): what ran, exactly; and `applied`, the stacks
+whose `up` finished.
 
 ```sh
 fleetkit estates
 fleetkit preview homelab                 # pulumi preview + colmena build; changes nothing
 fleetkit deploy homelab --goal test      # pulumi up + colmena apply test
 fleetkit deploy homelab --no-nixos --stack homelab-guests
-fleetkit deploy homelab --allow-update web --allow-replace old-ct   # the guard, below
+fleetkit deploy homelab --allow-update web --allow-replace homelab-guests/old-ct   # the guard, below
 fleetkit adopt homelab                   # what exists already: "Adopting what already exists"
 fleetkit serve                           # the API (below); --repo for GitOps
 ```
@@ -200,44 +208,110 @@ fleetkit serve                           # the API (below); --repo for GitOps
 ### The guard: what an `up` may do to a guest (`cli/fleetkit_cli/guard.py`)
 
 A summary line with counts (`replace: 1`) does not say what is replaced, and
-`protect` does not stop a replacement: issue #61 lost a live container to one.
-So the pipeline every `up` goes through (CLI, API, GitOps, the action) reads
-the plan before applying it:
+the estate's own `protect` did not stop the replacement that issue #61 lost a
+live container to. So the pipeline every `up` goes through (CLI, API, GitOps,
+the action) reads the plan before applying it, and three layers keep the `up`
+to what was read: the refusals, the engine's update plan, and `protect`.
 
-- **The plan.** `[{ key, urn, type, op, steps, diff, replaceReasons }]` for
-  every resource whose op is not `same`. `key` is the resource's key in the
-  program (for a resource the program no longer has: its name in state);
-  `op` is what happens to the resource (`create`, `update`, `replace`,
-  `delete`, `import`); `steps` are the engine's ops behind it (a replacement
-  is `create-replacement`, `replace`, `delete-replaced`); `diff` the changed
-  property paths; `replaceReasons` the paths that force the replacement. It is
-  in the `plan` event (as data and as text), in the `summary` event
-  (`resources`: op → key and type, beside the counts), in the job's result
-  (`plan.<stack>`), in the CLI's output and in the PR comment.
-- **Guests** are `proxmox:index/virtualEnvironmentContainer:VirtualEnvironmentContainer`
-  and `proxmox:index/virtualEnvironmentVm:VirtualEnvironmentVm`
-  (`guard.GUEST_TYPES`).
+- **The plan.** `[{ key, urn, type, op, steps, diff, replaceReasons,
+  protected? }]` for every resource whose op is not `same`. `key` is the
+  resource's key in the program (for a resource the program no longer has:
+  its name in state); `op` is what happens to the resource (`create`,
+  `update`, `replace`, `delete`, `import`); `steps` are the engine's ops
+  behind it (a replacement is `create-replacement`, `replace`,
+  `delete-replaced`); `diff` the changed property paths; `replaceReasons` the
+  paths that force the replacement; `protected` is set when the engine itself
+  refuses the step because of `protect`. It is in the `plan` event (as data
+  and as text), in the `summary` event (`resources`: op → key and type,
+  beside the counts), in the job's result (`plan.<stack>`), in the CLI's
+  output and in the PR comment.
+- **Guests** are every container and VM type of the provider
+  (`cli/fleetkit_cli/guests.py`): `virtualEnvironmentContainer`,
+  `virtualEnvironmentVm`, `virtualEnvironmentVm2`, `vm`, `clonedVm`,
+  `virtualEnvironmentClonedVm` (all `proxmox:index/...`). The list cannot fall
+  behind the provider: `tests/guest_types.py` (a gate) and
+  `cli/tests/test_guests.py` take every resource token of the pinned name map
+  (`providers/pulumi/names/bpg-proxmox-*.json`) whose name matches `vm`,
+  `container` or `lxc`, and fail when one is neither a guest nor in the
+  explicit not-a-guest list with its reason (the four LVM storage types, which
+  match on the `vm` in `Lvm`). A provider bump that adds a guest type fails
+  the gate instead of leaving it ungated.
 - **Refused**, with nothing applied in any stack of the job, when the plan
   holds for a guest:
 
   | engine op | named with | API field |
   |---|---|---|
-  | `replace`, `create-replacement`, `delete-replaced` (any step of a replacement) | `--allow-replace KEY` | `allow_replace: [KEY]` |
-  | `delete` | `--allow-delete KEY` | `allow_delete: [KEY]` |
-  | `update` (an in-place update reboots a container) | `--allow-update KEY` | `allow_update: [KEY]` |
+  | `replace`, `create-replacement`, `delete-replaced` (any step of a replacement) | `--allow-replace NAME` | `allow_replace: [NAME]` |
+  | `delete` | `--allow-delete NAME` | `allow_delete: [NAME]` |
+  | `update` (an in-place update reboots a container) | `--allow-update NAME` | `allow_update: [NAME]` |
 
   The flags repeat; a name allows that op for that resource only. The error
   lists each offending resource, its op and the flag it needs. A guest's
   `create` is not gated, and nothing is gated for other resources (pools, DNS,
   repositories): they are listed, always.
+- **Names are scoped to a stack.** `NAME` is `<stack>/<key>`, a URN, or a bare
+  `<key>`. A bare key that is a resource of more than one stack of the request
+  (in the program, or still in the state of a stack whose program dropped it)
+  is refused as ambiguous, before anything runs, with the two spellings to
+  choose from; `<stack>/` must be a stack of the request. A request for one
+  stack (`--stack`) takes bare keys as before. When a key exists in two
+  stacks, the refusal's flag is already written with the stack
+  (`needs --allow-replace homelab-guests/web`).
 - **A program with `import` is refused** whatever the flags
   (`options.import` on any resource): after an adoption a leftover `import`
   makes the next `up` replace the resource. Rendered programs never carry one;
   `fleetkit adopt` is how a resource is imported.
-- **During the `up`** each step is checked again before it runs, and the
-  engine is cancelled (Pulumi's own cancel) if a gated step comes up that the
-  preview did not show and the request did not name. The stack may then be
-  partly applied; the job fails and says so.
+- **The `up` is bound to the plan (update plans).** The preview saves the
+  engine's own plan (`pulumi preview --save-plan`), the `up` runs on it
+  (`pulumi up --plan`), and Pulumi refuses, resource by resource, a step the
+  plan does not have: `resource <urn> violates plan: properties changed`,
+  `protect changed`, `delete is not allowed by the plan`. So a program or a
+  state that changed between the preview and the `up` cannot do more than was
+  read. The runner checks first (the sha256 of the program file and of the
+  plan file, recorded in memory at plan time, must still match, and the
+  targets and `--refresh` must be those of the preview); the engine is the
+  check that does not depend on the runner. A violation is a failed job that
+  says what had been applied by then. What was seen with Pulumi 3.247 and a
+  file backend, offline (`random`, `tls`):
+
+  | | |
+  |---|---|
+  | a changed program | refused per resource; resources the plan does allow are applied before the one that is refused fails the run (it is a per-resource constraint, not all-or-nothing) |
+  | `--target` | the plan and the `up` must have the same targets. A plan made with a target and an `up` without one applies the planned resource and refuses every other change; an `up` with other or fewer targets is refused too. The runner passes the same list to both and refuses a mismatch itself |
+  | `--refresh` | works with it on both, on either, or on neither (no drift could be made offline; drift that the `up`'s refresh finds and the plan did not have should be a violation, which is the wanted outcome, but that is not tested) |
+  | imports (`fleetkit adopt`) | a plan saved from a preview with `import` and `--target` constrains the `up` that imports; clean imports apply. An untargeted resource *with* `import` is imported whatever the targets; one without is left alone |
+  | secrets | values are encrypted in the plan file (`ciphertext`), which is 0600 in a 0700 run directory and deleted after its one `up`. A secret that changed after the plan is a violation. The violation message prints the changed property values, secret outputs in **plain text** (seen with a `RandomPassword` result): the runner strips those values from events, logs and errors (`[values withheld]`) |
+  | `protect` | part of the plan: an `up` whose program changed a resource's `protect` is refused (`protect changed`) |
+  | a preview that fails | writes no plan; no `up` can follow |
+
+  No combination needed a fallback, and there is none: an `up` without a plan
+  is refused in `infra.engine`.
+- **Unnamed guests are protected for the run.** The program the engine runs
+  is a copy of the estate's (never the estate's file, never the store) in
+  which every guest that is not named for a replace or a delete has
+  `options.protect = true`. The engine then refuses to replace or delete it
+  whatever the plan says, and the state records the flag. Consequences, all
+  seen with a real engine:
+  - a change of `protect` alone is a `same` step: no update, no reboot;
+  - a preview whose plan replaces or deletes a protected guest *fails in the
+    engine*, with every step still in its events. The runner reads those and
+    reports the usual refusal by name (`protected: true` on the entry); only a
+    protection it cannot explain (a resource the estate protects itself, or
+    one that is no guest) is passed on as the engine's error;
+  - a guest named with `--allow-replace` is not protected in the copy, and the
+    engine replaces it although the state still says protected;
+  - a guest named with `--allow-delete` that the program no longer has is
+    protected in state only, where no program can clear it. Once every
+    stack's plan has passed, the runner runs `pulumi state unprotect` on
+    exactly those URNs, previews again (the plan must be the one that was
+    checked) and applies. If that deploy then fails, they stay unprotected in
+    state; the guard still refuses their delete unless named;
+  - a `protect` the estate sets is never removed: clear it in the estate.
+- **During the `up`** each step is still checked before it runs. If a gated
+  step comes up that the request did not name (it would have had to pass both
+  layers above), the engine is stopped the hard way ("Stopping a run": two
+  signals, then a kill). The step that tripped had started: the job fails and
+  says it does not know whether it happened.
 - A **preview** (`fleetkit preview`, `preview: true`) prints the same plan and
   marks what a deploy would refuse (`refused.<stack>` in the result); naming
   the resources in the preview request removes the mark.
@@ -246,8 +320,64 @@ the plan before applying it:
   and the commit status reads `deploy failed: refused: replace web`. A deploy
   started by a merge or a push names nothing, so it is refused; apply it by
   hand with the names: `POST /v1/deploys {"estate", "rev", "allow_replace":
-  ["web"]}`, or the action's `allow-replace` / `allow-delete` / `allow-update`
-  inputs on a `workflow_dispatch` run.
+  ["homelab-guests/web"]}`, or the action's `allow-replace` / `allow-delete` /
+  `allow-update` inputs on a `workflow_dispatch` run.
+
+### A directory per run (`cli/fleetkit_cli/render.py`)
+
+The project dir used to be `<state>/work/<stack>/`, one per stack, whose
+`Pulumi.yaml` link every render repointed. A deploy previewed, and then
+applied whatever the last render had left there: another job's commit, a
+`fleetkit preview`, an adoption, `fleetkit render`. Now:
+
+- every run (a deploy, a preview, an adoption, `fleetkit render`) renders into
+  `<state>/runs/<time>-<pid>-<random>/`, which nothing else writes, and
+  removes it when it ends (`fleetkit render` keeps its directory and prints
+  it; a directory whose process is gone is swept after a day). The Colmena
+  hive file is written there too;
+- the store path and the sha256 of the estate's program, and the sha256 of the
+  copy the engine runs, are recorded when the run renders; before each `up`
+  both files are hashed again and the `up` is refused on a mismatch
+  (`render.Project.verify`, and again in `infra.apply` for the program and
+  the plan file);
+- Pulumi's settings file of a stack (`Pulumi.<stack>.yaml`: the passphrase
+  salt) is the one thing that outlives a run. It is kept in
+  `<state>/stacks/<stack>/` (the first one made stays; a file found in the old
+  `work/<stack>/` is taken over) and copied into each run's directory. With
+  Pulumi 3.247 and a file backend: without it a run makes a new salt, the
+  state's secrets still decrypt (the state carries its own salt and the
+  passphrase is the same), and the next `up` re-encrypts the state with the
+  new salt; with the kept file the salt stays the same from every directory.
+
+### Stopping a run
+
+`pulumi cancel` is never called. On a self-managed backend (seen with the
+file backend; S3 and PostgreSQL are the same code in Pulumi) it only deletes
+the stack's lock file and returns success while
+the engine keeps running, now unlocked: an unplanned replace ran to completion
+that way. The runner starts the `pulumi` process itself, in its own session
+(`infra.OwnedPulumi`, given to the Automation API as its `pulumi_command`), and
+stops it by signal:
+
+| | the engine (Pulumi 3.247, seen) |
+|---|---|
+| first cancel (`POST /v1/deploys/{id}/cancel`, Ctrl-C, SIGTERM, SIGHUP): one SIGINT | finishes the step in flight (however long: 9 s for an RSA key in the run that was watched), starts no other, saves the state, releases its own lock, exits. The runner waits for that; it cuts it short by itself only if `FLEETKIT_STOP_GRACE` (seconds) is set |
+| second cancel: a second SIGINT | prints `terminating`, but with a provider call in flight it does **not** exit (100 s and counting with the `tls` provider). So 10 s later the runner kills the engine's process group (the engine and its provider plugins) |
+| after a kill | the stack's lock file is still there, and the state has a pending operation for the step that was in flight. The runner removes neither and says so: check that no pulumi process runs, then `pulumi cancel` (which then does the one thing it does: remove the lock) |
+
+The lock is the engine's and is left to it. A cancelled job's `result` has
+`stopped`: `{stack, verb, why, completed: [{op, key}], in_flight: [{op, key}],
+signals, engine, partly_applied, text}`, from the step events, and its `error`
+is the sentence: `homelab-guests: the up was cancelled. Stopped after create
+web (1 step(s) completed). No step was in flight. The stack may be partly
+applied: preview it. The engine was told to stop after the step in flight.`
+A step that had started and not finished is listed as in flight, "whether
+they happened is not known". The same is said when the engine refuses a step
+(a plan violation), when the tripwire stops it, and when an `up` fails.
+
+On the command line SIGINT, SIGTERM and SIGHUP are that cancel (`deploy`,
+`preview`, `adopt`): the run ends through its cleanup instead of dying where
+it stands, and prints what was done.
 
 `PULUMI_CONFIG_PASSPHRASE(_FILE)` encrypts Pulumi's secrets in state;
 `SOPS_AGE_KEY_FILE` decrypts the model's; `FLEETKIT_SECRET_ROOTS` adds
@@ -258,11 +388,11 @@ directories (a tenant's source) where sops files are looked up. `pulumi-bin`,
 
 | | |
 |---|---|
-| `POST /v1/deploys` | `{estate, stacks?, rev?, infra, nixos, hive?, on[], goal, preview, refresh, targets[], allow_replace[], allow_delete[], allow_update[]}` → 202 and the job |
-| `GET /v1/deploys[/{id}]` | jobs / one job (state, result with rev, programs, the plan and what was refused; error) |
+| `POST /v1/deploys` | `{estate, stacks?, rev?, infra, nixos, hive?, on[], goal, preview, refresh, targets[], allow_replace[], allow_delete[], allow_update[]}` (names: `<stack>/<key>`, a URN, or an unambiguous key) → 202 and the job |
+| `GET /v1/deploys[/{id}]` | jobs / one job (state, result with rev, programs and their sha256, the plan, what was refused, `applied`, and `stopped` when an up did not finish; error) |
 | `GET /v1/deploys/{id}/events?after=&wait=` | events from a sequence number, long-polling |
 | `GET /v1/deploys/{id}/stream` | the same as server-sent events, ending with the job record |
-| `POST /v1/deploys/{id}/cancel` | Pulumi's own cancel, or colmena terminated |
+| `POST /v1/deploys/{id}/cancel` | the engine is signalled ("Stopping a run"; a second call: the hard way), or colmena terminated. Never `pulumi cancel` |
 | `GET /v1/estates` | estates and their stacks |
 | `GET /v1/gitops`, `POST /v1/gitops/sync` | GitOps status; fetch and deploy what changed now |
 | `POST /v1/hooks/github` | GitHub webhook, `push` and `pull_request`, HMAC-signed (no bearer) |
@@ -284,6 +414,7 @@ fleetkit adopt homelab --stack homelab-guests --resource web --json
 fleetkit adopt homelab --id old-ct=pve2/300         # an id the model cannot compute
 fleetkit adopt homelab --apply                      # adopt what imports cleanly
 fleetkit adopt homelab --apply --accept-update web  # ... and web, updated in place
+fleetkit adopt homelab --resource deploy-token --apply   # a secret: only when named
 ```
 
 Each stack exposes `adoptIds` (`{ <resource key> = <provider import id>; }`)
@@ -291,48 +422,108 @@ and `adoptUnresolved` (`{ <resource key> = <why no id>; }`) beside its
 `program`; `--id KEY=ID` adds or overrides an id. A kit that does not expose
 them yet adopts only by `--id`.
 
-1. The stacks are rendered and each selected stack's state is read (the
-   Automation API's export). **To adopt** = resources with an id that are not
-   in state. A resource already in state is never touched (the report says
-   so, also when `--id` names it). An unresolved resource without `--id` is
-   listed as `cannot adopt: <why>` and skipped.
-2. A **temporary program** is written to a temporary directory (the system's,
+1. The stacks are rendered into this run's own directory and each selected
+   stack's state is read (the Automation API's export). **To adopt** =
+   resources with an id that are not in state. A resource already in state is
+   never touched (the report says so, also when `--id` names it). An
+   unresolved resource without `--id` is listed as `cannot adopt: <why>` and
+   skipped.
+2. **An id that is already in state under another URN is refused**
+   (`duplicate`), before any engine run. "In state" used to mean the URN the
+   declaration computes to; a renamed resource key (or project, or stack)
+   whose id is that of a guest already in state was imported a second time,
+   the state then held two entries for one guest, and the next deploy planned
+   a delete of the one the program no longer has: the live guest. Now the id
+   is compared with the `id` and the `importID` of every state resource of the
+   same type; a guest's `<node>/<vmid>` also matches a state id that is the
+   vmid. The refusal says how to rename in state instead (`pulumi state
+   rename '<urn>' <key>`), and makes the command exit 1 with or without
+   `--apply`.
+3. A **temporary program** is written to a temporary directory (the system's,
    not the state dir): the stack's program with `options.import` set on the
-   resources to adopt, and nothing else changed. The rendered program and its
-   project dir are not modified.
-3. It is previewed with `--target` on those resources and on what they depend
+   resources to adopt, and nothing else changed (every guest in it is
+   protected, as in any run).
+4. It is previewed with `--target` on those resources and on what they depend
    on (their provider; anything a property refers to). **The report**, per
-   resource:
-   - `import`: the declaration equals the live resource;
-   - `import+update`: it differs, with each property's path, the live value
-     and the declared one (secrets as `[secret]`, like the event stream);
-   - `error`: the provider refused the import (no such id, say), with its
-     message.
+   resource, its `status`:
+
+   | status | |
+   |---|---|
+   | `import` | the declaration equals the live resource |
+   | `import+update` | it differs: importing it also updates it in place (a guest reboots) |
+   | `import+unrecorded` | the only differences are properties the import did not record, so no live value is known and the engine plans an update for them anyway. For a container that update still **reboots** it, even if every value matches; the report and the refusal say so, and `--accept-update` is still required. Known cases for bpg containers and VMs: `cpu`, `memory`, `vmId`, `timeoutStart`, `scsiHardware` |
+   | `import+secret` | a GitHub secret named with `--resource`: its value cannot be read back, so adopting it writes the declared value. Naming it is the acceptance |
+   | `secret` | a secret that was not named: listed, not adopted (`--resource KEY`) |
+   | `absent` | the provider's import finds nothing by this id (`does not exist`, `not found`, 404): "does not exist; a deploy will create it". Not an error, not in the import set, exit 0 |
+   | `duplicate` | its id is in state under another URN (2. above) |
+   | `other` | the plan would create, replace or delete it |
+   | `error` | the import failed for another reason, with the provider's message |
+   | `in-state`, `unresolved`, `no-id` | nothing to do; no id |
+
+   A resource that cannot be imported ends the engine's run at that resource:
+   the others were not compared (seen with a real engine: resources after it
+   get no event at all). So the preview is **run again without** the absent
+   and the failed ones, until what is left compares completely; and a
+   resource whose import only started (no result event) is never reported as
+   a clean `import`.
+
+   Each difference is `{path, live, declared, liveKnown, declaredKnown,
+   liveFrom, declaredFrom, kind}`. Both sides are there whenever the engine
+   gives them, with `false`, `0` and empty values kept: `liveKnown: false`
+   (and no `live` key) is "no value", which is not `live: false`. The live
+   value comes from the inputs the import read (`liveFrom: inputs`) or, for
+   what those leave out because it equals the zero value (a `false`, a `0`),
+   from the state that was read (`state`); the declared one from the
+   declaration, or from what the provider will set when it is not declared
+   (`provider default`). `kind` is `real` (a live value is known and the
+   engine says it differs) or `unrecorded`. Secrets are `[secret]`, like the
+   event stream. What the engine sends: an `import` step, then an `update`
+   step (or the steps of a replacement) with the live resource as `old`, the
+   declaration as `new` and the differing top-level properties in `diffs`.
+   Its `detailedDiff` (nested paths, add / delete / update kinds) is used when
+   it is there (`engine` in the entry). The pinned Python SDK (3.192) gives
+   `diffs` only: it reads the engine's `detailedDiff` under the wrong name
+   (`detailed_diff`) and so always drops it, which `infra.py` corrects. Seen
+   with a real engine: the kubernetes provider sends `detailedDiff` and then
+   *no* `diffs` (without the correction such a change had no paths at all);
+   `random` and `tls` send `diffs` and no `detailedDiff`. Which of the two the
+   bridged Proxmox and GitHub providers send is not verified; both are read.
 
    `--json` prints the report as one JSON document on stdout (events go to
    stderr): `{estate, apply, applied, ok, refused[], stacks.<stack>.{program,
-   resources[{key, type, urn, id, status, diff[{path, live, declared}]}],
-   other[], verify?}}`. It is what a person or an agent reads to make the
-   declaration match what is there.
-4. Without `--apply` that is all: nothing changed.
-5. With `--apply`, two refusals, both before anything is applied in any stack:
-   - a resource that would be `import+update` and is not named with
-     `--accept-update KEY`. For a guest the update is a reboot, and the
-     message says so. Fix the declaration, or accept the update;
+   resources[{key, type, urn, id, status, diff[...]}], other[], verify?}}`.
+   It is what a person or an agent reads to make the declaration match what
+   is there.
+
+   `--resource`, `--id` and `--accept-update` take a resource key. A key that
+   two of the selected stacks have is refused as ambiguous: run one stack
+   (`--stack`).
+5. Without `--apply` that is all: nothing changed.
+6. With `--apply`, refusals, all before anything is applied in any stack:
+   - a resource that would be `import+update` or `import+unrecorded` and is
+     not named with `--accept-update KEY`. For a guest the update is a reboot,
+     and the message says so. Fix the declaration, or accept the update;
    - a plan that holds anything but `import`, `update` and `same`: any create,
      replace or delete, of the resource or of something targeted with it (a
      dependency that is not in state yet). The one exception is the `create`
      of a provider or of the stack itself in a new stack: those exist only in
-     state.
+     state;
+   - a `duplicate`, and an `error`.
 
-   Then the temporary program is applied with the same targets, the temporary
-   directory is removed, and the **real** program (no `import`) is previewed:
-   every adopted resource must be `same`. If one is not, the command exits
-   non-zero and prints what differs; it does not try to fix it.
-6. `import` is never written anywhere that lasts: only into the temporary
+   Then the temporary program is applied with the same targets, **bound to
+   the update plan of the preview the report was made from** (as every `up`
+   is), the temporary directory is removed, and the **real** program (no
+   `import`) is previewed. That check fails, and the command exits non-zero,
+   when an adopted resource is not `same`, **or when the preview deletes or
+   replaces any guest, or any resource whose state id is one that was just
+   adopted**, under whatever URN (`verify.differs`, `verify.destroys`). It
+   prints what; it does not try to fix it.
+7. `import` is never written anywhere that lasts: only into the temporary
    program, whose directory is removed on every way out (a refusal, an error,
-   an interrupt). A hard kill leaves it in the system's temporary directory,
-   which no run reads.
+   an interrupt). SIGTERM and SIGHUP are an orderly exit too, like Ctrl-C
+   ("Stopping a run"). After a hard kill it stays in the system's temporary
+   directory, which no run reads; the next `fleetkit adopt` removes the
+   `fleetkit-adopt-<pid>-*` directories of processes that are gone.
 
 Why `import` never stays: with it still in the program after the adoption, the
 next `up` planned `replace: 1` for the adopted container and ran
@@ -343,7 +534,8 @@ Adoption is a CLI command only: the API's jobs are deploys (one request type,
 one runner), so there is no `POST /v1/adoptions`. Run it where the stack's
 state is reachable: with a `local` backend, on the deploy server (as its
 user, with its state dir); with `pg` or `s3`, from any operator's machine.
-Pulumi's own stack lock keeps it apart from a running deploy.
+Pulumi's own stack lock keeps it apart from a running deploy, and it writes
+nowhere a deploy reads.
 
 ## GitOps (`fleetkit serve --repo`, `cli/fleetkit_cli/gitops.py`)
 
@@ -460,18 +652,51 @@ put a TLS proxy in front of anything but loopback.
   hand-written `adopt` and `adoptUnresolved`; `options.import` refused with the
   error that names `adopt`.
   `trigger = pr`, a busy estate's preview queued); redaction. With a fake
-  engine (`cli/tests/fakes.py`: real Automation API event objects, a state and
-  a set of live resources): the guard refuses each gated op on a guest and
-  lets it through when named, lists and allows a non-guest replace, refuses a
-  program with `import`, refuses the whole job when a later stack's plan is
-  refused, cancels an `up` that starts an unplanned gated step, and the
-  summary, the CLI, a failed job and the PR comment name the resources;
-  `adopt` picks what to adopt (in state, not in state, unresolved, `--id`),
-  changes nothing without `--apply`, refuses an unaccepted update and any
-  create / replace / delete, keeps `import` to a temporary program that is
-  gone afterwards (also when the engine raises), and fails when the preview
-  after the adoption still differs. Twelve hand mutations of the guard and of
-  adopt are each caught.
+  engine (`cli/tests/fakes.py`: real Automation API event objects, a state, a
+  set of live resources, update plans, `protect`, signals): the guard refuses
+  each gated op on a guest and lets it through when named, lists and allows a
+  non-guest replace, refuses a program with `import`, refuses the whole job
+  when a later stack's plan is refused; every `up` runs the plan of its own
+  preview and none runs without one; an `up` that leaves its plan is refused
+  with the values withheld; unnamed guests are protected in a copy and the
+  estate's file is not touched; protect alone, and the tripwire alone, stop an
+  unplanned replace; a named delete of a guest the state protects is
+  unprotected, re-planned and applied; an API cancel signals the engine, never
+  calls `pulumi cancel`, and the job says which steps finished; another render
+  between a deploy's plan and its up changes nothing; a program or a plan
+  file changed in between is refused; the settings file is kept and copied
+  in; names are scoped to a stack and an ambiguous one is refused before any
+  engine runs; `adopt` picks what to adopt (in state, not in state,
+  unresolved, `--id`), changes nothing without `--apply`, refuses an
+  unaccepted update and any create / replace / delete, refuses an id that is
+  in state under another URN, keeps `import` to a temporary program that is
+  gone afterwards (also when the engine raises, and on SIGTERM / SIGHUP /
+  SIGINT), sweeps what a kill left, reports a `false` live value with both
+  sides, reports an absent resource as `absent` and the rest completely,
+  classes unrecorded properties and secrets, and fails when the preview after
+  the adoption still differs or deletes a guest. Thirty-five hand mutations
+  of the fixes for the plan binding, the cancel, protect, the run directories
+  and the duplicate-id check are each caught.
+- `cli/tests/test_real_pulumi.py` (in the package build; the **real** engine,
+  offline: a file backend in a temp dir and the `random` and `tls` providers
+  that ship with `pulumi-bin`; a test that cannot run prints a `SKIPPED`
+  line with why): a create, a refused and a named replacement and a named
+  delete of a protected "guest" (a `RandomString`) through plan-bound ups; a
+  program changed after the plan refused by the engine itself, with the
+  secret value it prints kept out of events and errors; a cancel in the
+  middle of an `up` of eight chained RSA keys stops the engine after the step
+  in flight, with the lock still held right after the signal and released by
+  the engine, `pulumi cancel` never run, and the next deploy finishing the
+  rest; another render and preview between a deploy's plan and its up, and
+  one salt and decrypting secrets from every later directory; an adoption
+  with real import events (a failing import that does not cut the others
+  short, a clean import bound to its plan with `--target`, the same id under
+  a renamed key refused, a differing declaration reported with both values);
+  a second cancel with a provider call in flight ends in a kill, with the
+  lock left and reported; the engine's `detailedDiff` reaching the plan (the
+  kubernetes provider rendering YAML to a directory).
+- `tests/guest_types.py` (gate) and `cli/tests/test_guests.py`: the guest list
+  against the pinned provider's name map.
 - `tests/pulumi_nix.sh` (gate): Pulumi.nix good and bad cases above.
 - `tests/deploy_e2e.sh` (networked, not a gate): a throwaway estate git repo
   whose pulumi.nix imports the model's stack and adds one composed from it;
@@ -488,17 +713,59 @@ put a TLS proxy in front of anything but loopback.
   and the example workflow by actionlint; neither ran on GitHub.
 
 Not tested: `pulumi up` or `colmena apply` against real hosts, a linode bucket,
-and the estate repo's own data. The guard and `adopt` ran only against the
-fake engine. What that leaves open about Pulumi itself: the events of an
-`import` whose inputs differ (the code takes either an `import` step that
-carries a diff, with the live inputs as `old` and the declared ones as `new`,
-or an `import` step followed by an `update` step; the Python SDK at the pin
-reads the engine's `detailedDiff` under another name, so paths come from
-`diffs`, top-level properties); whether a targeted `up` imports with only the
-resources and their providers targeted, and what it does to the stack resource
-of a new stack; that a new stack's passphrase salt, created through the real
-project dir first, is the one the temporary dir then uses; and how much of a
-step Pulumi's cancel still lets finish.
+and the estate repo's own data; `tests/deploy_e2e.sh` was adapted to the run
+directories but not run again. The guard and `adopt` ran against the fake
+engine and against the real engine with the `random` and `tls` providers, not
+against Proxmox or GitHub. What that leaves open, each with how to check it
+live on a throwaway guest:
+
+- **The events of the bridged bpg and GitHub providers for an import whose
+  inputs differ.** Seen with `random`: an `import` step, then the steps of the
+  change with `old` = live, `new` = declared, `diffs` = top-level keys, no
+  `detailedDiff`. An in-place `update` after an import could not be made
+  offline (every `random` change is a replacement). Check: `fleetkit adopt
+  <estate> --resource <throwaway-ct> --json` with one property declared
+  wrong; the entry must be `import+update` with that path, `live` and
+  `declared` both set.
+- **Where a `false` live value is.** The fix reads it from the state the
+  import read when the inputs leave it out; that the bridge puts it there for
+  `github_repository.allow_rebase_merge` is the report's observation, not
+  re-run. Check: adopt a repository with rebase merging off and no
+  declaration of it; `allowRebaseMerge` must show `live false`.
+- **`unrecorded` for `cpu`, `memory`, `vmId`, `timeoutStart`,
+  `scsiHardware`.** Classified by "no live value in what the import read". If
+  the provider does record one of them, it is reported as `real` with its
+  value, which is right too. Check: adopt a throwaway container declared
+  exactly as it is; expect `import+unrecorded` naming those paths, and
+  `--accept-update` rebooting it once.
+- **How the provider says "does not exist".** `absent` is an error on the
+  resource that matches `does not exist`, `not found` or `404` (the engine's
+  own `resource '<id>' does not exist` among them); the message is kept in
+  `detail`. Check: `fleetkit adopt <estate> --id <key>=<node>/<unused vmid>`
+  must report `absent` and exit 0; a wrong API token must be `error`.
+- **`protect` on a real guest.** A `protect` change alone was a `same` step
+  with `random`; that the bpg provider plans no update for it is assumed
+  (protect is the engine's, not the provider's). Check: `fleetkit preview` of
+  an unchanged estate after the first deploy with this runner must be all
+  `same`.
+- **A guest's state id.** The duplicate check takes a container's state id to
+  be its vmid and its adoption id `<node>/<vmid>`. Check: `pulumi stack
+  export` after adopting the throwaway container (`id`, `importID`), then
+  rename its key and run `fleetkit adopt`: it must be `duplicate`.
+- **Drift with `--refresh` under a plan.** Check: change a throwaway
+  container's description by hand, `fleetkit deploy --refresh`; either the
+  preview shows the update (refused unless named) or the `up` is refused as a
+  violation. It must never apply an update the plan did not list.
+- **What a killed engine leaves on Proxmox.** The first signal lets the step
+  in flight finish (seen); after a second the process group is killed, and
+  whether a `pct create` or `vzdestroy` already sent completes is Proxmox's
+  affair (the task runs on the node, not in the provider). Check: cancel twice during the create of a throwaway
+  container, then `pct list` and `fleetkit preview`.
+- **Other backends.** Update plans, the lock and the salt were exercised with
+  the file backend only; PostgreSQL and S3 use the same self-managed (diy)
+  code in Pulumi, so the same is expected. Check: the cancel test's scenario
+  (`POST .../cancel` during an `up`) against the PostgreSQL backend, then
+  `pulumi stack export` and a second deploy.
 
 ## The compiler (`lib.toPulumi`)
 

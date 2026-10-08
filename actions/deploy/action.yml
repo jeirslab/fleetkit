@@ -39,14 +39,15 @@ inputs:
     default: 'true'
   allow-replace:
     description: >
-      Guests (resource keys, comma-separated) this deploy may replace: destroy and recreate.
+      Guests (comma-separated) this deploy may replace: destroy and recreate. A name is
+      <stack>/<key>, a URN, or a resource key that only one stack of the estate has.
       The server refuses a deploy whose plan replaces a guest that is not named.
     default: ''
   allow-delete:
-    description: Guests (resource keys, comma-separated) this deploy may delete.
+    description: Guests (comma-separated, <stack>/<key>) this deploy may delete.
     default: ''
   allow-update:
-    description: Guests (resource keys, comma-separated) this deploy may update in place (a reboot).
+    description: Guests (comma-separated, <stack>/<key>) this deploy may update in place (a reboot).
     default: ''
   timeout:
     description: Seconds to wait for each estate (including waiting while it is busy).

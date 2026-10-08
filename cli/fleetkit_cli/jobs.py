@@ -128,7 +128,13 @@ class JobManager:
         try:
             j.result = self.runner(j.request, j.emitter)
             final = "succeeded"
-        except Cancelled:
+        except Cancelled as e:
+            # What is known of a cancelled run: its plan, and for an `up` that
+            # had started, the steps that finished and those in flight.
+            if isinstance(e.result, dict):
+                j.result = j.emitter.redact(e.result)
+            if str(e) != "cancelled":
+                j.error = j.emitter.redact(str(e))
             final = "cancelled"
         except Exception as e:  # noqa: BLE001 - every failure is reported on the job
             # The message of a failing tool can carry a decrypted secret too.
@@ -153,6 +159,9 @@ class JobManager:
                 traceback.print_exc()
 
     def cancel(self, jid: str) -> Job | None:
+        """Ask the job to stop. Its engine (the pulumi process it started) is
+        signalled: it finishes the step in flight and starts no other. A
+        second cancel makes it terminate at once. Never `pulumi cancel`."""
         j = self.jobs.get(jid)
         if j and j.state not in TERMINAL and j.emitter:
             j.emitter.cancel()
