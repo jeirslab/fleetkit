@@ -40,6 +40,7 @@ from .github import GitHub, GitHubError
 from .jobs import BusyError, Job, JobManager
 from .pipeline import DeployRequest
 from .settings import GitSettings, Settings
+from .tokens import GITOPS
 
 TRUSTED = ("OWNER", "MEMBER", "COLLABORATOR")
 PREVIEW_ACTIONS = ("opened", "synchronize", "reopened", "ready_for_review")
@@ -89,6 +90,27 @@ class Repo:
                             f"refs/heads/{self.g.branch}"], capture_output=True)
         return p.returncode == 0
 
+    def commit_on(self, rev: str | None, branches: list[str]) -> str | None:
+        """Fetch; -> the commit `rev` names (None: the deploy branch head) when
+        it is on one of `branches` (an ancestor of its head), else None. A rev
+        that names no commit is None too: the answer does not say which."""
+        head = self.fetch()
+        if rev is None:
+            return head
+        if not rev or rev.startswith("-"):
+            return None
+        git = ["git", "--git-dir", str(self.mirror)]
+        p = subprocess.run([*git, "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}"],
+                           capture_output=True, text=True)
+        sha = p.stdout.strip()
+        if p.returncode != 0 or not sha:
+            return None
+        for b in branches:
+            if subprocess.run([*git, "merge-base", "--is-ancestor", sha, f"refs/heads/{b}"],
+                              capture_output=True).returncode == 0:
+                return sha
+        return None
+
     def checkout(self, sha: str) -> Path:
         with self.lock:
             d = self.checkouts / sha
@@ -114,7 +136,9 @@ def make_runner(s: Settings, repo: Repo, run: Any = None) -> Any:
 
     The deploy branch is the gate (it stands in for branch protection, which
     GitHub's free plan does not have on private repos): only a commit on it
-    deploys; a preview may be of any commit (a PR's head)."""
+    deploys; a preview may be of any commit (a PR's head). A scoped API token
+    is held to the deploy and preview branches for previews too, before the
+    job exists (tokens.check, Repo.commit_on)."""
     from . import pipeline
 
     run = run or pipeline.run
@@ -168,7 +192,7 @@ class GitOps:
                     continue
                 try:
                     j = self.manager.submit(DeployRequest(
-                        estate=estate, rev=head, preview=self.g.push_mode == "preview"))
+                        estate=estate, rev=head, preview=self.g.push_mode == "preview"), by=GITOPS)
                 except BusyError as e:
                     out["skipped"][estate] = f"deploying (job {e}); next poll or push"
                     continue
@@ -183,7 +207,7 @@ class GitOps:
         """Submit, or queue behind the estate's running job: a PR must not lose
         its preview because the estate was busy. -> job id or "queued"."""
         try:
-            j = self.manager.submit(req)
+            j = self.manager.submit(req, by=GITOPS)
         except BusyError:
             with self.lock:
                 self.state.setdefault("pending", []).append({"request": req.model_dump(), "link": link})

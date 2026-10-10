@@ -291,14 +291,17 @@ def adopt_cmd(ctx: click.Context, estate: str, stacks: tuple[str, ...], resource
               help="GitOps: the estate repo's git URL; each deploy runs from a checkout of its commit.")
 @click.option("--listen", default="127.0.0.1:8740", show_default=True, help="host:port")
 @click.option("--token-file", envvar="FLEETKIT_API_TOKEN_FILE", help="File holding the bearer token.")
+@click.option("--tokens-file", envvar="FLEETKIT_API_TOKENS_FILE",
+              help="JSON file of named, scoped tokens (tokens.py; docs/pulumi.md, \"HTTP API\").")
 @click.option("--no-auth", is_flag=True, help="No token; allowed only on a loopback address.")
 @click.option("--workers", default=4, show_default=True, help="Estates deploying at once.")
 @click.pass_context
-def serve(ctx: click.Context, repo: str | None, listen: str, token_file: str | None, no_auth: bool,
-          workers: int) -> None:
+def serve(ctx: click.Context, repo: str | None, listen: str, token_file: str | None,
+          tokens_file: str | None, no_auth: bool, workers: int) -> None:
     """Serve deploys over HTTP (see `fleetkit serve --help` and api.py)."""
     import uvicorn
 
+    from . import tokens
     from .api import create_app
     from .jobs import JobManager
 
@@ -306,12 +309,26 @@ def serve(ctx: click.Context, repo: str | None, listen: str, token_file: str | N
     token = os.environ.get("FLEETKIT_API_TOKEN")
     if token_file:
         token = Path(token_file).read_text().strip()
+    if token_file and not token and not no_auth:
+        raise click.ClickException(f"the token file {token_file} is empty")
     if no_auth:
         if host not in ("127.0.0.1", "::1", "localhost"):
             raise click.ClickException("--no-auth is only allowed on a loopback address")
+        if tokens_file:
+            raise click.ClickException("--no-auth and a tokens file (FLEETKIT_API_TOKENS_FILE): without auth "
+                                       "every request may do everything, so the scopes would mean nothing")
         token = None
-    elif not token:
-        raise click.ClickException("no token: set FLEETKIT_API_TOKEN(_FILE) or pass --token-file")
+    token = token or None
+    # A tokens file that cannot be used as written stops the server here: it
+    # never runs with fewer tokens than were configured.
+    try:
+        scoped = tokens.load(tokens_file) if tokens_file else []
+        tokens.Authenticator(token, scoped)
+    except tokens.TokenError as e:
+        raise click.ClickException(str(e))
+    if not no_auth and not token and not scoped:
+        raise click.ClickException("no token: set FLEETKIT_API_TOKEN(_FILE) or pass --token-file, or name "
+                                   "scoped tokens in FLEETKIT_API_TOKENS_FILE")
     try:
         s = Settings.from_env(ctx.obj["flake"], ctx.obj["state_dir"], repo)
     except SettingsError as e:
@@ -333,7 +350,7 @@ def serve(ctx: click.Context, repo: str | None, listen: str, token_file: str | N
         manager = JobManager(s.state_dir, runner, workers)
         gitops = GitOps(s, git, manager)
         gitops.start_polling()
-    uvicorn.run(create_app(manager, s, token, gitops), host=host or "127.0.0.1", port=int(port),
+    uvicorn.run(create_app(manager, s, token, gitops, scoped), host=host or "127.0.0.1", port=int(port),
                 log_level="info")
 
 

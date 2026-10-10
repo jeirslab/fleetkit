@@ -1,0 +1,32 @@
+{
+  "tokens": {
+    "operator-ci": {
+      "allow": true,
+      "estates": ["homelab", "tenant"],
+      "goals": ["switch", "test", "boot", "dry-activate"],
+      "hives": ["homelab", "tenant", "nodes"],
+      "infra": "apply",
+      "nixos": "apply",
+      "revs": "any",
+      "sha256": "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8"
+    },
+    "reader": {
+      "allow": false,
+      "estates": ["tenant"],
+      "file": "/run/secrets/fleetkit-token-reader",
+      "goals": ["dry-activate"],
+      "infra": "none",
+      "nixos": "none",
+      "revs": "deploy-branch"
+    },
+    "tenant-ci": {
+      "allow": false,
+      "estates": ["tenant"],
+      "file": "/run/secrets/fleetkit-token-tenant-ci",
+      "goals": ["dry-activate", "switch"],
+      "infra": "preview",
+      "nixos": "apply",
+      "revs": "deploy-branch"
+    }
+  }
+}

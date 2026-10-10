@@ -539,7 +539,7 @@ each run another commit, could not preview or deploy an estate with a tenant.
 
 | | |
 |---|---|
-| `POST /v1/deploys` | `{estate, stacks?, rev?, infra, nixos, hive?, on[], goal, preview, refresh, targets[], allow_replace[], allow_delete[], allow_update[], allow_create[]}` (names: `<stack>/<key>`, a URN, or an unambiguous key) → 202 and the job |
+| `POST /v1/deploys` | `{estate, stacks?, rev?, infra, nixos, hive?, on[], goal, preview, refresh, targets[], allow_replace[], allow_delete[], allow_update[], allow_create[]}` (names: `<stack>/<key>`, a URN, or an unambiguous key) → 202 and the job; 403 naming the field when a scoped token's scope refuses it ("Scoped tokens") |
 | `GET /v1/deploys[/{id}]` | jobs / one job (state, result with rev, programs and their sha256, the plan, what was refused, `applied`, and `stopped` when an up did not finish; error) |
 | `GET /v1/deploys/{id}/events?after=&wait=` | events from a sequence number, long-polling |
 | `GET /v1/deploys/{id}/stream` | the same as server-sent events, ending with the job record |
@@ -551,7 +551,113 @@ each run another commit, could not preview or deploy an estate with a tenant.
 Bearer auth on every `/v1` route but the webhook; `--no-auth` only on
 loopback. One deploy per estate at a time (409 with the running job's id).
 Jobs are records plus JSONL event logs; a job cut off by a restart reads
-`interrupted`.
+`interrupted`. A job's record says who started it, `by`: the name of a scoped
+token (below), `api-token` for the unscoped one, `gitops` for a job the server
+started itself (a push, a poll, a pull request), `no-auth`; never a token.
+
+#### Scoped tokens (`cli/fleetkit_cli/tokens.py`)
+
+`FLEETKIT_API_TOKEN` (or `_FILE`, `--token-file`) is one token that can do
+everything: any estate, any stack, an apply, any hive, every job. It stays
+exactly that. A server that deploys several estates can also hand a caller the
+right to deploy one of them: named tokens, each with a scope, in a JSON file
+(`FLEETKIT_API_TOKENS_FILE`, `--tokens-file`). The case it is for: a tenant's
+CI runner that may start a NixOS deploy of the tenant's hosts and has no right
+over the operator's estate or over infrastructure.
+
+```json
+{"tokens": {
+  "tenant-ci": {
+    "file": "/run/secrets/fleetkit-token-tenant-ci",
+    "estates": ["tenant"],
+    "infra": "preview",
+    "nixos": "apply",
+    "goals": ["dry-activate", "switch"]
+  },
+  "tenant-reader": {
+    "sha256": "<64 hex digits: sha256 of the value>",
+    "estates": ["tenant"]
+  }
+}}
+```
+
+The file holds no value. Each token is named by `file`, the path of a file
+that holds the value (read once at start, surrounding whitespace dropped; a
+relative path is relative to the tokens file), or by `sha256`, the hex digest
+of the value (`printf %s "$value" | sha256sum`). So the names and scopes can
+be public configuration (the NixOS module renders them into the store) while
+the values stay in secret files. A token is a bearer secret looked up by its
+digest: make it long and random (`openssl rand -hex 32`), because the digest
+of a guessable value can be searched by anyone who reads the file.
+
+| Field | Meaning | Default |
+|---|---|---|
+| `estates` | estates the token may name in a request; it sees the jobs and stacks of these and of no other | none |
+| `hives` | hives the token may deploy. A request's `hive` defaults to its estate, and the hive it would deploy must be in this list | the same names as `estates` |
+| `infra` | the Pulumi stage: `none` (a request must send `infra: false`), `preview` (`infra` only together with `preview: true`) or `apply` | `none` |
+| `nixos` | the Colmena stage: `none` (a request must send `nixos: false`), `build` (only together with `preview: true`) or `apply` | `none` |
+| `goals` | Colmena goals an apply may use | `["dry-activate"]` |
+| `revs` | `deploy-branch`: the commit a request names, **for a preview too**, must be on the deploy branch or on a preview branch (`FLEETKIT_PREVIEW_BRANCHES`); `any`: any commit the repo has | `deploy-branch` |
+| `allow` | whether a request may carry `allow_replace`, `allow_delete`, `allow_update`, `allow_create`, `targets` or `refresh` | `false` |
+
+A token with only `estates` can read its estates' jobs and start nothing.
+
+What the server does with a scoped token:
+
+- **`POST /v1/deploys` is checked before a job exists.** A request outside the
+  scope is `403` with `{"detail": {"error": "token <name>: ...", "field":
+  "<the field that was refused>"}}`, and nothing is created: no job, no record,
+  no event. A field the scope does not allow must be absent or at its default;
+  it is never dropped in silence and the rest run. That includes the defaults
+  that ask for more than the scope gives: `infra` and `nixos` default to
+  `true` and `goal` to `switch`, so a token with `infra: none` must send
+  `"infra": false`, and one without `switch` in `goals` must name its goal.
+  (A request that applies nothing with Colmena, a preview or `nixos: false`,
+  may leave `goal` at its default.) `stacks` needs an `infra` other than
+  `none`, `on` a `nixos` other than `none`; both stay inside the request's
+  estate and hive. `preview` and `pr` (a label on the job) are free.
+- **The check is default-deny.** It walks the fields of the request model
+  (`DeployRequest`): a field `tokens.py` does not classify is refused for a
+  scoped token unless it is at its default, so a field added to the API later
+  is closed to scoped tokens until someone decides what it means for them
+  (and `cli/tests/test_api.py` fails until it is classified).
+- **`hives` is checked as well as `estates`**, because a request may name any
+  hive while naming another estate: an estate check alone would let a tenant's
+  token deploy the operator's hive.
+- **`revs: deploy-branch` holds previews too.** A preview evaluates the commit
+  with the server's credentials present, and the unscoped token may preview
+  any commit ("The deploy branch is the gate", below). For a scoped token the
+  server fetches, resolves the request's `rev` (none: the deploy branch head)
+  and refuses it unless it is a commit on the deploy branch or on a preview
+  branch; a rev that names no commit gets the same answer. The job's `rev` is
+  then that commit's sha, so a branch that moves afterwards does not change
+  what runs. A commit that is only on a preview branch passes this check and
+  can be previewed; deploying it still fails in the job, as for anyone ("is
+  not on stable"). A server without a repo has no revs: a scoped token there
+  may not send one.
+- **Reads.** `GET /v1/deploys` lists the jobs of the token's estates only;
+  `GET /v1/deploys/{id}`, `/events`, `/stream` and `POST .../cancel` on another
+  estate's job are `404` with the same body as an id that never existed, so
+  ids do not leak. `GET /v1/estates` names its estates only. It sees every job
+  of its estates, whoever started it.
+- **`GET /v1/gitops` and `POST /v1/gitops/sync` are `403`**: they are about
+  every estate.
+- **Comparison.** The bearer value is hashed and compared with every
+  configured digest, each in constant time and with no early exit: the time
+  taken says neither which token matched nor whether one did. Only digests
+  are kept in memory. Neither a value nor a digest is put in a job, an event,
+  a log line or an error.
+- **The server does not start with fewer tokens than were configured.** A
+  tokens file that cannot be read or is not the JSON above, an unknown key or
+  value, a `file` that cannot be read or is empty, a name used twice or one of
+  the reserved `by` names, and two tokens with the same value (which scope a
+  request had would depend on the order of the file) are each an error at
+  start that names the file and the token, not the value. `--no-auth`
+  together with a tokens file is refused too.
+
+What a scope does not do: it does not limit which stacks of its estate or
+which nodes of its hive a request names, it does not rate-limit, and `revs:
+deploy-branch` trusts whoever can push to the deploy and preview branches.
 
 ## Adopting what already exists (`fleetkit adopt`)
 
@@ -796,7 +902,9 @@ deploys (not a preview) must be at a commit on its deploy branch
 `<sha> is not on stable`. Previews may be of any commit. With fleetkit's branch
 convention (work lands on `unstable` by PR; `stable` is promoted from it), a
 token that leaks through a workflow can preview anything and deploy only what
-is already on `stable`.
+is already on `stable`. A scoped token ("Scoped tokens", above) is held
+tighter: unless its scope says `revs: any`, it can preview only commits on the
+deploy branch or a preview branch, and it is refused before a job exists.
 
 ### From GitHub Actions (`actions/deploy`)
 
@@ -866,17 +974,51 @@ branch gate above holds either way).
 `nixosModules.fleetkit-server` runs it as a hardened systemd service
 (`services.fleetkit = { enable; repo; branch; previewBranches; deployOnPush;
 trigger; pushMode; poll; publicUrl; listen; firewallInterface; environmentFile;
-}`). The host holds
+tokens; }`). The host holds
 what deploying needs (the age key, Colmena's SSH key, a read-only deploy key,
 the Pulumi passphrase, the API token and webhook secret), all from
 `environmentFile`, none in the store: treat it like an operator's machine, and
 put a TLS proxy in front of anything but loopback.
 
+Scoped tokens are options, one attribute per name, with the fields of "Scoped
+tokens" above (`hives = null` means the estates' names):
+
+```nix
+services.fleetkit.tokens.tenant-ci = {
+  tokenFile = config.sops.secrets."fleetkit/tenant-ci".path;  # a string; readable by the fleetkit user
+  estates = [ "tenant" ];
+  infra = "preview";
+  nixos = "apply";
+  goals = [ "dry-activate" "switch" ];
+};
+```
+
+They are rendered to a file in the store (`services.fleetkit.tokensFile`, given
+to the service as `FLEETKIT_API_TOKENS_FILE`) that holds names, scopes and the
+*path* of each `tokenFile`. A value cannot come through the store: `tokenFile`
+is a string naming an absolute path outside it (a path value, which Nix would
+copy in, and a store path are refused at evaluation), or the token is given as
+`sha256`, its digest. The unscoped token is still `FLEETKIT_API_TOKEN_FILE` in
+`environmentFile`.
+
 ### Tested
 
 - `cli/tests` (in the package build, offline): the API with a fake runner
   (auth, lifecycle, events and stream, 409, failure, cancel, bad requests,
-  restart recovery); GitOps on a local git repo (one submission per commit, a
+  restart recovery); scoped tokens on a server with a local git repo (each
+  refusal is 403 on its field and leaves no job and no file: another estate,
+  another estate's hive, the Pulumi stage outside a preview, a goal outside
+  the list, a rev that is on neither branch, is no commit or looks like an
+  option, for previews as well, every `allow_*`, `targets`, `refresh`; reads
+  and a cancel of another estate's job are 404 with the body of an unknown id
+  and the job keeps running; the list and `/v1/estates` are filtered; the
+  GitOps routes are 403; what the token may do runs, with `by` and the rev
+  pinned to the commit; a request model with a field the scope code does not
+  know is refused; every digest is compared whichever matches; twenty-three
+  malformed tokens files, a missing one and two tokens with one value each
+  stop `fleetkit serve` with an error that has no value in it; no value or
+  digest in any response, record, event log or log line; the file the NixOS
+  module renders loads); GitOps on a local git repo (one submission per commit, a
   busy estate skipped, checkouts at the commit, the webhook's signature, a rev
   through the deploy API); pull requests against a fake GitHub API (previews
   at the PR head, statuses, one comment edited in place, forks, untrusted
@@ -885,6 +1027,11 @@ put a TLS proxy in front of anything but loopback.
 - `tests/pulumi_nix.sh` (gate): Pulumi.nix good and bad cases above; a
   hand-written `adopt` and `adoptUnresolved`; `options.import` refused with the
   error that names `adopt`.
+- `tests/fleetkit_server.sh` (gate, evaluation only): every option of
+  `services.fleetkit` has a description; `tokens` renders to exactly the file
+  the server's tests load (`cli/tests/tokens-module.json`); a `tokenFile` that
+  is a path value, a store path or relative, a token with both or neither of
+  `tokenFile` and `sha256`, and an unknown goal are refused.
   `trigger = pr`, a busy estate's preview queued); redaction. With a fake
   engine (`cli/tests/fakes.py`: real Automation API event objects, a state, a
   set of live resources, update plans, `protect`, signals): the guard refuses
@@ -1004,8 +1151,15 @@ put a TLS proxy in front of anything but loopback.
   head and reported (statuses, and a comment with the real plan) to a
   stand-in GitHub API; then the action's client (`actions/deploy`) on the same
   server: a PR preview with its summary and comment, a deploy of a commit not
-  on the branch refused, one on it run, a fork's PR skipped; real colmena
-  evaluates the hive file. The action's tailnet step is checked by shellcheck
+  on the branch refused, one on it run, a fork's PR skipped; then a scoped
+  token whose value is in a file of its own: the Pulumi stage, a Pulumi
+  preview, the goal `switch`, the estate's default hive, another estate, a
+  commit off the branch (for a preview too), `allow_delete` and both GitOps
+  routes are each 403 on their field and make no job, a Colmena
+  `dry-activate` of a node of its hive at a commit on the branch runs with
+  `by: tenant` and the rev pinned, `/v1/estates` names its estate only, and
+  neither the value nor its digest is in the server's log or a job; real
+  colmena evaluates the hive file. The action's tailnet step is checked by shellcheck
   and the example workflow by actionlint; neither ran on GitHub.
 
 Not tested: `pulumi up` or `colmena apply` against real hosts, a linode bucket,
