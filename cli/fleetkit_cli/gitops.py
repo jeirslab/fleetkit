@@ -32,14 +32,16 @@ import shutil
 import subprocess
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from . import guard
 from .github import GitHub, GitHubError
 from .jobs import BusyError, Job, JobManager
 from .pipeline import DeployRequest
 from .settings import GitSettings, Settings
+from .tokens import GITOPS
 
 TRUSTED = ("OWNER", "MEMBER", "COLLABORATOR")
 PREVIEW_ACTIONS = ("opened", "synchronize", "reopened", "ready_for_review")
@@ -63,6 +65,8 @@ class Repo:
         self.mirror = s.state_dir / "repo.git"
         self.checkouts = s.state_dir / "checkouts"
         self.lock = threading.Lock()
+        # sha -> how many are using its checkout now (use): never pruned.
+        self.held: dict[str, int] = {}
 
     def fetch(self) -> str:
         """Update the mirror; -> the branch head."""
@@ -89,21 +93,82 @@ class Repo:
                             f"refs/heads/{self.g.branch}"], capture_output=True)
         return p.returncode == 0
 
+    def commit_on(self, rev: str | None, branches: list[str], heads: bool = False) -> str | None:
+        """Fetch; -> the commit `rev` names (None: the deploy branch head) when
+        it is on one of `branches` (an ancestor of its head; with `heads`, the
+        head itself), else None. A rev that names no commit is None too: the
+        answer does not say which."""
+        head = self.fetch()
+        if rev is None:
+            return head
+        if not rev or rev.startswith("-"):
+            return None
+        git = ["git", "--git-dir", str(self.mirror)]
+        p = subprocess.run([*git, "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}"],
+                           capture_output=True, text=True)
+        sha = p.stdout.strip()
+        if p.returncode != 0 or not sha:
+            return None
+        for b in branches:
+            if heads:
+                tip = subprocess.run([*git, "rev-parse", "--verify", "--quiet", f"refs/heads/{b}^{{commit}}"],
+                                     capture_output=True, text=True)
+                on = tip.returncode == 0 and tip.stdout.strip() == sha
+            else:
+                on = subprocess.run([*git, "merge-base", "--is-ancestor", sha, f"refs/heads/{b}"],
+                                    capture_output=True).returncode == 0
+            if on:
+                return sha
+        return None
+
     def checkout(self, sha: str) -> Path:
+        """The checkout of `sha`, made if need be. Only the newest few are
+        kept: whoever works in one for longer than this call holds it (use)."""
         with self.lock:
-            d = self.checkouts / sha
-            if not (d / "flake.nix").exists():
-                if d.exists():
-                    shutil.rmtree(d)
-                self.checkouts.mkdir(parents=True, exist_ok=True)
-                _git("clone", "--quiet", "--shared", "--no-checkout", str(self.mirror), str(d))
-                _git("checkout", "--quiet", "--detach", sha, cwd=d)
-            d.touch()
-            self._prune(keep={sha})
-            return d
+            return self._checkout(sha)
+
+    @contextmanager
+    def use(self, sha: str) -> Iterator[Path]:
+        """The checkout of `sha`, not pruned while the block runs. The
+        checkouts are shared by every estate: without this, deploys of one
+        estate at a few other commits remove the checkout another estate's
+        running deploy is in (colmena's cwd, the stack's sops files)."""
+        with self.lock:
+            self.held[sha] = self.held.get(sha, 0) + 1
+            try:
+                d = self._checkout(sha, users=1)
+            except BaseException:
+                self._release(sha)
+                raise
+        try:
+            yield d
+        finally:
+            with self.lock:
+                self._release(sha)
+
+    def _release(self, sha: str) -> None:
+        self.held[sha] -= 1
+        if not self.held[sha]:
+            del self.held[sha]
+
+    def _checkout(self, sha: str, users: int = 0) -> Path:
+        """With the lock held. `users`: how many of held[sha] are the caller."""
+        d = self.checkouts / sha
+        # (A tree someone else is working in is left as it is, whatever it holds.)
+        if not (d / "flake.nix").exists() and not (d.exists() and self.held.get(sha, 0) > users):
+            if d.exists():
+                shutil.rmtree(d)
+            self.checkouts.mkdir(parents=True, exist_ok=True)
+            _git("clone", "--quiet", "--shared", "--no-checkout", str(self.mirror), str(d))
+            _git("checkout", "--quiet", "--detach", sha, cwd=d)
+        d.touch()
+        self._prune(keep={sha})
+        return d
 
     def _prune(self, keep: set[str]) -> None:
-        olds = sorted((p for p in self.checkouts.iterdir() if p.is_dir() and p.name not in keep),
+        # A checkout in use is neither removed nor counted.
+        olds = sorted((p for p in self.checkouts.iterdir()
+                       if p.is_dir() and p.name not in keep and p.name not in self.held),
                       key=lambda p: p.stat().st_mtime, reverse=True)
         for p in olds[self.g.keep - 1:]:
             shutil.rmtree(p, ignore_errors=True)
@@ -114,7 +179,9 @@ def make_runner(s: Settings, repo: Repo, run: Any = None) -> Any:
 
     The deploy branch is the gate (it stands in for branch protection, which
     GitHub's free plan does not have on private repos): only a commit on it
-    deploys; a preview may be of any commit (a PR's head)."""
+    deploys; a preview may be of any commit (a PR's head). A scoped API token
+    is held to the deploy and preview branches for previews too, before the
+    job exists (tokens.check, Repo.commit_on)."""
     from . import pipeline
 
     run = run or pipeline.run
@@ -126,7 +193,9 @@ def make_runner(s: Settings, repo: Repo, run: Any = None) -> Any:
                                   f"branch deploy (previews may be of any commit)")
         ev.emit("git", "checkout", rev=sha, branch=repo.g.branch)
         try:
-            return {"rev": sha, **run(s.at(repo.checkout(sha)), req, ev)}
+            # Held to the end of the run: another job's checkout does not prune it.
+            with repo.use(sha) as d:
+                return {"rev": sha, **run(s.at(d), req, ev)}
         except guard.GuardError as e:
             # A refused deploy: the failed job still carries its plan.
             e.result = {"rev": sha, **(e.result or {})}
@@ -168,7 +237,7 @@ class GitOps:
                     continue
                 try:
                     j = self.manager.submit(DeployRequest(
-                        estate=estate, rev=head, preview=self.g.push_mode == "preview"))
+                        estate=estate, rev=head, preview=self.g.push_mode == "preview"), by=GITOPS)
                 except BusyError as e:
                     out["skipped"][estate] = f"deploying (job {e}); next poll or push"
                     continue
@@ -183,7 +252,7 @@ class GitOps:
         """Submit, or queue behind the estate's running job: a PR must not lose
         its preview because the estate was busy. -> job id or "queued"."""
         try:
-            j = self.manager.submit(req)
+            j = self.manager.submit(req, by=GITOPS)
         except BusyError:
             with self.lock:
                 self.state.setdefault("pending", []).append({"request": req.model_dump(), "link": link})

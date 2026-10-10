@@ -42,6 +42,12 @@ if ! bash tests/hive.sh >&2; then
   eval_=fail
   log "eval: tests/hive.sh FAIL"
 fi
+# nixosModules.fleetkit-server: every option described, the API tokens rendered
+# to the file the server reads, no token value through the store.
+if ! bash tests/fleetkit_server.sh >&2; then
+  eval_=fail
+  log "eval: tests/fleetkit_server.sh FAIL"
+fi
 log "eval: $eval_"
 
 lint=pass

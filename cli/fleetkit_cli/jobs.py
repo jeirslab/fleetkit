@@ -5,6 +5,9 @@ A second deploy of an estate that is still running is refused (BusyError), not
 queued: a caller that retries decides what to do, and nothing deploys an
 estate twice behind anyone's back. A job found running at startup was cut off
 by a restart and is marked interrupted.
+
+A record says who started the job (`by`): the name of the API token
+(tokens.py), never the token.
 """
 from __future__ import annotations
 
@@ -29,9 +32,10 @@ class BusyError(Exception):
 
 
 class Job:
-    def __init__(self, jid: str, req: DeployRequest, d: Path):
+    def __init__(self, jid: str, req: DeployRequest, d: Path, by: str | None = None):
         self.id = jid
         self.request = req
+        self.by = by  # a token's name, or the server itself; None: a record older than `by`
         self.state = "queued"
         self.created = time.time()
         self.started: float | None = None
@@ -45,7 +49,7 @@ class Job:
 
     def record(self) -> dict[str, Any]:
         return {
-            "id": self.id, "state": self.state, "request": self.request.model_dump(),
+            "id": self.id, "state": self.state, "by": self.by, "request": self.request.model_dump(),
             "created": self.created, "started": self.started, "finished": self.finished,
             "result": self.result, "error": self.error, "events": len(self.events),
         }
@@ -95,7 +99,7 @@ class JobManager:
         for f in sorted(self.dir.glob("*.json")):
             try:
                 r = json.loads(f.read_text())
-                j = Job(r["id"], DeployRequest(**r["request"]), self.dir)
+                j = Job(r["id"], DeployRequest(**r["request"]), self.dir, r.get("by"))
                 j.state, j.created, j.started, j.finished = r["state"], r["created"], r["started"], r["finished"]
                 j.result, j.error = r.get("result"), r.get("error")
                 log = self.dir / f"{j.id}.jsonl"
@@ -108,12 +112,12 @@ class JobManager:
             except Exception:  # noqa: BLE001 - one unreadable record must not stop the server
                 continue
 
-    def submit(self, req: DeployRequest) -> Job:
+    def submit(self, req: DeployRequest, by: str | None = None) -> Job:
         with self.lock:
             busy = self.active.get(req.estate)
             if busy:
                 raise BusyError(busy)
-            j = Job(uuid.uuid4().hex[:12], req, self.dir)
+            j = Job(uuid.uuid4().hex[:12], req, self.dir, by)
             self.jobs[j.id] = j
             self.active[req.estate] = j.id
             j.emitter = Emitter(j.add)

@@ -7,6 +7,11 @@
 # with, a read-only deploy key for the repo, the Pulumi passphrase, and the API
 # token. All of them come from files (environmentFile, or paths in it); none is
 # a Nix value, so none reaches the store.
+#
+# tokens.<name>: API tokens limited to an estate and to what they may run. The
+# names and scopes are configuration and are rendered into a file in the store
+# (FLEETKIT_API_TOKENS_FILE); a token's value is not: the file names the path
+# of a file that holds it (tokenFile), or its SHA-256 digest.
 { self }:
 {
   config,
@@ -17,6 +22,149 @@
 let
   cfg = config.services.fleetkit;
   inherit (lib) mkOption types;
+  goals = [
+    "switch"
+    "test"
+    "boot"
+    "dry-activate"
+  ];
+  # What the server accepts as a token's name (cli/fleetkit_cli/tokens.py,
+  # _NAME and RESERVED): refused here, at evaluation, rather than by a service
+  # that does not start.
+  reservedNames = [
+    "api-token"
+    "no-auth"
+    "gitops"
+  ];
+  nameOk = name: builtins.match "[A-Za-z0-9][A-Za-z0-9._-]{0,63}" name != null && !(lib.elem name reservedNames);
+  emptyDigest = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+  # A string, not a path: a path value would be copied into the store when the
+  # file is rendered, and the token with it.
+  secretPath =
+    types.addCheck types.str (p: lib.hasPrefix "/" p && !lib.hasPrefix builtins.storeDir p)
+    // {
+      description = "absolute path, as a string, outside the Nix store";
+    };
+  tokenModule = {
+    options = {
+      tokenFile = mkOption {
+        type = types.nullOr secretPath;
+        default = null;
+        example = "/run/secrets/fleetkit-token-tenant";
+        description = ''
+          Path of a file that holds the token's value (one line), readable by
+          the fleetkit user when the service starts. A string naming a path
+          outside the Nix store: the value never reaches the store. Exactly
+          one of tokenFile and sha256 is set.
+        '';
+      };
+      sha256 = mkOption {
+        type = types.nullOr (types.strMatching "[0-9a-f]{64}");
+        default = null;
+        description = ''
+          The SHA-256 digest of the token's value, in hex, instead of
+          tokenFile: the server then needs no file for this token. Only for a
+          value that is long and random (a digest of anything guessable can be
+          searched).
+        '';
+      };
+      estates = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        example = [ "tenant" ];
+        description = ''
+          Estates the token may name in a request. It sees the jobs and the
+          stacks of these estates and of no other.
+        '';
+      };
+      hives = mkOption {
+        type = types.nullOr (types.listOf types.str);
+        default = null;
+        description = ''
+          Hives the token may deploy. A request's hive defaults to its estate
+          and must be in this list. null: the same names as estates.
+        '';
+      };
+      infra = mkOption {
+        type = types.enum [
+          "none"
+          "preview"
+          "apply"
+        ];
+        default = "none";
+        description = ''
+          The Pulumi stage. none: a request must send infra false. preview:
+          only in a preview. apply: pulumi up as well.
+        '';
+      };
+      nixos = mkOption {
+        type = types.enum [
+          "none"
+          "build"
+          "apply"
+        ];
+        default = "none";
+        description = ''
+          The Colmena stage. none: a request must send nixos false. build:
+          only in a preview (colmena build). apply: colmena apply with one of
+          goals.
+        '';
+      };
+      goals = mkOption {
+        type = types.listOf (types.enum goals);
+        default = [ "dry-activate" ];
+        example = [
+          "dry-activate"
+          "switch"
+        ];
+        description = "Colmena goals the token may apply (with nixos = apply).";
+      };
+      revs = mkOption {
+        type = types.enum [
+          "deploy-branch"
+          "head"
+          "any"
+        ];
+        default = "deploy-branch";
+        description = ''
+          deploy-branch: the commit of a request, of a preview too, must be on
+          the deploy branch or on one of previewBranches (a preview evaluates
+          the commit with the server's credentials present). That is any
+          commit of their history: the token can deploy an old configuration
+          again. head: only the head of the deploy branch, and in a preview
+          the head of one of previewBranches too. any: any commit the repo
+          has, as for the unscoped token.
+        '';
+      };
+      allow = mkOption {
+        type = types.bool;
+        default = false;
+        description = ''
+          Whether a request may carry allow_replace, allow_delete,
+          allow_update, allow_create, targets or refresh.
+        '';
+      };
+    };
+  };
+  tokensFile = pkgs.writeText "fleetkit-tokens.json" (
+    builtins.toJSON {
+      tokens = lib.mapAttrs (
+        _: t:
+        (if t.tokenFile != null then { file = t.tokenFile; } else { inherit (t) sha256; })
+        // {
+          inherit (t)
+            estates
+            infra
+            nixos
+            goals
+            revs
+            allow
+            ;
+        }
+        // lib.optionalAttrs (t.hives != null) { inherit (t) hives; }
+      ) cfg.tokens;
+    }
+  );
 in
 {
   options.services.fleetkit = {
@@ -124,9 +272,58 @@ in
       default = "/var/lib/fleetkit";
       description = "Mirror, checkouts, work dirs, local Pulumi state and job logs.";
     };
+    tokens = mkOption {
+      type = types.attrsOf (types.submodule tokenModule);
+      default = { };
+      example = lib.literalExpression ''
+        {
+          tenant-ci = {
+            tokenFile = config.sops.secrets."fleetkit/tenant-ci".path;
+            estates = [ "tenant" ];
+            nixos = "apply";
+            goals = [ "dry-activate" "switch" ];
+          };
+        }
+      '';
+      description = ''
+        Named API tokens, each limited to estates and to what it may run
+        (docs/pulumi.md, "Scoped tokens"). The name is what a job records as
+        having started it. A token named here can do nothing that its options
+        do not grant; the token of FLEETKIT_API_TOKEN (environmentFile) stays
+        and can do everything. The server does not start when a tokenFile
+        cannot be read or two tokens have the same value.
+      '';
+    };
+    tokensFile = mkOption {
+      type = types.path;
+      readOnly = true;
+      description = ''
+        The file tokens is rendered to (FLEETKIT_API_TOKENS_FILE): names,
+        scopes, and for each token the path of its tokenFile or its digest.
+        No value.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
+    services.fleetkit.tokensFile = tokensFile;
+    assertions = lib.concatLists (
+      lib.mapAttrsToList (name: t: [
+        {
+          assertion = (t.tokenFile != null) != (t.sha256 != null);
+          message = "services.fleetkit.tokens.${name}: exactly one of tokenFile and sha256 must be set.";
+        }
+        {
+          assertion = nameOk name;
+          message = "services.fleetkit.tokens: the name ${builtins.toJSON name} is not a token name (letters, digits, '.', '_' and '-', at most 64, starting with a letter or a digit, and not ${lib.concatStringsSep ", " reservedNames}, which are what a job records for the unscoped token and for the server itself).";
+        }
+        {
+          assertion = t.sha256 != emptyDigest;
+          message = "services.fleetkit.tokens.${name}: sha256 is the digest of the empty value.";
+        }
+      ]) cfg.tokens
+    );
+
     users.users.fleetkit = {
       isSystemUser = true;
       group = "fleetkit";
@@ -164,6 +361,9 @@ in
       // lib.optionalAttrs (cfg.publicUrl != null) {
         FLEETKIT_PUBLIC_URL = cfg.publicUrl;
         HOME = cfg.stateDir;
+      }
+      // lib.optionalAttrs (cfg.tokens != { }) {
+        FLEETKIT_API_TOKENS_FILE = "${cfg.tokensFile}";
       };
       serviceConfig = {
         ExecStart = "${lib.getExe cfg.package} serve --listen ${cfg.listen} --workers ${toString cfg.workers}";

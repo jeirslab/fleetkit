@@ -20,6 +20,12 @@
 #      then the GitHub Action's client (actions/deploy) on the same server: a PR
 #      preview with its summary and comment, a deploy of a commit not on the
 #      branch refused, one on it run, a fork's PR skipped;
+#      then a scoped token (FLEETKIT_API_TOKENS_FILE; its value in a file of
+#      its own): a Colmena dry-activate of its hive at a commit on the branch
+#      runs and the job says `by: tenant`; the Pulumi stage, another goal, the
+#      estate's default hive, a commit off the branch, a request that runs no
+#      stage and the GitOps routes are each 403 with the field, and no job is
+#      made;
 #   4. real colmena evaluates the runner's hive file.
 #
 # Not a gate: it needs the network (Pulumi plugins, provider binaries). No host
@@ -177,10 +183,16 @@ python3 "$TMP/gh.py" 18742 "$TMP/gh.jsonl" &
 GH=$!
 trap 'kill $GH 2>/dev/null; cleanup' EXIT
 echo -n "e2e-token" >"$TMP/token"
+# A scoped token: estate mini, the hive `example` only, Colmena dry-activate,
+# no Pulumi stage, commits on the deploy branch. The tokens file names the
+# file that holds the value.
+echo "e2e-tenant" >"$TMP/tenant.token"
+printf '{"tokens": {"tenant": {"file": "%s", "estates": ["mini"], "hives": ["example"], "nixos": "apply"}}}\n' \
+  "$TMP/tenant.token" >"$TMP/tokens.json"
 WH="e2e-hook"
 FLEETKIT_REPO="file://$E" FLEETKIT_DEPLOY_ON_PUSH=mini FLEETKIT_PUSH_MODE=preview FLEETKIT_WEBHOOK_SECRET="$WH" \
   FLEETKIT_GITHUB_TOKEN=gh-e2e FLEETKIT_GITHUB_API=http://127.0.0.1:18742 \
-  FLEETKIT_STATE_DIR="$TMP/gstate" \
+  FLEETKIT_STATE_DIR="$TMP/gstate" FLEETKIT_API_TOKENS_FILE="$TMP/tokens.json" \
   "$FK" serve --listen 127.0.0.1:18741 --token-file "$TMP/token" >"$TMP/serve.log" 2>&1 &
 SERVER=$!
 API=http://127.0.0.1:18741
@@ -271,6 +283,58 @@ fi
 fork="{\"pull_request\":{\"number\":3,\"head\":{\"sha\":\"$three\",\"repo\":{\"full_name\":\"someone/fork\"}}}}"
 act d pull_request "$fork" FLEETKIT_API_TOKEN= || fail "action: fork PR failed instead of skipping"
 grep -q '^skipped$' "$TMP/d.output" || fail "action: fork PR not reported skipped"
+
+# A scoped token against the same server.
+tenant=(-H "Authorization: Bearer e2e-tenant" -H 'content-type: application/json')
+njobs() { tools curl -sf "${auth[@]}" "$API/v1/deploys?limit=1000" | tools jq length; }
+scoped() { # request body -> the http code; the answer is in $TMP/scoped.json
+  tools curl -s -o "$TMP/scoped.json" -w '%{http_code}' "${tenant[@]}" -X POST "$API/v1/deploys" -d "$1"
+}
+refused() { # what, field, request body
+  local code
+  code=$(scoped "$3")
+  [[ $code == 403 && $(tools jq -r .detail.field "$TMP/scoped.json") == "$2" ]] \
+    || { cat "$TMP/scoped.json" >&2; fail "scoped: $1 got $code, not 403 on $2"; }
+}
+before=$(njobs)
+ok='"estate":"mini","hive":"example","infra":false,"goal":"dry-activate"'
+refused "the Pulumi stage" infra "{\"estate\":\"mini\",\"hive\":\"example\",\"goal\":\"dry-activate\",\"rev\":\"$two\"}"
+refused "a Pulumi preview" infra "{\"estate\":\"mini\",\"hive\":\"example\",\"preview\":true,\"rev\":\"$two\"}"
+refused "the goal switch" goal "{\"estate\":\"mini\",\"hive\":\"example\",\"infra\":false,\"rev\":\"$two\"}"
+refused "the estate's own hive" hive "{\"estate\":\"mini\",\"infra\":false,\"goal\":\"dry-activate\",\"rev\":\"$two\"}"
+refused "another estate" estate '{"estate":"other","hive":"example","infra":false,"goal":"dry-activate"}'
+refused "a commit that is not on main" rev "{$ok,\"rev\":\"$three\"}"
+refused "a preview of a commit that is not on main" rev "{$ok,\"preview\":true,\"rev\":\"$three\"}"
+refused "allow_delete" allow_delete "{$ok,\"rev\":\"$two\",\"allow_delete\":[\"web\"]}"
+refused "a request that runs no stage" nixos '{"estate":"mini","infra":false,"nixos":false}'
+code=$(tools curl -s -o /dev/null -w '%{http_code}' "${tenant[@]}" -X POST "$API/v1/gitops/sync")
+[[ $code == 403 ]] || fail "scoped: POST /v1/gitops/sync got $code, not 403"
+code=$(tools curl -s -o /dev/null -w '%{http_code}' "${tenant[@]}" "$API/v1/gitops")
+[[ $code == 403 ]] || fail "scoped: GET /v1/gitops got $code, not 403"
+[[ $(njobs) == "$before" ]] || fail "scoped: a refused request made a job ($before jobs before, $(njobs) after)"
+# What it may do: a dry-activate of a node of its hive, at a commit on main.
+code=$(scoped "{$ok,\"on\":[\"web\"],\"rev\":\"$two\"}")
+if [[ $code == 202 ]]; then
+  sjob=$(tools jq -r .id "$TMP/scoped.json")
+  rec=$(wait_job "$sjob")
+  echo "$rec" | tools jq -e --arg r "$two" \
+    '.state == "succeeded" and .by == "tenant" and .result.rev == $r and .request.rev == $r and .result.nixos == "dry-activate"' \
+    >/dev/null || { echo "$rec" >&2; fail "scoped: the dry-activate job"; }
+  grep -Eq "^apply dry-activate -f $TMP/gstate/runs/[^/ ]+/_hives/example.nix --impure --on web$" "$TMP/colmena.calls" \
+    || fail "scoped: colmena dry-activate not run"
+  # It reads its own job; the server's own jobs say who started them.
+  [[ $(tools curl -s "${tenant[@]}" "$API/v1/deploys/$sjob" | tools jq -r .by) == tenant ]] || fail "scoped: reading its job"
+  [[ $(tools curl -sf "${auth[@]}" "$API/v1/deploys/$job" | tools jq -r .by) == gitops ]] || fail "by of the sync job"
+  [[ $(njobs) == $((before + 1)) ]] || fail "scoped: $(njobs) jobs, not $((before + 1))"
+else
+  cat "$TMP/scoped.json" >&2; fail "scoped: the dry-activate got $code"
+fi
+[[ $(tools curl -s "${tenant[@]}" "$API/v1/estates" | tools jq -c keys) == '["mini"]' ]] || fail "scoped: estates"
+# Neither the value nor its digest is in the server's log, a job or an event.
+digest=$(printf 'e2e-tenant' | sha256sum | cut -d' ' -f1)
+if grep -rqs -e 'e2e-tenant' -e "$digest" "$TMP/serve.log" "$TMP/gstate/jobs"; then
+  fail "scoped: the token is in a log or a job"
+fi
 
 # 4.
 # The hive file the runner writes (into its run directory, gone by now).
