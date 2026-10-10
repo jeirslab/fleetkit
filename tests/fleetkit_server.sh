@@ -8,7 +8,9 @@
 #     FLEETKIT_API_TOKENS_FILE, and is not when there are no tokens;
 #   - a token's value cannot come through the store: a tokenFile that is a path
 #     value, a store path or a relative path is refused, and so are a token
-#     with both a tokenFile and a digest, with neither, and an unknown goal.
+#     with both a tokenFile and a digest, with neither, an unknown goal, a name
+#     the server would refuse at start (a reserved one, one that is not a
+#     name), and the digest of the empty value.
 # Detail goes to stderr; stdout carries one JSON line,
 # {"fleetkit_server":"pass"|"fail"}. Exit 0 iff pass. Run by tools/gates.sh as
 # part of the eval gate.
@@ -60,6 +62,12 @@ GOOD='{
   reader = {
     tokenFile = "/run/secrets/fleetkit-token-reader";
     estates = [ "tenant" ];
+  };
+  tenant-head = {
+    tokenFile = "/run/secrets/fleetkit-token-tenant-head";
+    estates = [ "tenant" ];
+    nixos = "apply";
+    revs = "head";
   };
   operator-ci = {
     sha256 = "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8";
@@ -131,7 +139,7 @@ if failed != [ ] then throw (builtins.concatStringsSep "; " failed) else builtin
   if nix eval --impure --json --expr "$expr" >/dev/null 2>"$ERR"; then
     fail=1
     log "FAIL: $1 was not refused"
-  elif ! rg -q -- "$3" "$ERR"; then
+  elif ! grep -q -- "$3" "$ERR"; then
     fail=1
     log "FAIL: $1: the error does not say '$3'"
     tail -n 15 "$ERR" >&2
@@ -147,6 +155,17 @@ refused "a token with no value" '{ t = { estates = [ "e" ]; }; }' 'exactly one o
 refused "a digest that is not one" '{ t = { sha256 = "abc"; }; }' 'sha256'
 refused "an unknown goal" '{ t = { tokenFile = "/run/secrets/t"; goals = [ "yolo" ]; }; }' 'goals'
 refused "an unknown infra" '{ t = { tokenFile = "/run/secrets/t"; infra = "yes"; }; }' 'infra'
+refused "an unknown revs" '{ t = { tokenFile = "/run/secrets/t"; revs = "branch"; }; }' 'revs'
+# Names the server refuses at start (tokens.py: RESERVED, _NAME).
+for name in api-token gitops no-auth; do
+  refused "the reserved name $name" "{ $name = { tokenFile = \"/run/secrets/t\"; }; }" 'is not a token name'
+done
+refused "a name with a space" '{ "a b" = { tokenFile = "/run/secrets/t"; }; }' 'is not a token name'
+refused "a name that starts with punctuation" '{ "-a" = { tokenFile = "/run/secrets/t"; }; }' 'is not a token name'
+refused "a name of 65 characters" \
+  "{ a$(printf 'b%.0s' {1..64}) = { tokenFile = \"/run/secrets/t\"; }; }" 'is not a token name'
+refused "the digest of the empty value" \
+  '{ t = { sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"; }; }' 'empty value'
 
 if [[ $fail == 0 ]]; then
   log "ok"

@@ -597,10 +597,14 @@ of a guessable value can be searched by anyone who reads the file.
 | `infra` | the Pulumi stage: `none` (a request must send `infra: false`), `preview` (`infra` only together with `preview: true`) or `apply` | `none` |
 | `nixos` | the Colmena stage: `none` (a request must send `nixos: false`), `build` (only together with `preview: true`) or `apply` | `none` |
 | `goals` | Colmena goals an apply may use | `["dry-activate"]` |
-| `revs` | `deploy-branch`: the commit a request names, **for a preview too**, must be on the deploy branch or on a preview branch (`FLEETKIT_PREVIEW_BRANCHES`); `any`: any commit the repo has | `deploy-branch` |
+| `revs` | `deploy-branch`: the commit a request names, **for a preview too**, must be on the deploy branch or on a preview branch (`FLEETKIT_PREVIEW_BRANCHES`), anywhere in their history; `head`: it must be the head of the deploy branch, or in a preview the head of a preview branch too; `any`: any commit the repo has | `deploy-branch` |
 | `allow` | whether a request may carry `allow_replace`, `allow_delete`, `allow_update`, `allow_create`, `targets` or `refresh` | `false` |
 
-A token with only `estates` can read its estates' jobs and start nothing.
+A token with only `estates` can read its estates' jobs and start nothing:
+a request that runs neither stage (`infra` and `nixos` both `false`) is
+refused for every scoped token (`403` on `nixos`), because such a job would
+still hold the estate's one deploy slot against the operator and a push, and
+fetch and check out a commit.
 
 What the server does with a scoped token:
 
@@ -635,6 +639,19 @@ What the server does with a scoped token:
   can be previewed; deploying it still fails in the job, as for anyone ("is
   not on stable"). A server without a repo has no revs: a scoped token there
   may not send one.
+- **`revs: deploy-branch` lets the token choose among the branch's history;
+  `revs: head` does not.** The hive, its node names (`on`) and the estate's
+  stacks are read in the tree of the commit that runs, so a scope of
+  `[estate t, hive t]` means whatever `pulumi.t` and `hives.t` were at that
+  commit. With `deploy-branch`, a token whose goals include `switch` can
+  switch its hosts back to any earlier commit of the deploy branch: a
+  configuration from before a fix, or one in which `hives.t` had other hosts.
+  That is a rollback, which some callers are meant to have. For one that is
+  not (a CI runner that deploys what was just merged), say `revs: head`: the
+  request's `rev` must then be absent or name the head of the deploy branch
+  as the server has just fetched it, or, in a preview, the head of a preview
+  branch. A runner that sends the sha it was started for is refused (`403` on
+  `rev`) when the branch has moved on since, and deploys nothing stale.
 - **Reads.** `GET /v1/deploys` lists the jobs of the token's estates only;
   `GET /v1/deploys/{id}`, `/events`, `/stream` and `POST .../cancel` on another
   estate's job are `404` with the same body as an id that never existed, so
@@ -649,15 +666,21 @@ What the server does with a scoped token:
   a log line or an error.
 - **The server does not start with fewer tokens than were configured.** A
   tokens file that cannot be read or is not the JSON above, an unknown key or
-  value, a `file` that cannot be read or is empty, a name used twice or one of
-  the reserved `by` names, and two tokens with the same value (which scope a
-  request had would depend on the order of the file) are each an error at
-  start that names the file and the token, not the value. `--no-auth`
+  value, a `file` that cannot be read or is empty, a `sha256` that is the
+  digest of the empty value, a name used twice or one of the reserved `by`
+  names, and two tokens with the same value (which scope a request had would
+  depend on the order of the file; an unscoped value that differs from a
+  scoped one only by whitespace around it counts as the same) are each an
+  error at start that names the file and the token, not the value. `--no-auth`
   together with a tokens file is refused too.
 
 What a scope does not do: it does not limit which stacks of its estate or
-which nodes of its hive a request names, it does not rate-limit, and `revs:
-deploy-branch` trusts whoever can push to the deploy and preview branches.
+which nodes of its hive a request names, and it does not rate-limit. `revs:
+deploy-branch` and `revs: head` both trust whoever can push to the deploy and
+preview branches: a scoped Pulumi preview of an estate evaluates what they
+pushed, with the server's credentials present. A token that may run a stage
+can hold its own estate's deploy slot (one deploy per estate) for as long as
+its jobs run; it cannot hold another estate's.
 
 ## Adopting what already exists (`fleetkit adopt`)
 
@@ -881,7 +904,8 @@ The branch is the desired state, and the server deploys it on itself:
 
 - it keeps a bare mirror of the estate repo (`<state>/repo.git`) and runs each
   job from a checkout of one commit (`<state>/checkouts/<sha>`, a shared clone,
-  detached; the last few are kept). Nix evaluates a clean tree at a known
+  detached; the last few are kept, and one a running job is in is never
+  removed, whichever estate's jobs come after it). Nix evaluates a clean tree at a known
   revision, and the job records the sha. What depends on the commit is read
   from that evaluation, the secret roots of a tenant included ("Where sops
   files are looked up");
@@ -904,7 +928,8 @@ convention (work lands on `unstable` by PR; `stable` is promoted from it), a
 token that leaks through a workflow can preview anything and deploy only what
 is already on `stable`. A scoped token ("Scoped tokens", above) is held
 tighter: unless its scope says `revs: any`, it can preview only commits on the
-deploy branch or a preview branch, and it is refused before a job exists.
+deploy branch or a preview branch (with `revs: head`, only their heads), and
+it is refused before a job exists.
 
 ### From GitHub Actions (`actions/deploy`)
 
@@ -1014,25 +1039,24 @@ copy in, and a store path are refused at evaluation), or the token is given as
   and the job keeps running; the list and `/v1/estates` are filtered; the
   GitOps routes are 403; what the token may do runs, with `by` and the rev
   pinned to the commit; a request model with a field the scope code does not
-  know is refused; every digest is compared whichever matches; twenty-three
-  malformed tokens files, a missing one and two tokens with one value each
-  stop `fleetkit serve` with an error that has no value in it; no value or
-  digest in any response, record, event log or log line; the file the NixOS
-  module renders loads); GitOps on a local git repo (one submission per commit, a
+  know is refused; a request that runs no stage is refused before the repo is
+  fetched, for a token that may run nothing and for one that may run both;
+  `revs: head` refuses history by every name for it, for previews as well,
+  and what was the head once the branch has moved; a checkout a running job
+  is in survives more deploys of another estate than checkouts are kept, and
+  is pruned afterwards; a fault in the check is 500 and no job, not a "failed
+  fetch"; every digest is compared whichever matches; twenty-five malformed
+  tokens files (the digest of the empty value among them), a missing one,
+  two tokens with one value, and an unscoped value that differs from a scoped
+  one by whitespace only each stop `fleetkit serve` with an error that has no
+  value in it; no value or digest in any response, record, event log or log
+  line; the file the NixOS module renders loads); GitOps on a local git repo (one submission per commit, a
   busy estate skipped, checkouts at the commit, the webhook's signature, a rev
   through the deploy API); pull requests against a fake GitHub API (previews
   at the PR head, statuses, one comment edited in place, forks, untrusted
   authors, drafts and other bases not previewed, deploy on merge with
   `trigger = pr`, a busy estate's preview queued); redaction.
-- `tests/pulumi_nix.sh` (gate): Pulumi.nix good and bad cases above; a
-  hand-written `adopt` and `adoptUnresolved`; `options.import` refused with the
-  error that names `adopt`.
-- `tests/fleetkit_server.sh` (gate, evaluation only): every option of
-  `services.fleetkit` has a description; `tokens` renders to exactly the file
-  the server's tests load (`cli/tests/tokens-module.json`); a `tokenFile` that
-  is a path value, a store path or relative, a token with both or neither of
-  `tokenFile` and `sha256`, and an unknown goal are refused.
-  `trigger = pr`, a busy estate's preview queued); redaction. With a fake
+  With a fake
   engine (`cli/tests/fakes.py`: real Automation API event objects, a state, a
   set of live resources, update plans, `protect`, signals): the guard refuses
   each gated op on a guest and lets it through when named, lists and allows a
@@ -1062,6 +1086,17 @@ copy in, and a store path are refused at evaluation), or the token is given as
   the adoption still differs or deletes a guest. Thirty-five hand mutations
   of the fixes for the plan binding, the cancel, protect, the run directories
   and the duplicate-id check are each caught.
+- `tests/pulumi_nix.sh` (gate): Pulumi.nix good and bad cases above; a
+  hand-written `adopt` and `adoptUnresolved`; `options.import` refused with the
+  error that names `adopt`.
+- `tests/fleetkit_server.sh` (gate, evaluation only): every option of
+  `services.fleetkit` has a description; `tokens` renders to exactly the file
+  the server's tests load (`cli/tests/tokens-module.json`); a `tokenFile` that
+  is a path value, a store path or relative, a token with both or neither of
+  `tokenFile` and `sha256`, an unknown goal, `infra` or `revs`, a name the
+  server would refuse at start (a reserved one, one with a space, one that
+  starts with punctuation, one of 65 characters) and the digest of the empty
+  value are refused.
 - `cli/tests/test_real_pulumi.py` (in the package build; the **real** engine,
   offline: a file backend in a temp dir and the `random` and `tls` providers
   that ship with `pulumi-bin`; a test that cannot run prints a `SKIPPED`

@@ -37,6 +37,7 @@ from pydantic import BaseModel, Field
 
 from . import render
 from . import tokens as tk
+from .gitops import GitError
 from .jobs import TERMINAL, BusyError, Job, JobManager
 from .pipeline import DeployRequest
 from .settings import Settings
@@ -90,8 +91,12 @@ def create_app(manager: JobManager, settings: Optional[Settings], token: Optiona
             raise HTTPException(404, f"no job {jid}")
         return j
 
-    def pin(rev: Optional[str]) -> Optional[str]:
-        return gitops.repo.commit_on(rev, [gitops.g.branch, *gitops.g.preview_branches])
+    def pin(rev: Optional[str], heads: bool = False, preview: bool = False) -> Optional[str]:
+        # revs = head: what deploys is the deploy branch's head; a preview may
+        # be of a preview branch's head too. revs = deploy-branch: a commit on
+        # any of them (tokens.check).
+        branches = [gitops.g.branch] if heads and not preview else [gitops.g.branch, *gitops.g.preview_branches]
+        return gitops.repo.commit_on(rev, branches, heads=heads)
 
     @app.get("/healthz")
     def healthz() -> dict[str, Any]:
@@ -103,8 +108,11 @@ def create_app(manager: JobManager, settings: Optional[Settings], token: Optiona
             req = tk.check(p, req, pin if gitops is not None else None)
         except tk.Refused as e:
             raise refuse(p, e.field, e.why)
-        except Exception:  # noqa: BLE001 - only a scoped token gets here: git's own words stay with the server
+        except (GitError, OSError):  # only a scoped token gets here: git's own words stay with the server
             raise HTTPException(502, "the repo could not be fetched, so the rev was not checked; no job was created")
+        # Anything else out of the check is a fault of the server's own: it is
+        # not called a failed fetch. It propagates (500, no job), and the
+        # traceback goes to the server's log.
         try:
             return manager.submit(req, by=p.name).record()
         except BusyError as e:
@@ -155,10 +163,11 @@ def create_app(manager: JobManager, settings: Optional[Settings], token: Optiona
         if settings is None:
             raise HTTPException(503, "no estate repo configured")
         try:
-            s = settings
-            if gitops is not None:
-                s = settings.at(gitops.repo.checkout(gitops.repo.resolve(None)))
-            return {e: st for e, st in render.estates(s).items() if p.sees(e)}
+            if gitops is None:
+                return {e: st for e, st in render.estates(settings).items() if p.sees(e)}
+            # Held while it is evaluated: a deploy elsewhere must not prune it.
+            with gitops.repo.use(gitops.repo.resolve(None)) as d:
+                return {e: st for e, st in render.estates(settings.at(d)).items() if p.sees(e)}
         except Exception as e:  # noqa: BLE001 - reported to the caller
             # An evaluation error can quote any part of the repo: not to a scoped token.
             raise HTTPException(500, str(e) if p.scope is None else "the estates could not be evaluated")

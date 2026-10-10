@@ -292,7 +292,7 @@ def adopt_cmd(ctx: click.Context, estate: str, stacks: tuple[str, ...], resource
 @click.option("--listen", default="127.0.0.1:8740", show_default=True, help="host:port")
 @click.option("--token-file", envvar="FLEETKIT_API_TOKEN_FILE", help="File holding the bearer token.")
 @click.option("--tokens-file", envvar="FLEETKIT_API_TOKENS_FILE",
-              help="JSON file of named, scoped tokens (tokens.py; docs/pulumi.md, \"HTTP API\").")
+              help="JSON file of named, scoped tokens (tokens.py; docs/pulumi.md, \"Scoped tokens\").")
 @click.option("--no-auth", is_flag=True, help="No token; allowed only on a loopback address.")
 @click.option("--workers", default=4, show_default=True, help="Estates deploying at once.")
 @click.pass_context

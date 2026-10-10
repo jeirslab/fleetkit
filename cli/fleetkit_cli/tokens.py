@@ -7,7 +7,7 @@ before) and any number of named, scoped ones read from a JSON file
   {"tokens": {"<name>": {
       "sha256": "<hex digest of the value>"  or  "file": "<path to the value>",
       "estates": [...], "hives": [...], "infra": "none|preview|apply",
-      "nixos": "none|build|apply", "goals": [...], "revs": "deploy-branch|any",
+      "nixos": "none|build|apply", "goals": [...], "revs": "deploy-branch|head|any",
       "allow": false}}}
 
 The file holds no value: a digest, or the path of a file with the value. Only
@@ -40,7 +40,7 @@ RESERVED = (UNSCOPED, NO_AUTH, GITOPS)
 GOALS: tuple[str, ...] = get_args(DeployRequest.model_fields["goal"].annotation)
 INFRA = ("none", "preview", "apply")
 NIXOS = ("none", "build", "apply")
-REVS = ("deploy-branch", "any")
+REVS = ("deploy-branch", "head", "any")
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 _HEX = re.compile(r"[0-9a-fA-F]{64}")
@@ -129,6 +129,9 @@ def _entry(name: str, e: Any, base: Path) -> Token:
         if not isinstance(e["sha256"], str) or not _HEX.fullmatch(e["sha256"]):
             raise TokenError(f"token {name}: sha256 must be 64 hex digits")
         digest = bytes.fromhex(e["sha256"])
+        if hmac.compare_digest(digest, _digest("")):
+            # As for an empty file: no bearer value is not a token.
+            raise TokenError(f"token {name}: sha256 is the digest of the empty value")
     else:
         if not isinstance(e["file"], str) or not e["file"]:
             raise TokenError(f"token {name}: file must be a path")
@@ -201,6 +204,15 @@ class Authenticator:
                     # Two names for one value: which scope a request has would
                     # depend on the order of the file.
                     raise TokenError(f"tokens {p.name} and {p2.name} have the same value")
+        # A scoped value read from a file is stripped; the unscoped one is used
+        # as it was given. The same text for both, apart from whitespace around
+        # it, would pass the check above and leave the unscoped token matching
+        # nothing a client sends.
+        if single is not None and single.strip() != single:
+            bare = _digest(single.strip())
+            for d, p in self._entries[1:]:
+                if hmac.compare_digest(d, bare):
+                    raise TokenError(f"tokens {UNSCOPED} and {p.name} have the same value")
 
     @property
     def open(self) -> bool:
@@ -331,9 +343,12 @@ _CHECKS: dict[str, Check] = {
 }
 CLASSIFIED = frozenset(_CHECKS) | {"rev"}
 
-# rev -> the sha when rev (None: the deploy branch head) is a commit on the
-# deploy branch or a preview branch, else None. gitops.Repo.commit_on.
-Pin = Callable[[Optional[str]], Optional[str]]
+# pin(rev, heads=, preview=) -> the sha when rev (None: the deploy branch head)
+# is a commit the scope's `revs` allows, else None (api.py, over
+# gitops.Repo.commit_on). heads False (revs = deploy-branch): a commit on the
+# deploy branch or a preview branch. heads True (revs = head): the head of the
+# deploy branch, or in a preview the head of a preview branch too.
+Pin = Callable[..., Optional[str]]
 
 
 def check(p: Principal, req: DeployRequest, pin: Optional[Pin] = None) -> DeployRequest:
@@ -355,6 +370,12 @@ def check(p: Principal, req: DeployRequest, pin: Optional[Pin] = None) -> Deploy
             why = None if getattr(req, name) == _default(req, name) else f"a scoped token may not set {name}"
         if why:
             raise Refused(name, why)
+    if not req.infra and not req.nixos:
+        # Every field is within the scope, and nothing would run: but the job
+        # would hold the estate's one deploy slot, and fetch and check out a
+        # commit. Refused before the repository is asked.
+        raise Refused("nixos", "the request runs no stage (infra and nixos are both false): a scoped token "
+                               "starts only a job that runs a stage")
     if sc.revs == "any":
         return req
     if pin is None:
@@ -362,7 +383,9 @@ def check(p: Principal, req: DeployRequest, pin: Optional[Pin] = None) -> Deploy
         if req.rev is not None:
             raise Refused("rev", "this server has no repo: the token may not name a rev")
         return req
-    sha = pin(req.rev)
+    heads = sc.revs == "head"
+    sha = pin(req.rev, heads=heads, preview=req.preview)
     if sha is None:
-        raise Refused("rev", "rev is not a commit on the deploy branch or a preview branch")
+        raise Refused("rev", "rev is not the head of the deploy branch (or, in a preview, of a preview branch)"
+                      if heads else "rev is not a commit on the deploy branch or a preview branch")
     return req.model_copy(update={"rev": sha})

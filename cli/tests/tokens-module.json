@@ -19,6 +19,15 @@
       "nixos": "none",
       "revs": "deploy-branch"
     },
+    "tenant-head": {
+      "allow": false,
+      "estates": ["tenant"],
+      "file": "/run/secrets/fleetkit-token-tenant-head",
+      "goals": ["dry-activate"],
+      "infra": "none",
+      "nixos": "apply",
+      "revs": "head"
+    },
     "tenant-ci": {
       "allow": false,
       "estates": ["tenant"],

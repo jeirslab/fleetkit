@@ -28,6 +28,16 @@ let
     "boot"
     "dry-activate"
   ];
+  # What the server accepts as a token's name (cli/fleetkit_cli/tokens.py,
+  # _NAME and RESERVED): refused here, at evaluation, rather than by a service
+  # that does not start.
+  reservedNames = [
+    "api-token"
+    "no-auth"
+    "gitops"
+  ];
+  nameOk = name: builtins.match "[A-Za-z0-9][A-Za-z0-9._-]{0,63}" name != null && !(lib.elem name reservedNames);
+  emptyDigest = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
   # A string, not a path: a path value would be copied into the store when the
   # file is rendered, and the token with it.
   secretPath =
@@ -112,14 +122,18 @@ let
       revs = mkOption {
         type = types.enum [
           "deploy-branch"
+          "head"
           "any"
         ];
         default = "deploy-branch";
         description = ''
           deploy-branch: the commit of a request, of a preview too, must be on
           the deploy branch or on one of previewBranches (a preview evaluates
-          the commit with the server's credentials present). any: any commit
-          the repo has, as for the unscoped token.
+          the commit with the server's credentials present). That is any
+          commit of their history: the token can deploy an old configuration
+          again. head: only the head of the deploy branch, and in a preview
+          the head of one of previewBranches too. any: any commit the repo
+          has, as for the unscoped token.
         '';
       };
       allow = mkOption {
@@ -293,10 +307,22 @@ in
 
   config = lib.mkIf cfg.enable {
     services.fleetkit.tokensFile = tokensFile;
-    assertions = lib.mapAttrsToList (name: t: {
-      assertion = (t.tokenFile != null) != (t.sha256 != null);
-      message = "services.fleetkit.tokens.${name}: exactly one of tokenFile and sha256 must be set.";
-    }) cfg.tokens;
+    assertions = lib.concatLists (
+      lib.mapAttrsToList (name: t: [
+        {
+          assertion = (t.tokenFile != null) != (t.sha256 != null);
+          message = "services.fleetkit.tokens.${name}: exactly one of tokenFile and sha256 must be set.";
+        }
+        {
+          assertion = nameOk name;
+          message = "services.fleetkit.tokens: the name ${builtins.toJSON name} is not a token name (letters, digits, '.', '_' and '-', at most 64, starting with a letter or a digit, and not ${lib.concatStringsSep ", " reservedNames}, which are what a job records for the unscoped token and for the server itself).";
+        }
+        {
+          assertion = t.sha256 != emptyDigest;
+          message = "services.fleetkit.tokens.${name}: sha256 is the digest of the empty value.";
+        }
+      ]) cfg.tokens
+    );
 
     users.users.fleetkit = {
       isSystemUser = true;

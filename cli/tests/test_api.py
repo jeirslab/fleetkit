@@ -138,7 +138,7 @@ import subprocess  # noqa: E402
 from click.testing import CliRunner  # noqa: E402
 
 from fleetkit_cli import render, tokens  # noqa: E402
-from fleetkit_cli.gitops import GitOps, Repo  # noqa: E402
+from fleetkit_cli.gitops import GitOps, Repo, make_runner  # noqa: E402
 from fleetkit_cli.settings import GitSettings, Settings  # noqa: E402
 
 TENANT = "tenant-value-5d1f0c"
@@ -196,6 +196,7 @@ class Scoped:
         self.origin = origin
         s = Settings(flake=None, state_dir=tmp / "state", passphrase="p",
                      git=GitSettings(url=str(origin), deploy_on_push=["ops"], preview_branches=["unstable"]))
+        self.s = s
         self.fake = Fake()
         self.m = JobManager(s.state_dir, self.fake)
         self.g = GitOps(s, Repo(s), self.m)
@@ -359,7 +360,7 @@ def test_scoped_defaults_allow_nothing(sc):
     assert field({"estate": "t", "infra": False, "nixos": False, "on": ["web"]}) == "on"
     assert field({"estate": "t", "infra": False, "nixos": False, "hive": "ops"}) == "hive"
     assert field({"estate": "t", "infra": False, "nixos": False, "goal": "test"}) == "goal"
-    assert field({"estate": "t", "infra": False, "nixos": False, "rev": sc.feature}) == "rev"
+    assert field({"estate": "t", "infra": False, "preview": True, "rev": sc.feature}) == "nixos"
     assert sc.jobs() == []
     assert sc.c.get("/v1/estates", headers=RH).json() == {"t": ["t-guests"]}
 
@@ -371,7 +372,7 @@ def test_hives_and_revs_of_a_scope(tmp_path):
         "b": {"sha256": sha("b-value"), "estates": ["t"], "nixos": "build"},
     })
     a, b = (tokens.Principal(t.name, t.scope) for t in tokens.load(f))
-    never = lambda rev: None  # noqa: E731 - no rev is on a branch
+    never = lambda rev, **kw: None  # noqa: E731 - no rev is on a branch
     # hives: the request's hive defaults to its estate, which is not in the list.
     with pytest.raises(tokens.Refused) as e:
         tokens.check(a, DeployRequest(estate="t", goal="dry-activate"), never)
@@ -384,7 +385,7 @@ def test_hives_and_revs_of_a_scope(tmp_path):
     with pytest.raises(tokens.Refused) as e:
         tokens.check(b, DeployRequest(estate="t", infra=False, goal="dry-activate"), never)
     assert e.value.field == "nixos"
-    assert tokens.check(b, DeployRequest(estate="t", infra=False, preview=True), lambda rev: "abc").rev == "abc"
+    assert tokens.check(b, DeployRequest(estate="t", infra=False, preview=True), lambda rev, **kw: "abc").rev == "abc"
     # A server without a repo deploys its working tree: no rev to choose.
     with pytest.raises(tokens.Refused) as e:
         tokens.check(b, DeployRequest(estate="t", infra=False, preview=True, rev="main"))
@@ -491,6 +492,8 @@ def _bad_files(d):
         "value file missing": (one({"file": str(d / "missing.token"), "estates": ["t"]}), "cannot read"),
         "value file a directory": (one({"file": str(d), "estates": ["t"]}), "cannot read"),
         "value file empty": (one({"file": str(d / "empty.token"), "estates": ["t"]}), "is empty"),
+        "digest of the empty value": (one({**good, "sha256": sha("")}), "empty value"),
+        "the same, in capitals": (one({**good, "sha256": sha("").upper()}), "empty value"),
         "bad infra": (one({**good, "infra": "yes"}), "infra must be one of"),
         "bad nixos": (one({**good, "nixos": "preview"}), "nixos must be one of"),
         "bad goal": (one({**good, "goals": ["switch", "yolo"]}), "goals has yolo"),
@@ -606,6 +609,9 @@ def test_the_nixos_modules_file_loads(tmp_path):
         estates=("homelab", "tenant"), hives=("homelab", "tenant", "nodes"), infra="apply", nixos="apply",
         goals=("switch", "test", "boot", "dry-activate"), revs="any", allow=True)
     assert set(by_name["operator-ci"].goals) == set(tokens.GOALS)
+    assert by_name["tenant-head"] == tokens.Scope(estates=("tenant",), hives=("tenant",), nixos="apply", revs="head")
+    # Every level of revs the server has is one the module's file uses.
+    assert {s.revs for s in by_name.values()} == set(tokens.REVS)
 
 
 def test_scoped_gets_no_words_of_git_or_of_the_evaluation(sc, monkeypatch):
@@ -623,3 +629,182 @@ def test_scoped_gets_no_words_of_git_or_of_the_evaluation(sc, monkeypatch):
     r = sc.c.post("/v1/deploys", json=OK, headers=TH)
     assert r.status_code == 502 and str(sc.origin) not in r.text and "git" not in r.text
     assert sc.jobs() == []
+
+
+# ── review findings ──────────────────────────────────────────────────────
+
+
+def test_a_request_that_runs_no_stage_is_refused(sc):
+    """A job that runs neither stage still takes the estate's one deploy slot
+    (the operator's deploy is 409, a push is skipped) and, with a repo, a fetch
+    and a checkout: a scoped token may not start one, whatever its scope."""
+    idle = {"estate": "t", "infra": False, "nixos": False}
+    for h in (RH, TH):  # a token that may run nothing, and one that may run both stages
+        for body in (idle, {**idle, "preview": True}, {**idle, "preview": True, "rev": sc.unstable, "pr": 99},
+                     {**idle, "rev": sc.feature}):
+            r = sc.c.post("/v1/deploys", json=body, headers=h)
+            assert r.status_code == 403, (body, r.status_code, r.text)
+            assert r.json()["detail"]["field"] == "nixos" and "no stage" in r.json()["detail"]["error"]
+    assert sc.jobs() == []
+    assert list((sc.tmp / "state" / "jobs").iterdir()) == []
+    # Refused before the repository is asked: nothing was fetched or checked out.
+    assert not (sc.tmp / "state" / "repo.git").exists() and not (sc.tmp / "state" / "checkouts").exists()
+    # So the estate is free for the operator.
+    assert sc.c.post("/v1/deploys", json={"estate": "t"}, headers=H).status_code == 202
+    # The unscoped token is not held to it, as before.
+    sc.finish()
+    r = sc.c.post("/v1/deploys", json=idle, headers=H)
+    assert r.status_code == 202 and r.json()["by"] == "api-token"
+    # Nor is the check itself for a scope of everything-but: revs any, allow.
+    p = tokens.Principal("x", tokens.Scope(estates=("t",), hives=("t",), infra="apply", nixos="apply", revs="any",
+                                           allow=True))
+    with pytest.raises(tokens.Refused) as e:
+        tokens.check(p, DeployRequest(**idle))
+    assert e.value.field == "nixos"
+
+
+HEAD_ONLY = "head-only-value-41c9"
+HH = {"Authorization": f"Bearer {HEAD_ONLY}"}
+
+
+def test_revs_head_holds_a_token_to_the_branch_heads(sc):
+    """revs = deploy-branch lets a token choose any commit of the branch's
+    history, and the hive, its nodes and the estate's stacks are what that
+    commit says: a `switch` back to a configuration from before a fix.
+    revs = head: only what the branch is now."""
+    # deploy-branch (the default): an old commit of the deploy branch is allowed, by any name for it.
+    for rev in (sc.old, "main~1", sc.old[:10]):
+        r = sc.c.post("/v1/deploys", json={**OK, "goal": "switch", "rev": rev}, headers=TH)
+        assert r.status_code == 202 and r.json()["request"]["rev"] == sc.old, r.text
+        sc.finish()
+        sc.fake.gate.clear()
+    before = len(sc.jobs())
+
+    f = tokens_file(sc.tmp / "conf2", {"head-only": {
+        "sha256": sha(HEAD_ONLY), "estates": ["t"], "infra": "preview", "nixos": "apply",
+        "goals": ["dry-activate", "switch"], "revs": "head"}})
+    c = TestClient(create_app(sc.m, sc.s, TOKEN, sc.g, tokens.load(f)))
+
+    def refused_rev(body):
+        r = c.post("/v1/deploys", json=body, headers=HH)
+        assert r.status_code == 403 and r.json()["detail"]["field"] == "rev", (body, r.status_code, r.text)
+        assert "head" in r.json()["detail"]["error"]
+
+    def runs(body, sha_):
+        r = c.post("/v1/deploys", json=body, headers=HH)
+        assert r.status_code == 202 and r.json()["request"]["rev"] == sha_, (body, r.status_code, r.text)
+        sc.finish()
+        sc.fake.gate.clear()
+
+    switch = {**OK, "goal": "switch"}
+    for rev in (sc.old, "main~1", sc.old[:10], "main^{/one}", sc.feature, "0" * 40, "no-such-rev"):
+        refused_rev({**switch, "rev": rev})                       # history, and what is on no branch
+        refused_rev({**switch, "preview": True, "rev": rev})      # a preview of it too
+        refused_rev({"estate": "t", "preview": True, "rev": rev})
+    # A preview branch's head is not what deploys.
+    refused_rev({**switch, "rev": sc.unstable})
+    refused_rev({**switch, "rev": "unstable"})
+    assert len(sc.jobs()) == before
+    # The deploy branch head, unnamed or by any name for it.
+    for rev in (None, "main", sc.head, sc.head[:12]):
+        runs({**switch, **({"rev": rev} if rev else {})}, sc.head)
+    # A preview: the head of the deploy branch or of a preview branch.
+    runs({"estate": "t", "preview": True}, sc.head)
+    runs({"estate": "t", "preview": True, "rev": "unstable"}, sc.unstable)
+    runs({"estate": "t", "preview": True, "rev": sc.unstable}, sc.unstable)
+    # The branch moves: what was the head is history now.
+    git("checkout", "-q", "main", cwd=sc.origin)
+    new = commit(sc.origin, "three")
+    refused_rev({**switch, "rev": sc.head})
+    runs(switch, new)
+
+
+def test_a_checkout_in_use_is_not_pruned(tmp_path):
+    """The checkouts are shared by every estate and only the newest few are
+    kept: a tenant's token deploying its own estate at five commits must not
+    remove the checkout the operator's running deploy is in (colmena's cwd,
+    the stack's sops files)."""
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    git("init", "-q", "-b", "main", cwd=origin)
+    revs = [commit(origin, f"c{i}") for i in range(9)]
+    s = Settings(flake=None, state_dir=tmp_path / "state", passphrase="p", git=GitSettings(url=str(origin)))
+    gates = {"ops": threading.Event(), "t": threading.Event()}
+    gates["t"].set()
+    where = {}
+
+    def run(st, req, ev):
+        where[req.estate] = st.flake
+        while not gates[req.estate].wait(0.01):
+            ev.check()
+        return {}
+
+    repo = Repo(s)
+    m = JobManager(s.state_dir, make_runner(s, repo, run))
+    g = GitOps(s, repo, m)
+    (tmp_path / "tok").write_text("tenant-value\n")
+    f = tokens_file(tmp_path / "conf", {"tenant": {"file": str(tmp_path / "tok"), "estates": ["t"],
+                                                   "nixos": "apply", "goals": ["dry-activate"]}})
+    c = TestClient(create_app(m, s, TOKEN, g, tokens.load(f)))
+    th = {"Authorization": "Bearer tenant-value"}
+    try:
+        ops = c.post("/v1/deploys", json={"estate": "ops"}, headers=H).json()["id"]  # the operator, at the head
+        wait_state(c, ops, "running")
+        for _ in range(300):
+            if "ops" in where:
+                break
+            time.sleep(0.01)
+        assert (where["ops"] / "flake.nix").exists()
+        for rev in revs[:7]:  # the tenant: more allowed requests than checkouts are kept
+            time.sleep(0.02)
+            r = c.post("/v1/deploys", json={"estate": "t", "infra": False, "goal": "dry-activate", "rev": rev},
+                       headers=th)
+            assert r.status_code == 202, r.text
+            wait_state(c, r.json()["id"], "succeeded")
+        assert c.get(f"/v1/deploys/{ops}", headers=H).json()["state"] == "running"
+        assert (where["ops"] / "flake.nix").exists(), "the running ops deploy's checkout was removed"
+        # Pruning still happens: the cache does not grow with the tenant's requests.
+        kept = sorted(p.name for p in (s.state_dir / "checkouts").iterdir())
+        assert revs[-1] in kept and len(kept) <= s.git.keep + 1, kept
+    finally:
+        gates["ops"].set()
+    wait_state(c, ops, "succeeded")
+    # Once its job is over, the checkout is pruned like any other.
+    for rev in revs[:6]:
+        time.sleep(0.02)
+        repo.checkout(rev)
+    assert not (s.state_dir / "checkouts" / revs[-1]).exists()
+    assert len(list((s.state_dir / "checkouts").iterdir())) == s.git.keep
+
+
+def test_an_unscoped_value_that_differs_by_whitespace_is_the_same_value(tmp_path):
+    """A scoped value is read from a file and stripped; the unscoped one from
+    the environment is used as it is. With one text for both, the unscoped
+    token would stop working in silence: refused at start, like equal values."""
+    (tmp_path / "v").write_text(TOKEN + "\n")
+    for entry in ({"file": "v", "estates": ["t"]}, {"sha256": sha(TOKEN), "estates": ["t"]}):
+        scoped = tokens.load(tokens_file(tmp_path, {"e": entry}))
+        for single in (TOKEN, TOKEN + "\n", " " + TOKEN, "\t" + TOKEN + " \n"):
+            with pytest.raises(tokens.TokenError, match="api-token and e have the same value") as e:
+                tokens.Authenticator(single, scoped)
+            assert TOKEN not in str(e.value)
+    # An unscoped value with whitespace of its own, and no scoped twin, is used as it is, as before.
+    a = tokens.Authenticator(" " + TOKEN, tokens.load(tokens_file(tmp_path, {"e": {"sha256": sha("other"),
+                                                                              "estates": ["t"]}})))
+    assert a.authenticate(f"Bearer  {TOKEN}").name == "api-token" and a.authenticate(f"Bearer {TOKEN}") is None
+
+
+def test_a_fault_in_the_check_is_not_reported_as_a_failed_fetch(sc, monkeypatch):
+    """502 "the repo could not be fetched" is for git failing. Anything else
+    out of the check is the server's own fault: 500, with the traceback where
+    the operator reads it, no job, and still no words of it to the token."""
+    def broken(p, req, pin=None):
+        raise RuntimeError("a bug in a field check: ops-secret")
+
+    monkeypatch.setattr(tokens, "check", broken)
+    c = TestClient(sc.c.app, raise_server_exceptions=False)
+    r = c.post("/v1/deploys", json=OK, headers=TH)
+    assert r.status_code == 500 and "fetched" not in r.text and "ops-secret" not in r.text
+    assert sc.jobs() == []
+    with pytest.raises(RuntimeError, match="a bug in a field check"):  # it reaches the server's log
+        sc.c.post("/v1/deploys", json=OK, headers=TH)

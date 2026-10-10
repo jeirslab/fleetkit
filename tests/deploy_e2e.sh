@@ -23,8 +23,9 @@
 #      then a scoped token (FLEETKIT_API_TOKENS_FILE; its value in a file of
 #      its own): a Colmena dry-activate of its hive at a commit on the branch
 #      runs and the job says `by: tenant`; the Pulumi stage, another goal, the
-#      estate's default hive, a commit off the branch and the GitOps routes are
-#      each 403 with the field, and no job is made;
+#      estate's default hive, a commit off the branch, a request that runs no
+#      stage and the GitOps routes are each 403 with the field, and no job is
+#      made;
 #   4. real colmena evaluates the runner's hive file.
 #
 # Not a gate: it needs the network (Pulumi plugins, provider binaries). No host
@@ -305,6 +306,7 @@ refused "another estate" estate '{"estate":"other","hive":"example","infra":fals
 refused "a commit that is not on main" rev "{$ok,\"rev\":\"$three\"}"
 refused "a preview of a commit that is not on main" rev "{$ok,\"preview\":true,\"rev\":\"$three\"}"
 refused "allow_delete" allow_delete "{$ok,\"rev\":\"$two\",\"allow_delete\":[\"web\"]}"
+refused "a request that runs no stage" nixos '{"estate":"mini","infra":false,"nixos":false}'
 code=$(tools curl -s -o /dev/null -w '%{http_code}' "${tenant[@]}" -X POST "$API/v1/gitops/sync")
 [[ $code == 403 ]] || fail "scoped: POST /v1/gitops/sync got $code, not 403"
 code=$(tools curl -s -o /dev/null -w '%{http_code}' "${tenant[@]}" "$API/v1/gitops")
