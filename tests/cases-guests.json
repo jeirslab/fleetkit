@@ -164,6 +164,80 @@
         "  fleet.estates.gaps.guestDefaults.adoption.unrecorded = true;",
         "}"
       ]
+    },
+    {
+      "name": "vlan-wrong-tag",
+      "description": "an interface on a network its VLAN-aware bridge tags, with another tag",
+      "expect": "fleet\\.guests\\.gaps\\.conf\\.networkInterfaces\\[1\\]\\.bridge: bridge \"s1/vmbr0\" carries network s1/tagged with tag 7, but vlanId is 8",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.guests.gaps.conf.networkInterfaces = lib.mkForce [",
+        "    { network = \"lan\"; address = \"192.0.2.72\"; }",
+        "    { network = \"tagged\"; address = \"203.0.113.72\"; vlanId = 8; }",
+        "  ];",
+        "}"
+      ]
+    },
+    {
+      "name": "vlan-tag-on-native",
+      "description": "a tag on the network a VLAN-aware bridge carries untagged",
+      "expect": "fleet\\.guests\\.gaps\\.conf\\.networkInterfaces\\[0\\]\\.bridge: bridge \"s1/vmbr0\" carries network s1/lan untagged, but vlanId is 7",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.guests.gaps.conf.networkInterfaces = lib.mkForce [",
+        "    { network = \"lan\"; address = \"192.0.2.72\"; vlanId = 7; }",
+        "    { network = \"tagged\"; address = \"203.0.113.72\"; }",
+        "  ];",
+        "}"
+      ]
+    },
+    {
+      "name": "vlan-network-not-on-bridge",
+      "description": "an interface on a network the bridge neither carries untagged nor tags",
+      "expect": "fleet\\.guests\\.gaps\\.conf\\.networkInterfaces\\[1\\]\\.bridge: bridge \"s1/vmbr0\" carries network s1/lan, tagged \\(tag 7\\), not s1/other",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.sites.s1.networks.other.cidr = \"198.18.0.0/24\";",
+        "  fleet.guests.gaps.conf.networkInterfaces = lib.mkForce [",
+        "    { network = \"lan\"; address = \"192.0.2.72\"; }",
+        "    { network = \"other\"; address = \"198.18.0.72\"; }",
+        "  ];",
+        "}"
+      ]
+    },
+    {
+      "name": "vlan-unknown-network",
+      "description": "a bridge tag for a network the site does not have",
+      "expect": "fleet\\.sites\\.s1\\.bridges\\.vmbr0\\.vlans\\.nowhere: \"nowhere\" is not a network of site s1 other than the bridge's untagged one",
+      "module": [
+        "_: {",
+        "  fleet.sites.s1.bridges.vmbr0.vlans.nowhere = 9;",
+        "}"
+      ]
+    },
+    {
+      "name": "vlan-native-tagged",
+      "description": "a bridge tag for the network the bridge carries untagged",
+      "expect": "fleet\\.sites\\.s1\\.bridges\\.vmbr0\\.vlans\\.lan: \"lan\" is not a network of site s1 other than the bridge's untagged one",
+      "module": [
+        "_: {",
+        "  fleet.sites.s1.bridges.vmbr0.vlans.lan = 9;",
+        "}"
+      ]
+    },
+    {
+      "name": "vlan-duplicate-tag",
+      "description": "two networks with the same tag on one bridge",
+      "expect": "fleet\\.sites\\.s1\\.bridges\\.vmbr0\\.vlans: two networks with the same tag",
+      "module": [
+        "_: {",
+        "  fleet.sites.s1.networks.other.cidr = \"198.18.0.0/24\";",
+        "  fleet.sites.s1.bridges.vmbr0.vlans.other = 7;",
+        "}"
+      ]
     }
   ]
 }

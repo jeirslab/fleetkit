@@ -6,7 +6,7 @@
 # one guest). "gaps" (placement without a tokenRef) uses every option added for
 # adopting existing guests: a pool with a comment, a container with an idmap,
 # no console block and in no pool, a container with lxc_extra_conf (description
-# ignored), a VM with scsi hardware, an EFI disk, a cloud-init drive slot and a
+# ignored) and a second interface on a network its VLAN-aware bridge tags, a VM with scsi hardware, an EFI disk, a cloud-init drive slot and a
 # clone source (clone ignored). "quiet" (no placement) sets
 # adoption.unrecorded = "ignore" in its guestDefaults: a container and a VM
 # take it, a container that already ignores some arguments takes it without
@@ -17,7 +17,13 @@ _: {
     sites.s1 = {
       region = "test";
       networks.lan.cidr = "192.0.2.0/24";
-      bridges.vmbr0.network = "s1/lan";
+      # Carried tagged on vmbr0, which is VLAN-aware (gaps.conf's second
+      # interface; tests/terraform.sh checks its vlan_id).
+      networks.tagged.cidr = "203.0.113.0/24";
+      bridges.vmbr0 = {
+        network = "s1/lan";
+        vlans.tagged = 7;
+      };
       nodes.n1 = {
         osType = "debian-pve";
         address = "192.0.2.10";
@@ -401,6 +407,11 @@ _: {
             {
               network = "lan";
               address = "192.0.2.72";
+            }
+            # The tag comes from the bridge (vmbr0 carries `tagged` as 7).
+            {
+              network = "tagged";
+              address = "203.0.113.72";
             }
           ];
           disks = [

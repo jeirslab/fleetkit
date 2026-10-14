@@ -103,7 +103,14 @@ let
       {
         options = {
           id = h.mkId (h.qualify site name);
+          # The network the bridge carries untagged (a VLAN-aware bridge: its
+          # native VLAN).
           network = req types.str;
+          # A VLAN-aware bridge: network NAME of the site -> the 802.1Q tag it
+          # carries that network with. A guest interface on one of these
+          # networks gets the tag (networkInterfaces.*.vlanId, filled in when
+          # unset).
+          vlans = opt (types.attrsOf (types.ints.between 1 4094)) { };
           nodes = opt (types.listOf types.str) [ ];
         };
       }
@@ -368,6 +375,16 @@ let
             kind = "node";
             ids = siteNodes;
           } b.nodes
+          ++ lib.mapAttrsToList (
+            net: _:
+            check "${p}.bridges.${bname}.vlans.${net}" (site.networks ? ${net} && site.networks.${net}.id != b.network)
+              "\"${net}\" is not a network of site ${sname} other than the bridge's untagged one (known: ${lib.concatStringsSep ", " (lib.attrNames site.networks)})"
+          ) b.vlans
+          ++ [
+            (check "${p}.bridges.${bname}.vlans"
+              (lib.length (lib.unique (lib.attrValues b.vlans)) == lib.length (lib.attrValues b.vlans))
+              "two networks with the same tag")
+          ]
         ) site.bridges
       );
 

@@ -615,6 +615,8 @@ let
       prov = providerOf g;
       d = if prov == null then null else prov.defaults;
       net = (siteNetsOf g).${n.network} or null;
+      bridge = if n.bridge != null then n.bridge else if d != null then d.nic.bridge else null;
+      br = lib.findFirst (b: b.id == bridge) null (attrValues (cfg.sites.${siteOf g.on} or { bridges = { }; }).bridges);
       gwRouter =
         if net == null || net.gateway == null then
           null
@@ -631,7 +633,9 @@ let
           d.nic.name
         else
           "eth${toString i}";
-      bridge = if n.bridge != null then n.bridge else if d != null then d.nic.bridge else null;
+      inherit bridge;
+      # On a VLAN-aware bridge: the tag the bridge carries the network with.
+      vlanId = if n.vlanId != null then n.vlanId else if br != null then br.vlans.${n.network} or null else null;
       prefix =
         if n.prefix != null then
           n.prefix
@@ -1201,7 +1205,18 @@ let
             check "${w}.bridge" (br != null) "bridge \"${n.bridge}\" is not a bridge of site \"${site}\""
           )
           ++ optional (br != null && net != null) (
-            check "${w}.bridge" (br.network == net.id) "bridge \"${n.bridge}\" carries network ${br.network}, not ${net.id}"
+            # The bridge's own network (untagged, if the bridge declares tags at
+            # all), or a network the bridge declares a tag for, with that tag.
+            check "${w}.bridge" (
+              if br.network == net.id then br.vlans == { } || n.vlanId == null else (br.vlans.${n.network} or null) == n.vlanId && n.vlanId != null
+            ) (
+              if br.network == net.id then
+                "bridge \"${n.bridge}\" carries network ${net.id} untagged, but vlanId is ${toString n.vlanId}"
+              else if br.vlans ? ${n.network} then
+                "bridge \"${n.bridge}\" carries network ${net.id} with tag ${toString br.vlans.${n.network}}, but vlanId is ${toString n.vlanId}"
+              else
+                "bridge \"${n.bridge}\" carries network ${br.network}${lib.concatStrings (lib.mapAttrsToList (k: v: ", ${k} (tag ${toString v})") br.vlans)}, not ${net.id}"
+            )
           )
           ++ optional (br != null && br.nodes != [ ]) (
             check "${w}.bridge" (elem g.on br.nodes) "bridge \"${n.bridge}\" is not available on node ${g.on}"
