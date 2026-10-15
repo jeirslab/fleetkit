@@ -154,7 +154,7 @@ let
     environment = nullable (types.attrsOf types.str) "lxc only: environment_variables.";
     defaultDatastore = nullable types.str "Storage id used by every disk whose datastore is null (layering helper; feeds disk datastore_id / mount_point volume).";
     initialization = {
-      hostname = nullable types.str "lxc only: initialization.hostname. Effective default: the guest name.";
+      hostname = nullable types.str "lxc: initialization.hostname; vm: name (the VM name, which Proxmox's cloud-init hands the guest as its hostname). Effective default: the guest name.";
       dns = {
         servers = nullable (types.listOf types.str) "initialization.dns.servers (both kinds).";
         domain = nullable types.str "initialization.dns.domain (both kinds).";
@@ -275,7 +275,6 @@ let
     [ "memory" "swapMiB" ]
     [ "environment" ]
     [ "source" "template" ]
-    [ "initialization" "hostname" ]
   ];
   vmOnlyKnobs = [
     [ "memory" "floatingMiB" ]
@@ -866,7 +865,8 @@ let
         );
       };
       vmArgs = common // {
-        inherit name;
+        # The VM name is also the hostname cloud-init gives the guest.
+        name = if (k.initialization.hostname or null) != null then k.initialization.hostname else name;
         on_boot = if (k.startOnBoot or null) == false then false else null;
         cpu = cpuCommon // {
           type = k.cpu.type or null;

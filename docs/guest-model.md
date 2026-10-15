@@ -74,7 +74,7 @@ fields that exist for one kind only are rejected on the other with
 
 - lxc only: `unprivileged`, `features.*`, `console.type`, `console.omit`,
   `memory.swapMiB`, `environment`, `source.template`,
-  `initialization.hostname`, `lxcExtraConf`, `idmap`, `devicePassthrough`,
+  `lxcExtraConf`, `idmap`, `devicePassthrough`,
   disk role `mount`, disk fields
   `path readOnly quota shared mountOptions`.
 - vm only: `cpu.type`, `memory.floatingMiB`, `vm.*`, `source.cdrom`,

@@ -45,6 +45,19 @@ print(json.dumps([n.get("vlan_id") for n in json.load(open(sys.argv[1]))["resour
   status=fail
 fi
 
+# A VM's name: initialization.hostname where set (gaps.efi), the guest key
+# where not (every vm of mini).
+if ! out=$(python3 -c '
+import json, sys
+vm = lambda f: json.load(open(f))["resource"]["proxmox_virtual_environment_vm"]
+gaps, mini = vm(sys.argv[1]), vm(sys.argv[2])
+assert {k: v["name"] for k, v in gaps.items()} == {"efi": "efi-host"}, gaps
+assert mini and all(v["name"] == k for k, v in mini.items()), {k: v["name"] for k, v in mini.items()}
+' "$TMP/gaps.json" "$TMP/mini.json" 2>&1); then
+  echo "FAIL vm name: $out" >&2
+  status=fail
+fi
+
 # Guests on two sites and no placement: one provider cannot serve them; the
 # message names both sites.
 if render split; then
