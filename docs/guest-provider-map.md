@@ -28,9 +28,9 @@ addressed the same way (`network_device.bridge`). A model path may have
 several lines (one per kind or per target block). Every path in
 `fleet.report.guestOptionPaths` needs at least one line.
 
-Provider arguments derived without a model option of their own: vm `name`
-(= the guest name) and lxc `initialization.hostname` defaulting to the guest
-name.
+Provider arguments that default to the guest name: vm `name` and lxc
+`initialization.hostname`, both from `initialization.hostname` when it is set
+(for a vm only the guest's own, never `guestDefaults`).
 
 `lifecycle.ignore_changes` holds `ignoreChanges` plus what the kit adds by
 itself: `clone` for a guest with `source.clone`, `description` for a
@@ -92,6 +92,7 @@ lxc: defaultDatastore => mount_point.volume
 vm: defaultDatastore => disk.datastore_id
 vm: defaultDatastore => efi_disk.datastore_id
 lxc: initialization.hostname => initialization.hostname
+vm: initialization.hostname => name
 both: initialization.dns.servers => initialization.dns.servers
 both: initialization.dns.domain => initialization.dns.domain
 both: initialization.userAccount.keys => initialization.user_account.keys

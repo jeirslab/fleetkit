@@ -577,7 +577,10 @@ let
           source.osType = d.operatingSystem.type;
         }
       );
-      estD = if e == null then { } else nullAt (foreignKnobs g.kind) (knobsOf e.guestDefaults);
+      # A VM's hostname is its name: per guest only, never an estate default
+      # (an estate default would give every VM of the estate one name; it was
+      # dropped for VMs while the option was lxc-only, and still is).
+      estD = if e == null then { } else nullAt (foreignKnobs g.kind ++ optional (g.kind == "vm") [ "initialization" "hostname" ]) (knobsOf e.guestDefaults);
       k = builtins.foldl' over { } [
         schemaD
         provD
