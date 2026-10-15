@@ -74,7 +74,7 @@ fields that exist for one kind only are rejected on the other with
 
 - lxc only: `unprivileged`, `features.*`, `console.type`, `console.omit`,
   `memory.swapMiB`, `environment`, `source.template`,
-  `initialization.hostname`, `lxcExtraConf`, `idmap`, `devicePassthrough`,
+  `lxcExtraConf`, `idmap`, `devicePassthrough`,
   disk role `mount`, disk fields
   `path readOnly quota shared mountOptions`.
 - vm only: `cpu.type`, `memory.floatingMiB`, `vm.*`, `source.cdrom`,
@@ -408,6 +408,18 @@ difference.
   `sata0..5`, `scsi0..30`), `vm.cloudInit.upgrade` -> `initialization.upgrade`.
   The provider reads `upgrade` as true when Proxmox has no value, and sends it
   on an update only when it changed (only `root@pam` may set it).
+
+### A VM's name
+
+A vm's `name` is its `initialization.hostname`, or the guest name when that is
+unset; only the guest's own value counts (an estate `guestDefaults` hostname
+is dropped for VMs, as it was while the option was lxc-only). Proxmox's
+cloud-init gives the guest its VM name as hostname. On an existing or adopted
+VM, setting or changing it is an in-place `name` update (an update of the
+guest, so `--allow-update`), not a replace; cloud-init on the guest may then
+treat its next boot as a new instance (for example new SSH host keys). The
+kit's NixOS layer (`nixos/base.nix`) still defaults `networking.hostName` to
+the guest key: a consumer that wants the hostname there sets it itself.
 
 ### Pool comment
 

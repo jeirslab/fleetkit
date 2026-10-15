@@ -425,6 +425,8 @@ _: {
           vmid = 9503;
           kind = "vm";
           on = "s1/n1";
+          # A VM takes its name (and so its cloud-init hostname) from here.
+          initialization.hostname = "efi-host";
           source.clone = {
             vmid = 9000;
             full = true;
