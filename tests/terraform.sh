@@ -4,7 +4,8 @@
 # that an estate whose guests are on two sites does not render. The estate
 # "gaps" uses every option added for adopting existing guests (idmap, no
 # console block, no pool, pool comment, scsi hardware, EFI disk, cloud-init
-# drive slot and upgrade, clone and description under ignore_changes); the
+# drive slot and upgrade, clone and description under ignore_changes, an
+# interface tagged by its VLAN-aware bridge); the
 # estate "quiet" uses adoption.unrecorded (what an import does not record,
 # under ignore_changes or not; fleet.report.unrecordedIgnored); each
 # case of tests/cases-guests.json is that fixture plus one bad declaration,
@@ -33,6 +34,16 @@ for estate in mini tenant bare gaps quiet; do
     status=fail
   fi
 done
+
+# A VLAN-aware bridge: gaps.conf's second interface takes the bridge's tag for
+# its network, the first (the bridge's untagged network) none.
+if ! out=$(python3 -c '
+import json, sys
+print(json.dumps([n.get("vlan_id") for n in json.load(open(sys.argv[1]))["resource"]["proxmox_virtual_environment_container"]["conf"]["network_interface"]]))
+' "$TMP/gaps.json" 2>&1) || [[ $out != '[null, 7]' ]]; then
+  echo "FAIL vlan: gaps.conf's interfaces have vlan_id $out, want [null, 7]" >&2
+  status=fail
+fi
 
 # Guests on two sites and no placement: one provider cannot serve them; the
 # message names both sites.

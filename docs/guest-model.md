@@ -107,7 +107,19 @@ not extend them).
 Interface defaults: `name` = provider `nic.name` for interface 0, `eth<i>`
 after; `bridge` = provider `nic.bridge`; `prefix` = the network's cidr
 prefix; `gateway` = the address of the network's gateway router, on
-interface 0 only (one default route).
+interface 0 only (one default route); `vlanId` = the tag the interface's
+bridge carries the network with (`fleet.sites.<site>.bridges.<b>.vlans.<network>`),
+if it declares one.
+
+A VLAN-aware bridge carries one network untagged (`network`, its native
+VLAN) and others tagged (`vlans`, network name -> 802.1Q tag), so guests on
+several networks share one bridge:
+
+    bridges.vmbr0 = { network = "nj/mgmt"; vlans = { lan = 4; ops = 5; }; };
+    networkInterfaces = [ { network = "lan"; bridge = "nj/vmbr0"; address = "..."; } ];  # vlan_id 4
+
+A bridge without `vlans` is unchanged: it carries its one network, and an
+interface's `vlanId` is passed through as given.
 
 Disk defaults: a disk whose `datastore` is null uses the layered
 `defaultDatastore` (replaces legacy `defaultDatastore`; the legacy
@@ -131,7 +143,10 @@ to the guest's site provider.
 
 `on` (node; its site must have a proxmox provider), every
 `networkInterfaces.*.network` (a network of that site), `bridge` (a bridge
-of that site, carrying that network, available on the node), static
+of that site, carrying that network, available on the node; on a bridge that
+declares `vlans`, untagged on its own network and with the bridge's tag on a
+tagged one), a bridge's `vlans` keys (networks of the site other than its
+untagged one, no tag twice), static
 `address` inside the network cidr, unique interface names, at most one
 static address per network, `disks` (exactly one root; datastore a storage
 of the site, available on the node, holding `rootdir` (lxc) / `images`
