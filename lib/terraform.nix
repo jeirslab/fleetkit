@@ -20,6 +20,14 @@
 # compiled from this: the raw lxc.conf lines of such a guest are applied by
 # nothing the kit renders. The guests that have any are listed under
 # locals.fleet_unrendered_companions (the Pulumi program's outputs).
+#
+# Add-ons (fleet.estates.<e>.addons, modules/addons.nix) add their providers
+# and resources only when the estate switches them on; an estate that does not
+# renders exactly as without them. Ansible (lib/ansible.nix):
+# ansible_playbook.<playbook name>, after its guest. A playbook's name must not
+# be the name of another resource of the render: the Pulumi program keys
+# resources by name (lib/pulumi.nix), and a shared name would change the key
+# of the guest.
 {
   lib,
   fleet,
@@ -161,6 +169,18 @@ let
     name: pool: { pool_id = name; } // lib.optionalAttrs (pool.comment != null) { inherit (pool) comment; }
   ) pools;
 
+  ansible = import ./ansible.nix { inherit lib fleet estate; };
+  others = lib.concatMap lib.attrNames (lib.attrValues byType ++ [
+    pools
+    fileResources
+  ]);
+  shared = lib.intersectLists (lib.attrNames ansible.resources) others;
+  playbooks =
+    if shared != [ ] then
+      throw "${where}.addons.ansible.playbooks: ${lib.concatStringsSep ", " shared}: also the name of a guest, pool or upload of the estate; a playbook needs a name of its own"
+    else
+      ansible.resources;
+
   withCompanions = lib.attrNames (
     lib.filterAttrs (n: _: (views.${n}.companions or { }) != { }) guests
   );
@@ -175,7 +195,8 @@ in
       source = "carlpett/sops";
       version = "1.4.1";
     };
-  };
+  }
+  // ansible.requiredProviders;
 
   provider.proxmox = builtins.seq checked provider;
 
@@ -188,6 +209,9 @@ in
     }
     // lib.optionalAttrs (fileResources != { }) {
       proxmox_virtual_environment_file = fileResources;
+    }
+    // lib.optionalAttrs (playbooks != { }) {
+      ansible_playbook = playbooks;
     };
 
   locals = {

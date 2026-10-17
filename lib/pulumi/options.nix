@@ -10,13 +10,22 @@
 #     outputs.<key> = ...;
 #     backend = { type = "postgres" | "s3" | "local"; ... };
 #     secretRoots = [ <dir> ];                  # more places its sops files are
+#     needs = [ "${playbook}" ];                # store paths the program names
 #   }
 #   secretRoots = [ inputs.tenant ];            # the same, for every stack
 #
 # Read-only, per stack: `program` (the checked program as an attrset), `file`
 # (it as Pulumi.yaml in the store, from builtins.toFile), `secrets` (the sops
-# files its invokes read, relative to the repo), `adoptIds` and
-# `adoptUnresolved`.
+# files its invokes read, relative to the repo), `adoptIds`,
+# `adoptUnresolved` and `realise`.
+#
+# Store paths. builtins.toFile takes no reference to a build output, so a
+# program names a store path it needs (a playbook) as plain text, and that
+# path may not be on the runner: a derivation is not built by evaluating it.
+# `needs` keeps such paths with their string context; `realise` is what the
+# runner builds (`nix build`, one GC root per path in the run's directory)
+# before it runs the program: <drv>^<output> for a derivation's output, the
+# path itself for a source.
 #
 # Adoption. resources.<key>.adopt is the provider id of the existing resource
 # the declaration describes. It is data beside the program: `adoptIds` is
@@ -153,6 +162,24 @@ let
     };
 
   prune = lib.filterAttrs (_: v: v != null && v != { });
+
+  # A string's store context -> what `nix build` takes to make it valid.
+  installables =
+    s:
+    let
+      ctx = builtins.getContext s;
+    in
+    if ctx == { } then
+      [ (builtins.unsafeDiscardStringContext s) ]
+    else
+      lib.concatLists (
+        lib.mapAttrsToList (
+          path: c:
+          lib.optional (c.path or false) path
+          ++ lib.optional (c.allOutputs or false) "${path}^*"
+          ++ map (o: "${path}^${o}") (c.outputs or [ ])
+        ) ctx
+      );
 
   stackModule =
     { name, config, ... }:
@@ -293,6 +320,16 @@ let
           default = [ ];
           description = "Directories, besides the estate repo, where the stack's sops files (`secrets`, the backend's) are looked up: the top-level `secretRoots` and these. Absolute, or relative to the estate repo.";
         };
+        needs = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "Store paths the program names as text (a playbook), with their string context: the runner builds or fetches each (`realise`) before it runs the program.";
+        };
+        realise = mkOption {
+          type = types.listOf types.str;
+          readOnly = true;
+          description = "What the runner passes to `nix build` for `needs`: <drv>^<output> for a derivation's output, the store path for a source.";
+        };
         program = mkOption {
           type = types.raw;
           readOnly = true;
@@ -333,6 +370,7 @@ let
           lib.filterAttrs (_: r: r.adopt == null && r.adoptUnresolved != null) resources
         );
         file = builtins.toFile "Pulumi.yaml" (builtins.toJSON config.program);
+        realise = lib.unique (lib.concatMap installables config.needs);
         secrets = lib.filter (x: x != null) (
           map (v: v."fn::invoke".arguments.sourceFile or null) (
             lib.filter (v: v ? "fn::invoke") (lib.attrValues config.variables)
