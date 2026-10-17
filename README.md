@@ -42,8 +42,13 @@ outputs = { fleetkit, xgcs, ... }: {
   Headscale tailnet first; `examples/github/fleetkit.yml`).
   Experimental; see `docs/pulumi.md`.
 - `providers/` pinned provider schemas the guest model is checked against.
+- Add-ons: an estate switches on extra providers or runners in its
+  declaration (`fleet.estates.<e>.addons`, off by default). `ansible` runs
+  playbooks against the estate's guests in its guests stack, through the
+  pinned `ansible/ansible` provider; see `docs/addons.md`.
 - `docs/` the model's decisions: `guest-model.md`, `guest-provider-map.md`,
-  `deploy.md`, `tenants.md`, `schema-todo.md` (the inventory of untyped blocks).
+  `deploy.md`, `tenants.md`, `addons.md`, `schema-todo.md` (the inventory of
+  untyped blocks).
 - `docs/secrets.md` host keys, operators and readers in the model, the
   rendered and checked `.sops.yaml`, and the re-key recipe. The kit never
   decrypts.
