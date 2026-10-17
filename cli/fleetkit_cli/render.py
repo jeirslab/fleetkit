@@ -10,6 +10,8 @@ directory of its own, which no other run writes:
   <state>/runs/<time>-<pid>-<random>/.lock      held (flock) for the life of the run
   <state>/runs/<time>-<pid>-<random>/<stack>/
     program      ->  /nix/store/<hash>-Pulumi.yaml   (a GC root; what the estate declares)
+    needs-<i>    ->  each store path the program names (`realise`: a playbook),
+                     built or fetched here, and a GC root for the run
     Pulumi.yaml       the program the engine runs: a copy of it in which the
                       guests the request did not name are protected (guard.protect)
     secrets/...  ->  the sops files its invokes read (relative to here)
@@ -65,9 +67,11 @@ class RenderError(Exception):
 # a kit that does not expose them yet adopts only by --id. secretRoots are the
 # directories the estate's flake declares for its sops files (a tenant's
 # source, a store path of this commit's inputs); a kit without them has none.
+# realise is what `nix build` makes of the store paths the program names
+# (lib/pulumi/options.nix: needs); a kit without it has none.
 VIEW = ("s: builtins.mapAttrs (_: x: { inherit (x) estate project backend file secrets; "
         "adoptIds = x.adoptIds or { }; adoptUnresolved = x.adoptUnresolved or { }; "
-        "secretRoots = x.secretRoots or [ ]; }) s")
+        "secretRoots = x.secretRoots or [ ]; realise = x.realise or [ ]; }) s")
 
 
 def nix_eval_json(s: Settings, attr: str, apply: str | None = None) -> Any:
@@ -87,6 +91,7 @@ def stacks(s: Settings) -> dict[str, dict[str, Any]]:
         st["adoptIds"] = st.get("adoptIds") or {}
         st["adoptUnresolved"] = st.get("adoptUnresolved") or {}
         st["secretRoots"] = st.get("secretRoots") or []
+        st["realise"] = st.get("realise") or []
     return out
 
 
@@ -302,6 +307,13 @@ def render(s: Settings, name: str, st: dict[str, Any], ev: Emitter, run: Run,
     wd = run.dir / name
     wd.mkdir(mode=0o700)
     _root(s, wd / "program", st["file"])
+    # What the program names but its file does not hold a reference to (a
+    # playbook that is a derivation's output): built here, before anything
+    # runs, so a deploy never starts with a path the engine cannot read.
+    realised = list(st.get("realise") or [])
+    for i, target in enumerate(realised):
+        ev.check()
+        _root(s, wd / f"needs-{i}", target)
     raw = (wd / "program").read_bytes()
     program, protected = guard.protect(s.stack, json.loads(raw), allow or guard.Allow())
     text = json.dumps(program)
@@ -309,7 +321,7 @@ def render(s: Settings, name: str, st: dict[str, Any], ev: Emitter, run: Run,
     link_secrets(s, wd, st)
     settings_in(s, name, wd)
     ev.emit("render", "done", stack=name, project=st["project"], program=st["file"], workdir=str(wd),
-            protected=protected)
+            protected=protected, **({"realised": realised} if realised else {}))
     return Project(stack=name, wd=wd, file=st["file"], sha256=hashlib.sha256(raw).hexdigest(),
                    run_sha256=hashlib.sha256(text.encode()).hexdigest(), protected=protected)
 

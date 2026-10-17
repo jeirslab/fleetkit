@@ -88,6 +88,11 @@ python3 tests/deploy_key.py >&2 || fidelity=fail
 # networked end-to-end check and is not a gate.
 bash tests/pulumi.sh >&2 || fidelity=fail
 bash tests/pulumi_nix.sh >&2 || fidelity=fail
+# Estate add-ons: an estate that switches none on renders nothing of them; the
+# Ansible add-on's playbooks against the pinned ansible/ansible schema and
+# after their guests, and each bad declaration of tests/cases-addons.json
+# refused (tests/addons.sh).
+bash tests/addons.sh >&2 || fidelity=fail
 # The secret roots an estate's flake declares, read the runner's way from
 # checkouts of two commits (a flake input each; path inputs, evaluation only).
 bash tests/pulumi_secret_roots.sh >&2 || fidelity=fail

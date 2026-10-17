@@ -132,5 +132,7 @@ def _infra(s: Settings, req: DeployRequest, ev: Emitter, rundir: render.Run, res
                            stacks[n].get("adoptIds") or {})
         result["infra"][n] = done["changes"]
         result["applied"].append(n)
+        if done.get("ansible"):
+            result.setdefault("ansible", {})[n] = done["ansible"]
         if done.get("unprotected"):
             result.setdefault("unprotected", {})[n] = done["unprotected"]

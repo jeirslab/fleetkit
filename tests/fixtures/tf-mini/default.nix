@@ -13,6 +13,11 @@
 # duplicates, and a container and a VM set it back to "apply". "tmpl" (no
 # placement) has a VM template whose root disk is imported from an image the
 # deploy uploads (s1/vyos, a source), and a VM cloned from it by reference.
+# "addon" (no placement) switches the Ansible add-on on: a playbook directory
+# (playbooks/vyos, its entry site.yml) against a managed VM, with collections,
+# groups, extra variables and a secret as a file path, its SSH user from
+# colmena.targetUser; and a playbook file against an adopted container, with
+# its own user. No other estate enables an add-on.
 # "split" has guests on two sites and must not render; "offsite" has a placement on s1 and a guest on s2, and must not render. Generic
 # names only; nothing here is a real address.
 _: {
@@ -210,6 +215,37 @@ _: {
         guestDefaults.defaultDatastore = "s1/local";
       };
 
+      addon = {
+        owner = "Addon";
+        guestDefaults.defaultDatastore = "s1/local";
+        colmena.targetUser = "vyos";
+        addons.ansible = {
+          enable = true;
+          playbooks = {
+            vyos = {
+              guest = "router";
+              playbook = ./playbooks/vyos;
+              entry = "site.yml";
+              collections = [
+                "vyos.vyos"
+                "ansible.netcommon"
+              ];
+              groups = [ "routers" ];
+              extraVars = {
+                ansible_connection = "ansible.netcommon.network_cli";
+                ansible_network_os = "vyos.vyos.vyos";
+              };
+              secretFiles.vyos_password_file = "/run/secrets/vyos-admin";
+            };
+            tune = {
+              guest = "kept";
+              playbook = ./playbooks/tune.yml;
+              user = "admin";
+            };
+          };
+        };
+      };
+
       quiet = {
         owner = "Quiet";
         guestDefaults = {
@@ -260,6 +296,46 @@ _: {
               role = "root";
               size = 8;
               interface = "scsi0";
+            }
+          ];
+        };
+      };
+
+      addon = {
+        router = {
+          vmid = 9801;
+          kind = "vm";
+          on = "s1/n1";
+          networkInterfaces = [
+            {
+              network = "lan";
+              address = "192.0.2.95";
+            }
+          ];
+          disks = [
+            {
+              role = "root";
+              size = 8;
+              interface = "scsi0";
+            }
+          ];
+        };
+        # Adopted: not rendered, so its playbook depends on nothing.
+        kept = {
+          vmid = 9802;
+          kind = "lxc";
+          mode = "adopted";
+          on = "s1/n1";
+          networkInterfaces = [
+            {
+              network = "lan";
+              address = "192.0.2.96";
+            }
+          ];
+          disks = [
+            {
+              role = "root";
+              size = 8;
             }
           ];
         };

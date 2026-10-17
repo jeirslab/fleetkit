@@ -193,6 +193,7 @@ One pipeline for the CLI, the API and GitOps:
    ```
    <state>/runs/<time>-<pid>-<random>/<stack>/
      program      ->  /nix/store/<hash>-Pulumi.yaml   (a GC root; what the estate declares)
+     needs-<i>    ->  each store path the program names (`realise`: a playbook), built here
      Pulumi.yaml       the program the engine runs: a copy, the unnamed guests protected
      secrets/...  ->  the sops files its invokes read
      Pulumi.<stack>.yaml   Pulumi's settings (the passphrase salt), copied in
@@ -215,7 +216,9 @@ One pipeline for the CLI, the API and GitOps:
 
 Every deploy's result names each program's store path and sha256
 (`programs`, `program_sha256`): what ran, exactly; and `applied`, the stacks
-whose `up` finished.
+whose `up` finished. A stack with playbooks of the Ansible add-on also has
+`ansible.<stack>`: per playbook, whether it ran and whether its recap says it
+changed anything, and an `ansible` event each (`docs/addons.md`).
 
 ```sh
 fleetkit estates
@@ -1312,6 +1315,7 @@ parameterised with the exact source and version the render pins:
 packages:
   proxmox: { source: terraform-provider, version: 1.4.0, parameters: [bpg/proxmox, 0.115.0] }
   sops:    { source: terraform-provider, version: 1.4.1, parameters: [carlpett/sops, 1.4.1] }
+  ansible: { source: terraform-provider, version: 1.4.0, parameters: [ansible/ansible, 1.5.0] }  # the Ansible add-on only
 ```
 
 So the provider code that runs is the code the guest model is already checked
@@ -1332,7 +1336,7 @@ The bridge renames fields, and not only by camelCasing:
 bridge's Pulumi schema (`providers/pulumi/schemas`, from
 `pulumi package get-schema terraform-provider@1.4.0 <source> <version>`) and
 writes `providers/pulumi/names/<provider>-<version>.json`. Every Terraform name
-of all three pinned providers (116 + 88 resources, 168 data sources) is
+of all four pinned providers (116 + 88 + 4 resources, 171 data sources) is
 matched. `lib/pulumi.nix` reads only the name maps, and an argument they do not
 know fails evaluation.
 
@@ -1347,6 +1351,7 @@ know fails evaluation.
 | `lifecycle.prevent_destroy` | `options.protect` |
 | `lifecycle.ignore_changes` | `options.ignoreChanges` (renamed paths) |
 | `depends_on` | `options.dependsOn` |
+| `ansible_playbook` (any) | `options.replaceOnChanges: ["*"]`: the provider's update replays the arguments of its create (`docs/addons.md`) |
 | `locals` | `outputs` |
 | `count`, `for_each`, provisioners, other lifecycle keys | refused with a throw (none are rendered on `unstable`) |
 

@@ -12,6 +12,8 @@
 #        computed from the model. The ids are data beside the program
 #        (<stack>.adoptIds, <stack>.adoptUnresolved), never part of it, so
 #        they are computed by default; false leaves every `adopt` unset.
+#        The guests stack also `needs` the playbooks of the estate's Ansible
+#        add-on (lib/ansible.nix), for the runner to realise before it runs.
 #
 # An estate repo's pulumi.nix imports fromModel for what the model describes
 # and adds what it does not, as ordinary resources:
@@ -58,6 +60,7 @@ let
         else
           self.lib.mkPulumi { inherit fleet estate adopt; };
       e = fleet.estates.${estate};
+      ansible = import ../ansible.nix { inherit lib fleet estate; };
       backendId = if github then e.git.backend or e.backend or null else e.backend or null;
     in
     {
@@ -65,6 +68,7 @@ let
         inherit estate;
         inherit (p) packages variables outputs;
         inherit (p) resources;
+        needs = lib.mkIf (!github) ansible.needs;
         backend = lib.mkIf (backendId != null) (
           import ./backend.nix { inherit lib fleet estate; } {
             id = backendId;

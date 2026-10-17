@@ -28,6 +28,7 @@
 #   lifecycle.prevent_destroy  options.protect
 #   lifecycle.ignore_changes   options.ignoreChanges (renamed paths)
 #   depends_on                 options.dependsOn
+#   (a type in replaceOnAny)   options.replaceOnChanges = [ "*" ]
 #   ${type.name.attr}          ${key.attr}, renamed; ${data.type.name.attr}
 #                              likewise through the variable
 #   locals                     outputs (informational, as in Terraform)
@@ -259,6 +260,16 @@ let
     in
     lib.removePrefix "." r;
 
+  # Types whose every change is a replacement in Pulumi. ansible_playbook
+  # (ansible/ansible 1.5.0, provider/resource_playbook.go): Create records
+  # the ansible-playbook arguments (the playbook, the extra variables) in
+  # `args`, and Update runs those recorded arguments again, so an update would
+  # run the old playbook with the old variables. Terraform gets around it by
+  # refreshing before every plan (replayable: the refresh drops the resource,
+  # the apply creates it); Pulumi does not refresh unless asked, so a change
+  # creates the resource anew instead, and Create runs what is declared.
+  replaceOnAny = [ "ansible_playbook" ];
+
   # ── program ────────────────────────────────────────────────────────────
   meta = [
     "lifecycle"
@@ -290,6 +301,7 @@ let
         provider = if tfProviders ? ${local} then "\${${providerKey local}}" else null;
         protect = if lc.prevent_destroy or false then true else null;
         ignoreChanges = if lc ? ignore_changes then map (convPath m.f) lc.ignore_changes else null;
+        replaceOnChanges = if lib.elem type replaceOnAny then [ "*" ] else null;
         dependsOn =
           if body ? depends_on then
             map (

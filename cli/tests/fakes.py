@@ -97,6 +97,7 @@ class World:
         self.destroyed = []    # keys whose real resource an up destroyed
         self.updated = []      # keys whose real resource an up changed
         self.created = []
+        self.outputs = {}      # key -> outputs a create's (or a forced step's) outputs event carries
 
     def in_state(self, prog, key, rid=None, protect=None):
         r = prog["resources"][key]
@@ -238,8 +239,9 @@ class FakeStack:
                                 self.w.destroyed.append(key)
                             if op == "update":
                                 self.w.updated.append(key)
-                        if not step(op, key, u, type_, effect, new=inputs, diffs=forced.get("diff"),
-                                    keys=forced.get("keys")):
+                        out = self.w.outputs.get(key) if op in ("create", "create-replacement") else None
+                        if not step(op, key, u, type_, effect, new=(inputs, out) if out else inputs,
+                                    pre=inputs, diffs=forced.get("diff"), keys=forced.get("keys")):
                             return
                 elif st is not None:
                     diff = sorted(k for k in {*inputs, *st["inputs"]} if inputs.get(k) != st["inputs"].get(k))
@@ -298,7 +300,8 @@ class FakeStack:
                                            "protect": (r.get("options") or {}).get("protect") is True}
                         self.w.live[(type_, key)] = dict(inputs)
                         self.w.created.append(key)
-                    if not step("create", key, u, type_, effect, new=inputs):
+                    out = self.w.outputs.get(key)
+                    if not step("create", key, u, type_, effect, new=(inputs, out) if out else inputs, pre=inputs):
                         return
             if not targets:
                 have = {urn(prog, k) for k in res}

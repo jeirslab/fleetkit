@@ -108,8 +108,22 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
           py = pkgs.python3Packages;
+          # The Ansible add-on's playbook runs (docs/addons.md): ansible-core
+          # and the community package's collections (vyos.vyos,
+          # ansible.netcommon, ...), all from this nixpkgs; nothing is
+          # fetched by ansible-galaxy at deploy time. The collections it has
+          # are listed in providers/ansible/ (tests/gen_ansible_collections.py).
+          ansible = pkgs.python3.withPackages (ps: [
+            ps.ansible-core
+            ps.ansible
+          ]);
+          ansibleBin = pkgs.runCommand "fleetkit-ansible" { } ''
+            mkdir -p $out/bin
+            for b in ${ansible}/bin/ansible*; do ln -s "$b" $out/bin/; done
+          '';
         in
         rec {
+          inherit ansible;
           fleetkit = py.buildPythonApplication {
             pname = "fleetkit";
             version = "0.1.0";
@@ -147,6 +161,19 @@
                 pkgs.sops
                 pkgs.git
               ])
+              # The ansible/ansible provider runs `ansible-playbook` from PATH:
+              # this one, ahead of any the host has. Only its ansible-*
+              # commands, not the environment's python.
+              "--prefix"
+              "PATH"
+              ":"
+              "${ansibleBin}/bin"
+              # Collections from the environment only: not ones a user of the
+              # host installed under ~/.ansible (a playbook's own collections/
+              # beside it are still read).
+              "--set"
+              "ANSIBLE_COLLECTIONS_PATH"
+              "${ansible}/${pkgs.python3.sitePackages}"
             ];
             meta.mainProgram = "fleetkit";
           };

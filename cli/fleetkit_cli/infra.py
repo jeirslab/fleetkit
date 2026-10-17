@@ -47,7 +47,7 @@ from pulumi.automation import events as _events
 from pulumi.automation._cmd import CommandResult, PulumiCommand, _fixup_path
 from pulumi.automation.errors import create_command_error
 
-from . import guard, render
+from . import ansible, guard, render
 from .events import Cancelled, Emitter
 from .settings import Settings
 
@@ -650,8 +650,14 @@ def apply(s: Settings, wd: Path, stack: str, env: dict[str, str], ev: Emitter, p
         raise
     left = reprotect(s, wd, stack, env, ev, program, unprotected)
     changes = p.changes()
+    # The Ansible add-on's playbooks: which ran, and whether they changed
+    # anything (their recaps; ansible.py).
+    played = ansible.runs(p.entries())
+    for r in played:
+        ev.emit("infra", "ansible", stack=stack, **r)
     ev.emit("infra", "summary", stack=stack, changes=counts, resources=guard.by_op(changes), refused=[])
-    return {"changes": counts, "plan": changes, **({"unprotected": left} if left else {})}
+    return {"changes": counts, "plan": changes, **({"ansible": played} if played else {}),
+            **({"unprotected": left} if left else {})}
 
 
 def _apply(s: Settings, wd: Path, stack: str, env: dict[str, str], ev: Emitter, planned: dict[str, Any],
