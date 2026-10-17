@@ -34,7 +34,6 @@ let
     "secrets"
     "observability"
     "git"
-    "addons"
   ];
 
   mkFleet =
