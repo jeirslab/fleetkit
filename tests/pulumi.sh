@@ -2,7 +2,8 @@
 # Experimental. Renders lib.mkPulumi for the estates of tests/fixtures/tf-mini
 # ("gaps" among them: every option added for adopting existing guests; and
 # "quiet": adoption.unrecorded, whose ignored arguments must be these
-# options.ignoreChanges, in the bridge's names)
+# options.ignoreChanges, in the bridge's names; and "tmpl": an image upload,
+# a template on it and its clone, each after what it needs, options.dependsOn)
 # and lib.mkGithubPulumi for gh-mini, and checks each against its Terraform
 # render and the pinned Pulumi schemas (tests/pulumi.py); that the estates
 # the internal stage refuses (split, offsite) are refused by mkPulumi with a
@@ -36,7 +37,7 @@ pair() { # tfFn pulumiFn fixture estate
     status=fail
   fi
 }
-for estate in mini tenant bare gaps quiet; do
+for estate in mini tenant bare gaps quiet tmpl; do
   pair internal_guests mkPulumi tf-mini "$estate"
 done
 
@@ -59,6 +60,25 @@ bad += [f"{k}: {p} is ignored but no longer rendered" for k in ("ct", "mixed") f
         if p not in res.get(k, {}).get("properties", {})]
 for b in bad:
     print(f"pulumi: quiet: {b}", file=sys.stderr)
+sys.exit(1 if bad else 0)
+PY
+  status=fail
+fi
+# A template from an uploaded image, and its clone: each is created after
+# what it needs (options.dependsOn, by program key).
+if [[ -s $TMP/tmpl.mkPulumi.json ]] && ! python3 - "$TMP/tmpl.mkPulumi.json" <<'PY' >&2; then
+import json, sys
+res = json.load(open(sys.argv[1]))["resources"]
+want = {"vyos": None, "base": ["${vyos}"], "router": ["${base}"]}
+bad = [f"{k}: options.dependsOn is {(res.get(k, {}).get('options') or {}).get('dependsOn')}, expected {v}"
+       for k, v in want.items() if (res.get(k, {}).get("options") or {}).get("dependsOn") != v]
+src = res.get("vyos", {}).get("properties", {}).get("sourceFile")
+if src != {"path": "/nix/store/00000000000000000000000000000000-vyos.qcow2", "fileName": "vyos-1.qcow2"}:
+    bad.append(f"vyos: sourceFile is {src}")
+if res.get("base", {}).get("properties", {}).get("disks", [{}])[0].get("importFrom") != "local:import/vyos-1.qcow2":
+    bad.append("base: the root disk does not import the image")
+for b in bad:
+    print(f"pulumi: tmpl: {b}", file=sys.stderr)
 sys.exit(1 if bad else 0)
 PY
   status=fail
@@ -136,7 +156,7 @@ stacks() { # name case types modules-of-the-model fromModel-args...
   fi
 }
 stacks tf "" "" "$ROOT/tests/fixtures/tf-mini" \
-  'estate = "mini";' 'estate = "tenant";' 'estate = "bare";' 'estate = "gaps";'
+  'estate = "mini";' 'estate = "tenant";' 'estate = "bare";' 'estate = "gaps";' 'estate = "tmpl";'
 stacks gh "" "" "$ROOT/tests/fixtures/gh-mini" 'estate = "gh"; github = true;'
 stacks gh-adopt "+gh-adopt" "$GH_TYPES" "$ROOT/tests/fixtures/gh-mini $ROOT/tests/fixtures/gh-adopt" \
   'estate = "gh"; github = true;'

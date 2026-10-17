@@ -25,6 +25,9 @@ let
     proxmox_virtual_environment_vm = guest;
     # <pool_id>
     proxmox_virtual_environment_pool = _: a: a.pool_id;
+    # <node>/<datastore>:<content type>/<file name> (an uploaded image)
+    proxmox_virtual_environment_file =
+      _: a: "${a.node_name}/${a.datastore_id}:${a.content_type}/${a.source_file.file_name}";
   };
 
   # ── integrations/github 6.13.0 ─────────────────────────────────────────

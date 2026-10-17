@@ -31,7 +31,8 @@ fleet.guests.<estate>.<name> = {
 
 The options for declaring a guest that already exists exactly as it is (id
 mapping, no pool, no console block, scsi hardware, EFI disk, cloud-init drive)
-are in "Adopting existing guests" below.
+are in "Adopting existing guests" below; a VM template built from a site
+image, and guests cloned from it, in "Templates and clones".
 
 Read-only, derived per guest: `id`, `ipv4.<network>` (static addresses of
 `networkInterfaces`, keyed by network name; `config.nix` reads
@@ -40,7 +41,7 @@ Read-only, derived per guest: `id`, `ipv4.<network>` (static addresses of
 Read-only, derived fleet-wide:
 
 - `fleet.report.providerView.<estate>.<guest>` = `{ resource; args;
-  lifecycle; companions; }`: the effective guest after layering, in the
+  lifecycle; companions; dependsOn; }`: the effective guest after layering, in the
   provider's argument names. Single blocks are objects (`cpu`, `memory`,
   lxc `disk`, `features`, `initialization`, ...), repeatable blocks are
   lists (`network_interface`, `mount_point`, `ip_config`, vm `disk`,
@@ -49,7 +50,9 @@ Read-only, derived fleet-wide:
   render `[]`). `lifecycle` holds the Terraform meta-arguments
   (`prevent_destroy`, `ignore_changes`; the latter also holds what the kit
   ignores by itself, `clone`, `description` and what an import does not
-  record, see "Adopting existing guests"), `companions.lxc_extra_conf` the raw lxc.conf lines. This is what the parity test compares with the legacy
+  record, see "Adopting existing guests"), `companions.lxc_extra_conf` the raw lxc.conf lines, `dependsOn` the model
+  ids that must exist before the guest is created (`images`: the uploads of
+  the images it uses, `guests`: the template it clones). This is what the parity test compares with the legacy
   terraform baselines and what the slice-3 renderer will emit.
 - `fleet.report.guestOptionPaths`: every guest option path (`*` = list
   element); the fidelity test requires a map line for each.
@@ -77,7 +80,8 @@ fields that exist for one kind only are rejected on the other with
   `lxcExtraConf`, `idmap`, `devicePassthrough`,
   disk role `mount`, disk fields
   `path readOnly quota shared mountOptions`.
-- vm only: `cpu.type`, `memory.floatingMiB`, `vm.*`, `source.cdrom`,
+- vm only: `cpu.type`, `memory.floatingMiB`, `vm.*` (`vm.template` among
+  them), `source.cdrom`, `source.image`,
   `initialization.userAccount.username`,
   `hostpci`, `networkInterfaces.*.model`, disk role `data`, disk fields
   `interface discard iothread ssd fileFormat cache`.
@@ -151,7 +155,10 @@ untagged one, no tag twice), static
 static address per network, `disks` (exactly one root; datastore a storage
 of the site, available on the node, holding `rootdir` (lxc) / `images`
 (vm)), `source.template` (image of the site, content `vztmpl`),
-`source.cdrom.image` (content `iso`), `source.clone.{datastore,node}`,
+`source.cdrom.image` (content `iso`), `source.image` (content `import`, on a
+storage that lists `import`, on the guest's node when the image names one),
+`source.clone.guest` (a template of the same kind and site, not the guest
+itself), `source.clone.{datastore,node}`,
 `vm.cloudInit.datastore`, `vm.efiDisk.datastore` (as a disk's), `pool` /
 `effectivePool` (pool id of the site provider, or `"none"`), `hostpci.*.pcie` and `devicePassthrough.*.pcie` (pcie device on
 the guest's node; hostpci needs a pci address),
@@ -187,7 +194,75 @@ because the owner asked for them or they are cheap and unambiguous:
 `network_interface.{vlan_id,mac_address,firewall,rate_limit,mtu}` /
 `network_device.{model,...}`, `mount_point.{read_only,quota,shared,mount_options}`,
 `disk.{quota,mount_options}` (lxc), vm `disk.{discard,iothread,ssd,file_format,cache,backup}`,
-`device_passthrough.*`, `hostpci.*`, `clone.node_name`, `cdrom.*`.
+`device_passthrough.*`, `hostpci.*`, `clone.node_name`, `cdrom.*`, vm
+`template` and `disk.import_from` ("Templates and clones").
+
+## Templates and clones
+
+A VM template is a guest with `vm.template = true`. Its root disk can be
+imported from a site image of content type `import` (`source.image`), which
+the deploy uploads when the image has a `source`; other guests clone the
+template by naming it (`source.clone.guest`).
+
+```nix
+fleet.sites.lab.storage.local.content = [ "images" "import" ];
+fleet.sites.lab.images.vyos = {
+  datastore = "lab/local";
+  contentType = "import";
+  fileName = "vyos-2025.10.qcow2";     # a new build is a new file name
+  node = "lab/pve1";
+  source = pkgs.jeirslab.vyos-stream.template;   # a store path
+  build.method = "nix";
+};
+
+fleet.guests.net = {
+  vyos-tmpl = {
+    vmid = 9000; kind = "vm"; on = "lab/pve1";
+    vm.template = true;
+    source.image = "lab/vyos";
+    disks = [ { role = "root"; interface = "scsi0"; size = 8; } ];
+  };
+  router = {
+    vmid = 120; kind = "vm"; on = "lab/pve1";
+    source.clone.guest = "net/vyos-tmpl";            # full clone (the provider's default)
+    disks = [ { role = "root"; interface = "scsi0"; size = 8; } ];
+    networkInterfaces = [ { network = "lan"; address = "10.0.0.1"; } ];
+  };
+};
+```
+
+What is rendered:
+
+- The image, `proxmox_virtual_environment_file.<image>`: `node_name`,
+  `datastore_id`, `content_type` (`import`, `iso` or `vztmpl`: what the
+  Proxmox API uploads) and `source_file.{path,file_name}`. It is rendered by
+  the estate whose managed guests use the image (`source.image`,
+  `source.cdrom.image`, a container's template image), and each of those
+  guests gets `depends_on` it. Two estates using one uploaded image is an
+  error: both would own the file. The path is rendered as text: evaluation
+  does not build the image, and the host that runs the deploy must have the
+  store path (the deploy does not build or fetch it yet). An image without a
+  `source` renders nothing and is assumed to be on the datastore already, as
+  before.
+- The template: `template = true`, `started = false`, `on_boot = false`, no
+  `startup` (whatever the site and estate defaults say), and the root disk's
+  `import_from` = the image's `volumeId` (`<storage>:import/<fileName>`).
+  Declaring `started`, `startOnBoot` or `startup` on a template is an error.
+  `vm.template` is a guest's own option: it is not in `guestDefaults`.
+- The clone: `clone.vm_id` and `clone.node_name` are the template's `vmid`
+  and node (`source.clone.node` is the template's and stays unset), and
+  `clone` is under `ignore_changes` as for any clone. When the template is a
+  managed guest of the same estate the clone `depends_on` it, so a first
+  deploy creates the template first. `source.clone.vmid` stays for a source
+  that is not modelled; exactly one of `guest` and `vmid` is set.
+
+The provider uses `import_from` only when it creates the disk, and every
+member of `clone` forces a replacement, so neither a new image nor a changed
+template changes an existing guest. A new build is a new `fileName`: the
+upload is replaced (the new file uploaded, the old one deleted), and the
+existing template, whose disk was copied at import, is left as it is. To
+roll a new image out, declare a new template guest (a new vmid) on it and
+point new clones at that; existing clones are not replaced.
 
 ## Adopting existing guests
 
@@ -515,7 +590,7 @@ them (with a map line) when a guest needs one:
   `hotplug`, `kvm_arguments`, `keyboard_layout`,
   `tablet_device`, `migrate`, `reboot*`, `stop_on_destroy`, `timeout_*`,
   `cpu.{affinity,flags,hotplugged,numa,sockets}`, `memory.{hugepages,keep_hugepages,shared}`,
-  `disk.{aio,file_id,import_from,path_in_datastore,queues,serial,speed,replicate}`,
+  `disk.{aio,file_id,path_in_datastore,queues,serial,speed,replicate}`,
   `agent.{timeout,trim,type,wait_for_ip}`, `clone.retries`, `hostpci.{mapping,mdev,rom_file}`,
   `initialization.{file_format,*_data_file_id}`,
   `network_device.{disconnected,enabled,queues,trunks}`, `mac_addresses`.

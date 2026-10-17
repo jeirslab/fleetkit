@@ -42,7 +42,12 @@ lines below; the reasons are in `guest-model.md`, "Adopting existing guests".
 
 Not a guest option, so not in the list: the pool's comment,
 `fleet.estates.<estate>.pools.proxmox.<pool>.comment` =>
-`proxmox_virtual_environment_pool.comment` (rendered when set).
+`proxmox_virtual_environment_pool.comment` (rendered when set); and a site
+image's `source`, `fleet.sites.<site>.images.<image>.{source,fileName,datastore,node,contentType}` =>
+`proxmox_virtual_environment_file.<image>.{source_file.path,source_file.file_name,datastore_id,node_name,content_type}`,
+rendered by the estate whose managed guests use the image, each of which gets
+`depends_on` that upload (and a clone of a managed template of the same
+estate, `depends_on` the template).
 
 ## Mappings
 
@@ -99,13 +104,20 @@ both: initialization.userAccount.keys => initialization.user_account.keys
 vm: initialization.userAccount.username => initialization.user_account.username
 both: source.osType => operating_system.type
 lxc: source.template => operating_system.template_file_id
+both: source.clone.guest => clone.vm_id
+both: source.clone.guest => clone.node_name
 both: source.clone.vmid => clone.vm_id
 both: source.clone.datastore => clone.datastore_id
 both: source.clone.full => clone.full
 both: source.clone.node => clone.node_name
 vm: source.cdrom.image => cdrom.file_id
+vm: source.image => disk.import_from
 vm: source.cdrom.interface => cdrom.interface
 meta: source.clone.vmid => lifecycle.ignore_changes
+meta: source.clone.guest => lifecycle.ignore_changes
+vm: vm.template => template
+vm: vm.template => started
+vm: vm.template => on_boot
 vm: vm.agent => agent.enabled
 vm: vm.bios => bios
 vm: vm.machine => machine

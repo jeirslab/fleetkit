@@ -7,7 +7,10 @@
 # drive slot and upgrade, clone and description under ignore_changes, an
 # interface tagged by its VLAN-aware bridge); the
 # estate "quiet" uses adoption.unrecorded (what an import does not record,
-# under ignore_changes or not; fleet.report.unrecordedIgnored); each
+# under ignore_changes or not; fleet.report.unrecordedIgnored); the estate
+# "tmpl" has a VM template imported from an uploaded image and its clone by
+# reference (the upload, template, import_from, the clone's source, depends_on);
+# each
 # case of tests/cases-guests.json is that fixture plus one bad declaration,
 # which must fail evaluation with the message of the validation that refuses
 # it ("expect", an extended regular expression). Evaluation only. Prints one
@@ -26,7 +29,7 @@ render() { # estate [module] -> $TMP/<estate>.json, or the error in $TMP/<estate
 }
 
 status=pass
-for estate in mini tenant bare gaps quiet; do
+for estate in mini tenant bare gaps quiet tmpl; do
   if render "$estate"; then
     python3 "$ROOT/tests/terraform.py" "$TMP/$estate.json" --estate "$estate" >&2 || status=fail
   else

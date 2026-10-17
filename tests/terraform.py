@@ -25,7 +25,12 @@ Fails (exit 1, problems on stderr) when:
   - for the estate "quiet" (adoption.unrecorded): the guests that ignore what
     an import does not record do not carry exactly that list under
     lifecycle.ignore_changes, after their own, or the guests that set it back
-    to "apply" carry a lifecycle at all.
+    to "apply" carry a lifecycle at all;
+  - for the estate "tmpl" (a VM template from an uploaded image, and its
+    clone by reference): the upload, the template's template / started /
+    on_boot / disk.import_from, the clone's vm_id and node_name from the
+    template, or either depends_on is not exactly what is expected, or the
+    template renders a startup or the clone an import_from.
 Evaluation only; no network.
 """
 import argparse
@@ -40,6 +45,7 @@ PROVIDER = "registry.opentofu.org/bpg/proxmox"
 LXC = "proxmox_virtual_environment_container"
 VM = "proxmox_virtual_environment_vm"
 POOL = "proxmox_virtual_environment_pool"
+FILE = "proxmox_virtual_environment_file"
 META = {"lifecycle", "depends_on", "count", "for_each", "provider", "provisioner"}
 SOPS_REF = re.compile(r'^\$\{data\.sops_file\.([A-Za-z0-9_-]+)\.data\["(.+)"\]\}$')
 
@@ -95,6 +101,15 @@ ESTATES = {
         key="site-token",
         endpoint=EP,
     ),
+    "tmpl": dict(
+        managed={VM: "base", FILE: "vyos"},
+        pool=None,
+        adopted=None,
+        companion=None,
+        file="mini_tf",
+        key="site-token",
+        endpoint=EP,
+    ),
 }
 # What adoption.unrecorded = "ignore" puts under ignore_changes, per kind
 # (modules/guests.nix, unrecordedArgs).
@@ -138,6 +153,33 @@ EXPECT = {"gaps": {
     # The ignore does not take the arguments out of the render.
     (LXC, "loudct"): {"vm_id": 9604, "console": {"type": "console"}},
     (VM, "loudvm"): {"vm_id": 9605},
+}, "tmpl": {
+    # The image's upload: to its datastore on its node, as its file name.
+    (FILE, "vyos"): {
+        "node_name": "n1",
+        "datastore_id": "local",
+        "content_type": "import",
+        "source_file": {
+            "path": "/nix/store/00000000000000000000000000000000-vyos.qcow2",
+            "file_name": "vyos-1.qcow2",
+        },
+    },
+    # Never started, whatever the site's defaults say; its disk from the upload.
+    (VM, "base"): {
+        "template": True,
+        "started": False,
+        "on_boot": False,
+        "disk": [{"datastore_id": "local", "interface": "scsi0", "size": 8, "import_from": "local:import/vyos-1.qcow2"}],
+        "depends_on": [f"{FILE}.vyos"],
+    },
+    # The clone: the template's vmid and node, created after it.
+    (VM, "router"): {
+        "clone": {"vm_id": 9701, "node_name": "n1"},
+        "disk": [{"datastore_id": "local", "interface": "scsi0", "size": 8}],
+        "lifecycle": {"ignore_changes": ["clone"]},
+        "started": True,
+        "depends_on": [f"{VM}.base"],
+    },
 }}
 # Per estate: arguments that must not be rendered at all.
 ABSENT = {"gaps": {
@@ -146,6 +188,9 @@ ABSENT = {"gaps": {
 }, "quiet": {
     (LXC, "loudct"): ["lifecycle"],
     (VM, "loudvm"): ["lifecycle"],
+}, "tmpl": {
+    (VM, "base"): ["startup", "clone", "lifecycle"],
+    (VM, "router"): ["template", "on_boot"],
 }}
 PRIMITIVE = {"string": str, "number": (int, float), "bool": bool}
 TOKEN_PATH = "secrets/tf.json"

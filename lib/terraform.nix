@@ -7,7 +7,11 @@
 #   } -> { terraform; provider; data; resource; locals; }
 #
 # Resource address: <resource type>.<guest name>. Only `managed` guests are
-# rendered; the rest are listed under locals.fleet_unmanaged. Credentials are
+# rendered; the rest are listed under locals.fleet_unmanaged. An image with a
+# `source` that a managed guest uses is uploaded by
+# proxmox_virtual_environment_file.<image name>, and the guest depends on it,
+# as a clone does on the template it names when that is a managed guest of
+# this estate. Credentials are
 # never literals: api_token reads placement.tokenRef, or the provider's
 # tokenRef when that is null, through data.sops_file.<file alias of the ref>
 # (<estate>_<alias> when the file is another estate's). The provider is
@@ -92,13 +96,53 @@ let
       api_token = token.expr;
     };
 
+  lastSeg = s: lib.last (lib.splitString "/" s);
+
+  # The uploads: every image with a source a managed guest uses. Their site is
+  # the provider's (an image is of its guest's site, checked by the model).
+  uploads = lib.unique (lib.concatMap (n: views.${n}.dependsOn.images) (lib.attrNames managed));
+  imageOf =
+    id: fleet.sites.${siteOf id}.images.${lastSeg id};
+  fileResources = lib.listToAttrs (
+    map (
+      id:
+      let
+        img = imageOf id;
+      in
+      lib.nameValuePair (lastSeg id) {
+        node_name = lastSeg img.node;
+        datastore_id = lastSeg img.datastore;
+        content_type = img.contentType;
+        source_file = {
+          # The path as text: the program is written to the store by
+          # builtins.toFile, which takes no reference to a build output.
+          # Evaluation does not build the image; the deploy's host must have it.
+          path = builtins.unsafeDiscardStringContext (toString img.source);
+          file_name = img.fileName;
+        };
+      }
+    ) uploads
+  );
+
+  # A guest's dependencies, as Terraform addresses: the uploads of its images,
+  # and the template it clones when this render creates that too.
+  dependsOn =
+    name:
+    let
+      d = views.${name}.dependsOn;
+      tmpl = map lastSeg (lib.filter (id: lib.hasPrefix "${estate}/" id && managed ? ${lastSeg id}) d.guests);
+    in
+    map (id: "proxmox_virtual_environment_file.${lastSeg id}") d.images
+    ++ map (n: "${views.${n}.resource}.${n}") tmpl;
+
   renderGuest =
     name:
     let
       v = views.${name};
     in
     v.args
-    // lib.optionalAttrs (v.lifecycle != { }) { inherit (v) lifecycle; };
+    // lib.optionalAttrs (v.lifecycle != { }) { inherit (v) lifecycle; }
+    // lib.optionalAttrs (dependsOn name != [ ]) { depends_on = dependsOn name; };
 
   byType = lib.foldl' (
     acc: name:
@@ -141,6 +185,9 @@ in
     byType
     // lib.optionalAttrs (pools != { }) {
       proxmox_virtual_environment_pool = poolResources;
+    }
+    // lib.optionalAttrs (fileResources != { }) {
+      proxmox_virtual_environment_file = fileResources;
     };
 
   locals = {
