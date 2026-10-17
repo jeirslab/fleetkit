@@ -10,7 +10,9 @@
 # under ignore_changes or not; fleet.report.unrecordedIgnored); the estate
 # "tmpl" has a VM template imported from an uploaded image and its clone by
 # reference (the upload, template, import_from, the clone's source, depends_on);
-# each
+# the estate "addon" switches the Ansible add-on on (its ansible_playbook
+# resources, against the pinned ansible/ansible schema; tests/addons.sh has
+# the rest of the add-on); each
 # case of tests/cases-guests.json is that fixture plus one bad declaration,
 # which must fail evaluation with the message of the validation that refuses
 # it ("expect", an extended regular expression). Evaluation only. Prints one
@@ -29,7 +31,7 @@ render() { # estate [module] -> $TMP/<estate>.json, or the error in $TMP/<estate
 }
 
 status=pass
-for estate in mini tenant bare gaps quiet tmpl; do
+for estate in mini tenant bare gaps quiet tmpl addon; do
   if render "$estate"; then
     python3 "$ROOT/tests/terraform.py" "$TMP/$estate.json" --estate "$estate" >&2 || status=fail
   else

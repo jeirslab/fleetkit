@@ -3,7 +3,8 @@
 # ("gaps" among them: every option added for adopting existing guests; and
 # "quiet": adoption.unrecorded, whose ignored arguments must be these
 # options.ignoreChanges, in the bridge's names; and "tmpl": an image upload,
-# a template on it and its clone, each after what it needs, options.dependsOn)
+# a template on it and its clone, each after what it needs, options.dependsOn;
+# and "addon": the Ansible add-on's playbooks, checked further by tests/addons.sh)
 # and lib.mkGithubPulumi for gh-mini, and checks each against its Terraform
 # render and the pinned Pulumi schemas (tests/pulumi.py); that the estates
 # the internal stage refuses (split, offsite) are refused by mkPulumi with a
@@ -37,7 +38,7 @@ pair() { # tfFn pulumiFn fixture estate
     status=fail
   fi
 }
-for estate in mini tenant bare gaps quiet tmpl; do
+for estate in mini tenant bare gaps quiet tmpl addon; do
   pair internal_guests mkPulumi tf-mini "$estate"
 done
 

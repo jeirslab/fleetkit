@@ -30,7 +30,13 @@ Fails (exit 1, problems on stderr) when:
     clone by reference): the upload, the template's template / started /
     on_boot / disk.import_from, the clone's vm_id and node_name from the
     template, or either depends_on is not exactly what is expected, or the
-    template renders a startup or the clone an import_from.
+    template renders a startup or the clone an import_from;
+  - for the estate "addon" (the Ansible add-on switched on): the
+    ansible_playbook resources (checked against the pinned ansible/ansible
+    schema) are not exactly the expected host, variables, groups and
+    depends_on, a playbook is not the store path of the fixture's playbook,
+    or the provider is not pinned; for every other estate: anything of the
+    add-on is rendered at all.
 Evaluation only; no network.
 """
 import argparse
@@ -42,6 +48,10 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCHEMA = f"{ROOT}/providers/schemas/bpg-proxmox-0.115.0.schema.json"
 PROVIDER = "registry.opentofu.org/bpg/proxmox"
+# The Ansible add-on's provider (modules/addons.nix, lib/ansible.nix).
+ANSIBLE_SCHEMA = f"{ROOT}/providers/schemas/ansible-ansible-1.5.0.schema.json"
+ANSIBLE_PROVIDER = "registry.opentofu.org/ansible/ansible"
+PLAYBOOK = "ansible_playbook"
 LXC = "proxmox_virtual_environment_container"
 VM = "proxmox_virtual_environment_vm"
 POOL = "proxmox_virtual_environment_pool"
@@ -105,6 +115,15 @@ ESTATES = {
         managed={VM: "base", FILE: "vyos"},
         pool=None,
         adopted=None,
+        companion=None,
+        file="mini_tf",
+        key="site-token",
+        endpoint=EP,
+    ),
+    "addon": dict(
+        managed={VM: "router", PLAYBOOK: "vyos"},
+        pool=None,
+        adopted="kept",
         companion=None,
         file="mini_tf",
         key="site-token",
@@ -180,6 +199,34 @@ EXPECT = {"gaps": {
         "started": True,
         "depends_on": [f"{VM}.base"],
     },
+}, "addon": {
+    # A directory playbook and its entry, against a managed VM: after it, as
+    # colmena.targetUser, the secret as a path only.
+    (PLAYBOOK, "vyos"): {
+        "name": "router",
+        "replayable": True,
+        "groups": ["routers"],
+        "extra_vars": {
+            "ansible_host": "192.0.2.95",
+            "ansible_user": "vyos",
+            "ansible_connection": "ansible.netcommon.network_cli",
+            "ansible_network_os": "vyos.vyos.vyos",
+            "vyos_password_file": "/run/secrets/vyos-admin",
+        },
+        "depends_on": [f"{VM}.router"],
+    },
+    # A playbook file against an adopted container: nothing to wait for.
+    (PLAYBOOK, "tune"): {
+        "name": "kept",
+        "replayable": True,
+        "extra_vars": {"ansible_host": "192.0.2.96", "ansible_user": "admin"},
+    },
+}}
+# Per estate and resource: the store path its playbook must be.
+STORE = r"/nix/store/[0-9a-df-np-sv-z]{32}-"
+PLAYBOOKS = {"addon": {
+    (PLAYBOOK, "vyos"): re.compile(rf"^{STORE}vyos/site\.yml$"),
+    (PLAYBOOK, "tune"): re.compile(rf"^{STORE}tune\.yml$"),
 }}
 # Per estate: arguments that must not be rendered at all.
 ABSENT = {"gaps": {
@@ -191,6 +238,8 @@ ABSENT = {"gaps": {
 }, "tmpl": {
     (VM, "base"): ["startup", "clone", "lifecycle"],
     (VM, "router"): ["template", "on_boot"],
+}, "addon": {
+    (PLAYBOOK, "tune"): ["depends_on", "groups"],
 }}
 PRIMITIVE = {"string": str, "number": (int, float), "bool": bool}
 TOKEN_PATH = "secrets/tf.json"
@@ -262,7 +311,7 @@ def check(doc, schemas, x):
     for rtype, instances in resources.items():
         res = schemas.get(rtype)
         if res is None:
-            problems.append(f"resource type '{rtype}' is not in the bpg/proxmox schema")
+            problems.append(f"resource type '{rtype}' is not in the bpg/proxmox or ansible/ansible schema")
             continue
         for name, body in instances.items():
             where = f"{rtype}.{name}"
@@ -329,6 +378,20 @@ def check(doc, schemas, x):
             for arg in ABSENT[estate].get((rtype, name), []):
                 if arg in body:
                     problems.append(f"{rtype}.{name}.{arg}: rendered, but must be absent")
+        for (rtype, name), pattern in PLAYBOOKS.get(estate, {}).items():
+            got = resources.get(rtype, {}).get(name, {}).get("playbook")
+            if not isinstance(got, str) or not pattern.match(got):
+                problems.append(f"{rtype}.{name}.playbook: {got!r} is not the fixture's playbook in the store")
+
+    # The add-on: its provider is pinned exactly when its resources are rendered.
+    pinned = doc.get("terraform", {}).get("required_providers", {}).get("ansible")
+    if estate in PLAYBOOKS:
+        if pinned != {"source": "ansible/ansible", "version": "1.5.0"}:
+            problems.append(f"required_providers.ansible is {pinned!r}, not ansible/ansible 1.5.0")
+        if set(resources.get(PLAYBOOK, {})) != {n for _, n in PLAYBOOKS[estate]}:
+            problems.append(f"{PLAYBOOK}: {sorted(resources.get(PLAYBOOK, {}))}, expected {sorted(n for _, n in PLAYBOOKS[estate])}")
+    elif pinned is not None or PLAYBOOK in resources:
+        problems.append("the Ansible add-on is rendered for an estate that does not switch it on")
 
     endpoint = doc.get("provider", {}).get("proxmox", {}).get("endpoint")
     if endpoint != x["endpoint"]:
@@ -369,6 +432,8 @@ def main():
     a = ap.parse_args()
     with open(a.schema, encoding="utf-8") as f:
         schemas = json.load(f)[PROVIDER]["resource_schemas"]
+    with open(ANSIBLE_SCHEMA, encoding="utf-8") as f:
+        schemas = {**schemas, **json.load(f)[ANSIBLE_PROVIDER]["resource_schemas"]}
     with open(a.rendered, encoding="utf-8") as f:
         doc = json.load(f)
     problems = check(doc, schemas, ESTATES[a.estate])
