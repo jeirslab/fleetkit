@@ -467,6 +467,10 @@ class Plan:
     def entry(self, urn: str) -> Optional[dict[str, Any]]:
         return self._r.get(urn)
 
+    def entries(self) -> list[dict[str, Any]]:
+        """Every resource the run saw, `same` ones too."""
+        return list(self._r.values())
+
     def changes(self) -> list[dict[str, Any]]:
         """[{key, urn, type, op, steps, diff, replaceReasons}] of every resource
         that is not `same`. `op` is what happens to the resource (a replacement
