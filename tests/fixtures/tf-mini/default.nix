@@ -10,7 +10,10 @@
 # clone source (clone ignored). "quiet" (no placement) sets
 # adoption.unrecorded = "ignore" in its guestDefaults: a container and a VM
 # take it, a container that already ignores some arguments takes it without
-# duplicates, and a container and a VM set it back to "apply". "split" has guests on two sites and must not render; "offsite" has a placement on s1 and a guest on s2, and must not render. Generic
+# duplicates, and a container and a VM set it back to "apply". "tmpl" (no
+# placement) has a VM template whose root disk is imported from an image the
+# deploy uploads (s1/vyos, a source), and a VM cloned from it by reference.
+# "split" has guests on two sites and must not render; "offsite" has a placement on s1 and a guest on s2, and must not render. Generic
 # names only; nothing here is a real address.
 _: {
   fleet = {
@@ -35,12 +38,23 @@ _: {
           "rootdir"
           "images"
           "vztmpl"
+          "import"
         ];
       };
       images.tpl = {
         datastore = "s1/local";
         contentType = "vztmpl";
         fileName = "tpl.tar.zst";
+        build.method = "nix";
+      };
+      # A disk image the deploy uploads (a store path, as a built image's
+      # would be; nothing here builds or reads it).
+      images.vyos = {
+        datastore = "s1/local";
+        contentType = "import";
+        fileName = "vyos-1.qcow2";
+        node = "s1/n1";
+        source = "/nix/store/00000000000000000000000000000000-vyos.qcow2";
         build.method = "nix";
       };
       providers.proxmox = {
@@ -191,6 +205,11 @@ _: {
         guestDefaults.defaultDatastore = "s1/local";
       };
 
+      tmpl = {
+        owner = "Tmpl";
+        guestDefaults.defaultDatastore = "s1/local";
+      };
+
       quiet = {
         owner = "Quiet";
         guestDefaults = {
@@ -201,6 +220,51 @@ _: {
 
     };
     guests = {
+      tmpl = {
+        # A template from an image: the root disk is imported from the
+        # upload, the VM is never started.
+        base = {
+          vmid = 9701;
+          kind = "vm";
+          on = "s1/n1";
+          vm.template = true;
+          source.image = "s1/vyos";
+          networkInterfaces = [
+            {
+              network = "lan";
+              address = "dhcp";
+            }
+          ];
+          disks = [
+            {
+              role = "root";
+              size = 8;
+              interface = "scsi0";
+            }
+          ];
+        };
+        # Its clone, by reference: vmid and node from the template.
+        router = {
+          vmid = 9702;
+          kind = "vm";
+          on = "s1/n1";
+          source.clone.guest = "tmpl/base";
+          networkInterfaces = [
+            {
+              network = "lan";
+              address = "192.0.2.91";
+            }
+          ];
+          disks = [
+            {
+              role = "root";
+              size = 8;
+              interface = "scsi0";
+            }
+          ];
+        };
+      };
+
       quiet =
         let
           guest = kind: vmid: host: extra: {

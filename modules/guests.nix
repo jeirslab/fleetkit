@@ -169,15 +169,14 @@ let
       template = nullable types.str "lxc only: image id (<site>/<image>) -> operating_system.template_file_id = that image's volumeId. null = providers.proxmox.defaults.operatingSystem.templateFileId.";
       clone = nullable (types.submodule {
         options = {
-          vmid = mkOption {
-            type = types.ints.positive;
-            description = "clone.vm_id (both kinds): source VMID (a template, need not be a modelled guest).";
-          };
+          guest = nullable types.str "Guest id (<estate>/<guest>) of a modelled template (vm.template = true) -> clone.vm_id = its vmid, clone.node_name = its node. Exclusive with vmid.";
+          vmid = nullable types.ints.positive "clone.vm_id (both kinds): source VMID of a source that is not a modelled guest. Exclusive with guest.";
           datastore = nullable types.str "clone.datastore_id (both kinds): storage id.";
-          full = nullable types.bool "clone.full (both kinds).";
-          node = nullable types.str "clone.node_name (both kinds): node id holding the source.";
+          full = nullable types.bool "clone.full (both kinds). null = the provider's default, a full clone.";
+          node = nullable types.str "clone.node_name (both kinds): node id holding the source. With guest: the template's node; leave it unset.";
         };
       }) "Clone source instead of a template (lxc: replaces operating_system).";
+      image = nullable types.str "vm only: image id (<site>/<image>, contentType import) -> the root disk's disk.import_from = its volumeId. The guest depends on the image's upload when the image has a source.";
       cdrom = nullable (types.submodule {
         options = {
           image = mkOption {
@@ -281,6 +280,7 @@ let
     [ "cpu" "type" ]
     [ "vm" ]
     [ "source" "cdrom" ]
+    [ "source" "image" ]
     [ "initialization" "userAccount" "username" ]
   ];
   foreignKnobs = kind: if kind == "lxc" then vmOnlyKnobs else lxcOnlyKnobs;
@@ -417,12 +417,18 @@ let
   };
 
   # ---------------------------------------------------------- guest type --
+  # The knob set plus what only a guest can say about itself: an estate
+  # default that made every VM of the estate a template would be meaningless.
+  guestKnobOptions = lib.recursiveUpdate knobOptions {
+    vm.template = nullable types.bool "vm only: template. true = the VM is a Proxmox template: rendered template = true, started = false, on_boot = false and no startup; never started. Guests clone it with source.clone.guest. Not in guestDefaults.";
+  };
+
   guestType =
     estate:
     types.submodule (
       { name, config, ... }:
       {
-        options = knobOptions // {
+        options = guestKnobOptions // {
           id = h.mkId (h.qualify estate name);
           vmid = mkOption {
             type = types.ints.between 100 999999999;
@@ -696,6 +702,66 @@ let
 
   # --------------------------------------------------------- references --
   imageById = id: lib.findFirst (i: i.id == id) null (concatMap (s: attrValues s.images) (attrValues cfg.sites));
+  # "<estate>/<guest>" -> that guest, or null.
+  guestById =
+    id:
+    let
+      p = lib.splitString "/" id;
+    in
+    if length p != 2 then null else (cfg.guests.${builtins.elemAt p 0} or { }).${builtins.elemAt p 1} or null;
+  isTemplate = g: g.kind == "vm" && g.vm.template == true;
+  # The guest a clone names by reference (source.clone.guest), or null.
+  cloneGuestOf =
+    k:
+    let
+      c = k.source.clone or null;
+    in
+    if c == null || c.guest == null then null else c.guest;
+
+  # The images a guest uses (ids): the vm's source.image and cdrom, the
+  # container's template image, or the site default's image when it names
+  # none (a container that clones uses no template).
+  imagesOf =
+    estate: g:
+    let
+      k = effective estate g;
+      prov = providerOf g;
+      siteImages = attrValues (cfg.sites.${siteOf g.on} or { images = { }; }).images;
+      defaultTmpl =
+        if prov == null then
+          null
+        else
+          lib.findFirst (i: i.volumeId == prov.defaults.operatingSystem.templateFileId) null siteImages;
+      cdrom = k.source.cdrom or null;
+      lxcTmpl =
+        if (k.source.clone or null) != null then
+          null
+        else if (k.source.template or null) != null then
+          k.source.template
+        else if defaultTmpl != null then
+          defaultTmpl.id
+        else
+          null;
+    in
+    filter (x: x != null) (
+      if g.kind == "lxc" then
+        [ lxcTmpl ]
+      else
+        [
+          (k.source.image or null)
+          (if cdrom == null then null else cdrom.image)
+        ]
+    );
+  # Of those, the ones the deploy uploads (an image with a source).
+  uploadsOf =
+    estate: g:
+    filter (
+      id:
+      let
+        i = imageById id;
+      in
+      i != null && i.source != null
+    ) (imagesOf estate g);
   pcieById =
     id:
     let
@@ -767,12 +833,16 @@ let
         optional (clone != null) "clone"
         ++ optional (isLxc && g.lxcExtraConf != null && g.lxcExtraConf != [ ]) "description"
         ++ unrecordedIgnoredOf estate g;
+      # A clone of a modelled template takes its vmid and node from it.
+      cloneSrc = if clone == null || clone.guest == null then null else guestById clone.guest;
       cloneArgs = if clone == null then null else {
-        vm_id = clone.vmid;
+        vm_id = if clone.guest == null then clone.vmid else if cloneSrc == null then null else cloneSrc.vmid;
         datastore_id = lastSeg clone.datastore;
         inherit (clone) full;
-        node_name = lastSeg clone.node;
+        node_name = lastSeg (if clone.guest == null then clone.node else if cloneSrc == null then null else cloneSrc.on);
       };
+      template = isTemplate g;
+      importImg = if (k.source.image or null) == null then null else imageById k.source.image;
       dns = {
         inherit (k.initialization.dns or { servers = null; domain = null; }) servers domain;
       };
@@ -870,7 +940,12 @@ let
       vmArgs = common // {
         # The VM name is also the hostname cloud-init gives the guest.
         name = if (k.initialization.hostname or null) != null then k.initialization.hostname else name;
-        on_boot = if (k.startOnBoot or null) == false then false else null;
+        # A template is never started, at boot or by the deploy, and has no
+        # place in the startup order (whatever the lower layers say).
+        template = if template then true else null;
+        started = if template then false else k.started;
+        startup = if template then null else common.startup;
+        on_boot = if template || (k.startOnBoot or null) == false then false else null;
         cpu = cpuCommon // {
           type = k.cpu.type or null;
         };
@@ -883,6 +958,7 @@ let
           datastore_id = lastSeg (diskDs k x);
           size = sizeGiB x.size;
           file_format = x.fileFormat;
+          import_from = if x.role == "root" && importImg != null then importImg.volumeId else null;
         }) (filter (x: x.role == "root") g.disks ++ filter (x: x.role == "data") g.disks);
         network_device = map (n: {
           inherit (n) firewall mtu model;
@@ -968,6 +1044,12 @@ let
       };
       companions = prune {
         lxc_extra_conf = g.lxcExtraConf;
+      };
+      # What has to exist before the guest is created, as model ids: the
+      # uploads of the images it uses, and the template it clones.
+      dependsOn = {
+        images = uploadsOf estate g;
+        guests = optional (cloneGuestOf k != null) (cloneGuestOf k);
       };
     };
 
@@ -1144,11 +1226,13 @@ let
     ++ sourceAssertions {
       inherit
         where
+        g
         site
         k
         isLxc
         ;
     }
+    ++ templateAssertions { inherit where g; }
     ++ poolAssertions {
       inherit where k prov;
     }
@@ -1336,6 +1420,7 @@ let
   sourceAssertions =
     {
       where,
+      g,
       site,
       k,
       isLxc,
@@ -1345,6 +1430,15 @@ let
       clone = k.source.clone or null;
       tmpl = k.source.template or null;
       cdrom = k.source.cdrom or null;
+      image = k.source.image or null;
+      img = if image == null then null else imageById image;
+      imgStore =
+        if img == null then
+          null
+        else
+          lib.findFirst (s: s.id == img.datastore) null (attrValues (cfg.sites.${siteOf img.id} or { storage = { }; }).storage);
+      ref = cloneGuestOf k;
+      src = if ref == null then null else guestById ref;
       imgCheck =
         field: id: content:
         let
@@ -1365,6 +1459,44 @@ let
     optional (isLxc && clone != null) (check w (tmpl == null) "source.clone and source.template are exclusive")
     ++ optionals (isLxc && tmpl != null) (imgCheck "template" tmpl "vztmpl")
     ++ optionals (!isLxc && cdrom != null) (imgCheck "cdrom.image" cdrom.image "iso")
+    # ---- a root disk imported from an image (disk.import_from) ----
+    ++ optionals (!isLxc && image != null) (
+      [
+        (check w (clone == null) "source.image and source.clone are exclusive (a clone takes its disks from its source)")
+      ]
+      ++ imgCheck "image" image "import"
+      ++ optional (imgStore != null) (
+        check "${w}.image" (elem "import" imgStore.content)
+          "image \"${image}\" is on storage \"${img.datastore}\", which does not list content type \"import\""
+      )
+      ++ optional (img != null && img.node != null) (
+        check "${w}.image" (img.node == g.on) "image \"${image}\" is on node ${img.node}, not the guest's node ${g.on}"
+      )
+    )
+    # ---- a clone: of a modelled template (guest) or of a bare vmid ----
+    ++ optionals (clone != null) [
+      (check "${w}.clone" ((clone.guest == null) != (clone.vmid == null))
+        "set exactly one of guest (a modelled template, <estate>/<guest>) and vmid (a source that is not modelled)")
+      (check "${w}.clone.node" (clone.guest == null || clone.node == null)
+        "the node of a clone of a modelled template is the template's; leave node unset")
+    ]
+    ++ optionals (ref != null) (
+      [
+        (h.refAssertion {
+          where = "${w}.clone.guest";
+          kind = "guest";
+          ids = ids.guest;
+        } ref)
+      ]
+      ++ optionals (src != null) [
+        (check "${w}.clone.guest" (src.id != g.id) "a guest cannot clone itself")
+        (check "${w}.clone.guest" (isTemplate src)
+          "guest \"${ref}\" is not a template (set vm.template = true on it)")
+        (check "${w}.clone.guest" (src.kind == g.kind) "guest \"${ref}\" is a ${src.kind}, this guest a ${g.kind}")
+        (check "${w}.clone.guest" (siteOf src.on == site)
+          "template \"${ref}\" is on site \"${siteOf src.on}\", not \"${site}\" (a clone stays in its cluster)")
+      ]
+    )
     ++ optionals (clone != null) (
       h.optionalRefAssertions {
         where = "${w}.clone.datastore";
@@ -1382,6 +1514,17 @@ let
       kind = "storage";
       ids = ids.storage;
     } (k.vm.cloudInit.datastore or null);
+
+  # ---- a template: a VM that is never started ----
+  # The guest's own definitions only: the render overrides what the lower
+  # layers say (started = false, on_boot = false, no startup).
+  templateAssertions =
+    { where, g }:
+    optionals (isTemplate g) [
+      (check "${where}.started" (g.started != true) "a template is never started; leave started unset")
+      (check "${where}.startOnBoot" (g.startOnBoot != true) "a template is never started; leave startOnBoot unset")
+      (check "${where}.startup" (!anySet g.startup) "a template has no startup ordering; leave startup unset")
+    ];
 
   # ---- pool: an existing pool of the guest's provider ----
   poolAssertions =
@@ -1547,8 +1690,30 @@ let
         kind = "image";
         ids = ids.image;
       } gd.source.template
+      ++ h.optionalRefAssertions {
+        where = "${w}.source.image";
+        kind = "image";
+        ids = ids.image;
+      } gd.source.image
     ) cfg.estates
   );
+
+  # ---- an uploaded image belongs to one estate's render ----
+  # Each estate's render uploads the images its managed guests use; two
+  # estates would both own the one file on the datastore.
+  uploaders = lib.mapAttrs (_: xs: lib.unique (map (x: x.estate) xs)) (
+    lib.groupBy (x: x.image) (
+      concatMap (
+        { estate, g, ... }:
+        map (image: { inherit estate image; }) (if g.mode == "managed" then uploadsOf estate g else [ ])
+      ) allGuests
+    )
+  );
+  uploadAssertions = mapAttrsToList (
+    image: estates:
+    check "fleet.sites.${siteOf image}.images.${lastSeg image}.source" (length estates == 1)
+      "image \"${image}\" is uploaded by the render of each estate whose managed guests use it, and guests of ${lib.concatStringsSep ", " estates} do; use it from one estate"
+  ) uploaders;
 
   # ---- vmid collisions (per cluster = site of the node) ----
   vmidGroups = lib.groupBy (x: "${siteOf x.g.on}#${toString x.g.vmid}") allGuests;
@@ -1673,7 +1838,7 @@ in
         description = ''
           Derived, read-only: per guest, the effective provider view after
           layering, in bpg/proxmox 0.115.0 argument names:
-            { resource; args; lifecycle; companions; }
+            { resource; args; lifecycle; companions; dependsOn; }
           args: single blocks are objects (cpu, memory, disk for lxc, ...),
           repeatable blocks are lists (network_interface, mount_point,
           ip_config, vm disk, hostpci, ...); null leaves and empty blocks are
@@ -1683,6 +1848,9 @@ in
           container with lxcExtraConf, and what an import does not record on
           a guest with adoption.unrecorded = "ignore").
           companions.lxc_extra_conf: raw lxc.conf lines.
+          dependsOn: model ids that must exist before the guest is
+          created: images (the images it uses that have a source: their
+          upload) and guests (the template a source.clone.guest names).
         '';
       };
       unrecordedIgnored = mkOption {
@@ -1744,6 +1912,10 @@ in
     };
 
     assertions =
-      estateKeyAssertions ++ defaultsAssertions ++ concatMap guestAssertions allGuests ++ vmidAssertions;
+      estateKeyAssertions
+      ++ defaultsAssertions
+      ++ concatMap guestAssertions allGuests
+      ++ uploadAssertions
+      ++ vmidAssertions;
   };
 }

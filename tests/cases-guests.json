@@ -238,6 +238,254 @@
         "  fleet.sites.s1.bridges.vmbr0.vlans.other = 7;",
         "}"
       ]
+    },
+    {
+      "name": "template-on-lxc",
+      "description": "vm.template on a container",
+      "expect": "fleet\\.guests\\.gaps\\.mapped\\.vm: is vm-only but kind is \"lxc\"",
+      "module": [
+        "_: {",
+        "  fleet.guests.gaps.mapped.vm.template = true;",
+        "}"
+      ]
+    },
+    {
+      "name": "template-started",
+      "description": "a template declared started",
+      "expect": "fleet\\.guests\\.tmpl\\.base\\.started: a template is never started",
+      "module": [
+        "_: {",
+        "  fleet.guests.tmpl.base.started = true;",
+        "}"
+      ]
+    },
+    {
+      "name": "template-on-boot",
+      "description": "a template declared started at boot",
+      "expect": "fleet\\.guests\\.tmpl\\.base\\.startOnBoot: a template is never started",
+      "module": [
+        "_: {",
+        "  fleet.guests.tmpl.base.startOnBoot = true;",
+        "}"
+      ]
+    },
+    {
+      "name": "template-startup",
+      "description": "a template in the startup order",
+      "expect": "fleet\\.guests\\.tmpl\\.base\\.startup: a template has no startup ordering",
+      "module": [
+        "_: {",
+        "  fleet.guests.tmpl.base.startup.order = 1;",
+        "}"
+      ]
+    },
+    {
+      "name": "image-unknown",
+      "description": "a root disk imported from an image that does not exist",
+      "expect": "fleet\\.guests\\.tmpl\\.base\\.source\\.image: image reference \"s1/nope\" does not exist",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.guests.tmpl.base.source.image = lib.mkForce \"s1/nope\";",
+        "}"
+      ]
+    },
+    {
+      "name": "image-not-import",
+      "description": "a root disk imported from a container template",
+      "expect": "fleet\\.guests\\.tmpl\\.base\\.source\\.image: image \"s1/tpl\" has content type \"vztmpl\", expected \"import\"",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.guests.tmpl.base.source.image = lib.mkForce \"s1/tpl\";",
+        "}"
+      ]
+    },
+    {
+      "name": "image-datastore-no-import",
+      "description": "an import image on a storage that does not list import",
+      "expect": "fleet\\.guests\\.tmpl\\.base\\.source\\.image: image \"s1/vyos\" is on storage \"s1/local\", which does not list content type \"import\"",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.sites.s1.storage.local.content = lib.mkForce [",
+        "    \"rootdir\"",
+        "    \"images\"",
+        "    \"vztmpl\"",
+        "  ];",
+        "}"
+      ]
+    },
+    {
+      "name": "image-other-node",
+      "description": "an import image on another node than the guest",
+      "expect": "fleet\\.guests\\.tmpl\\.base\\.source\\.image: image \"s1/vyos\" is on node s1/n2, not the guest's node s1/n1",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.sites.s1.nodes.n2 = {",
+        "    osType = \"debian-pve\";",
+        "    address = \"192.0.2.11\";",
+        "  };",
+        "  fleet.sites.s1.images.vyos.node = lib.mkForce \"s1/n2\";",
+        "}"
+      ]
+    },
+    {
+      "name": "image-on-lxc",
+      "description": "source.image on a container",
+      "expect": "fleet\\.guests\\.gaps\\.mapped\\.source\\.image: is vm-only but kind is \"lxc\"",
+      "module": [
+        "_: {",
+        "  fleet.guests.gaps.mapped.source.image = \"s1/vyos\";",
+        "}"
+      ]
+    },
+    {
+      "name": "image-and-clone",
+      "description": "a clone that also imports its root disk",
+      "expect": "fleet\\.guests\\.tmpl\\.router\\.source: source\\.image and source\\.clone are exclusive",
+      "module": [
+        "_: {",
+        "  fleet.guests.tmpl.router.source.image = \"s1/vyos\";",
+        "}"
+      ]
+    },
+    {
+      "name": "image-source-no-node",
+      "description": "an image with a source and no node to upload to",
+      "expect": "fleet\\.sites\\.s1\\.images\\.vyos\\.node: an image with a source is uploaded to one node; set node",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.sites.s1.images.vyos.node = lib.mkForce null;",
+        "}"
+      ]
+    },
+    {
+      "name": "image-source-not-uploadable",
+      "description": "an image with a source of a content type the upload does not take",
+      "expect": "fleet\\.sites\\.s1\\.images\\.disk\\.contentType: an image with a source is uploaded as iso, vztmpl, import, not \"images\"",
+      "module": [
+        "_: {",
+        "  fleet.sites.s1.images.disk = {",
+        "    datastore = \"s1/local\";",
+        "    contentType = \"images\";",
+        "    fileName = \"disk.raw\";",
+        "    node = \"s1/n1\";",
+        "    source = \"/nix/store/00000000000000000000000000000000-disk.raw\";",
+        "    build.method = \"nix\";",
+        "  };",
+        "}"
+      ]
+    },
+    {
+      "name": "image-two-estates",
+      "description": "an uploaded image used by managed guests of two estates",
+      "expect": "fleet\\.sites\\.s1\\.images\\.vyos\\.source: image \"s1/vyos\" is uploaded by the render of each estate whose managed guests use it, and guests of mini, tmpl do",
+      "module": [
+        "_: {",
+        "  fleet.guests.mini.machine.source.image = \"s1/vyos\";",
+        "}"
+      ]
+    },
+    {
+      "name": "clone-guest-and-vmid",
+      "description": "a clone naming both a modelled template and a vmid",
+      "expect": "fleet\\.guests\\.tmpl\\.router\\.source\\.clone: set exactly one of guest",
+      "module": [
+        "_: {",
+        "  fleet.guests.tmpl.router.source.clone.vmid = 9000;",
+        "}"
+      ]
+    },
+    {
+      "name": "clone-neither",
+      "description": "a clone naming no source",
+      "expect": "fleet\\.guests\\.gaps\\.efi\\.source\\.clone: set exactly one of guest",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.guests.gaps.efi.source.clone.vmid = lib.mkForce null;",
+        "}"
+      ]
+    },
+    {
+      "name": "clone-guest-unknown",
+      "description": "a clone of a guest that does not exist",
+      "expect": "fleet\\.guests\\.tmpl\\.router\\.source\\.clone\\.guest: guest reference \"tmpl/nope\" does not exist",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.guests.tmpl.router.source.clone.guest = lib.mkForce \"tmpl/nope\";",
+        "}"
+      ]
+    },
+    {
+      "name": "clone-not-template",
+      "description": "a clone of a guest that is not a template",
+      "expect": "fleet\\.guests\\.tmpl\\.router\\.source\\.clone\\.guest: guest \"mini/machine\" is not a template",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.guests.tmpl.router.source.clone.guest = lib.mkForce \"mini/machine\";",
+        "}"
+      ]
+    },
+    {
+      "name": "clone-guest-node",
+      "description": "a clone of a modelled template that also names a node",
+      "expect": "fleet\\.guests\\.tmpl\\.router\\.source\\.clone\\.node: the node of a clone of a modelled template is the template's",
+      "module": [
+        "_: {",
+        "  fleet.guests.tmpl.router.source.clone.node = \"s1/n1\";",
+        "}"
+      ]
+    },
+    {
+      "name": "clone-guest-kind",
+      "description": "a container cloning a VM template",
+      "expect": "fleet\\.guests\\.gaps\\.mapped\\.source\\.clone\\.guest: guest \"tmpl/base\" is a vm, this guest a lxc",
+      "module": [
+        "_: {",
+        "  fleet.guests.gaps.mapped.source.clone.guest = \"tmpl/base\";",
+        "}"
+      ]
+    },
+    {
+      "name": "clone-guest-self",
+      "description": "a template that clones itself",
+      "expect": "fleet\\.guests\\.tmpl\\.base\\.source\\.clone\\.guest: a guest cannot clone itself",
+      "module": [
+        "_: {",
+        "  fleet.guests.tmpl.base.source.clone.guest = \"tmpl/base\";",
+        "}"
+      ]
+    },
+    {
+      "name": "clone-guest-other-site",
+      "description": "a clone of a template on another site",
+      "expect": "fleet\\.guests\\.tmpl\\.router\\.source\\.clone\\.guest: template \"tmpl/far\" is on site \"s2\", not \"s1\"",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.guests.tmpl.far = {",
+        "    vmid = 9703;",
+        "    kind = \"vm\";",
+        "    on = \"s2/n1\";",
+        "    vm.template = true;",
+        "    disks = [",
+        "      {",
+        "        role = \"root\";",
+        "        size = 8;",
+        "        interface = \"scsi0\";",
+        "        datastore = \"s2/local\";",
+        "      }",
+        "    ];",
+        "  };",
+        "  fleet.guests.tmpl.router.source.clone.guest = lib.mkForce \"tmpl/far\";",
+        "}"
+      ]
     }
   ]
 }

@@ -30,6 +30,14 @@ let
     "import"
   ];
 
+  # What an image with a source can be uploaded as
+  # (proxmox_virtual_environment_file, through the API's upload).
+  uploadKinds = [
+    "iso"
+    "vztmpl"
+    "import"
+  ];
+
   req = type: mkOption { inherit type; };
   opt =
     type: default:
@@ -265,6 +273,11 @@ let
           contentType = req (types.enum contentKinds);
           fileName = req types.str;
           node = nullable types.str;
+          source = mkOption {
+            type = types.nullOr types.path;
+            default = null;
+            description = "The file to upload, normally a Nix store path of the built image (a derivation, or its out path). Set: the estate whose managed guests use the image renders a proxmox_virtual_environment_file that uploads it to datastore on node, as fileName (source_file.path; evaluation does not build it, the deploy's host must have it), and those guests depend on it. null = the image is on the datastore already. A new source is a new fileName: a changed fileName replaces the upload.";
+          };
           build = req (
             types.submodule {
               options.method = req (types.enum [ "nix" ]);
@@ -498,6 +511,13 @@ let
             kind = "node";
             ids = siteNodes;
           } img.node
+          # An upload goes to one node, through the Proxmox API, which takes
+          # these content types only.
+          ++ lib.optionals (img.source != null) [
+            (check "${ip}.node" (img.node != null) "an image with a source is uploaded to one node; set node")
+            (check "${ip}.contentType" (builtins.elem img.contentType uploadKinds)
+              "an image with a source is uploaded as ${lib.concatStringsSep ", " uploadKinds}, not \"${img.contentType}\"")
+          ]
         ) site.images
       );
     in

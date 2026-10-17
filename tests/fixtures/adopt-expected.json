@@ -30,6 +30,14 @@
     },
     "adoptUnresolved": {}
   },
+  "tmpl-guests": {
+    "adoptIds": {
+      "base": "n1/9701",
+      "router": "n1/9702",
+      "vyos": "n1/local:import/vyos-1.qcow2"
+    },
+    "adoptUnresolved": {}
+  },
   "gh-github": {
     "adoptIds": {
       "alice": "example-org:alice-example",
