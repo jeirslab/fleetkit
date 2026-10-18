@@ -24,12 +24,7 @@
 #   }
 #
 # The modules get `fleet` (the checked model) and `fleetkit` as arguments.
-{
-  lib,
-  self,
-  # secrets.nix's sopsRef (ADR-0009), for the backends' sops references.
-  mkSopsRef,
-}:
+{ lib, self }:
 let
   stacks =
     {
@@ -75,7 +70,7 @@ let
         inherit (p) resources;
         needs = lib.mkIf (!github) ansible.needs;
         backend = lib.mkIf (backendId != null) (
-          import ./backend.nix { inherit lib fleet estate mkSopsRef; } {
+          import ./backend.nix { inherit lib fleet estate; } {
             id = backendId;
             project = p.name;
           }

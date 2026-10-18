@@ -19,34 +19,12 @@
     "root": {
       "inputs": {
         "nixpkgs": "nixpkgs",
-        "secrets-nix": "secrets-nix"
-      }
-    },
-    "secrets-nix": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ],
         "sops-nix": "sops-nix"
-      },
-      "locked": {
-        "lastModified": 1792307604,
-        "narHash": "sha256-9wVXtN2ADAR4JQWHZJGkxqzf7P5KgFhnyruplmmGhGo=",
-        "owner": "jeirslab",
-        "repo": "secrets.nix",
-        "rev": "4692f924978fa6fac70abde8af9f391b4c631bd9",
-        "type": "github"
-      },
-      "original": {
-        "owner": "jeirslab",
-        "repo": "secrets.nix",
-        "type": "github"
       }
     },
     "sops-nix": {
       "inputs": {
         "nixpkgs": [
-          "secrets-nix",
           "nixpkgs"
         ]
       },

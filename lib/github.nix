@@ -16,7 +16,7 @@
 #
 # Credentials are never literals: the provider's app_auth / token and every
 # Actions secret value read the estate's secret refs (sops:<estate>/<file>#<key>)
-# through data.sops_file, as lib/terraform.nix does (secrets.nix sopsRef).
+# through data.sops_file, as lib/terraform.nix does (lib/secrets/sops-ref.nix).
 #
 # Repositories are never destroyed by removal: archive_on_destroy = true and
 # lifecycle.prevent_destroy = true. A fork is rendered like any repository
@@ -46,12 +46,10 @@
   lib,
   fleet,
   estate,
-  # secrets.nix's sopsRef (ADR-0009), passed by the flake.
-  mkSopsRef,
 }:
 let
   where = "mkGithubTerraform: fleet.estates.${estate}.git";
-  sopsRef = mkSopsRef { inherit fleet estate where; };
+  sopsRef = import ./secrets/sops-ref.nix { inherit fleet estate where; };
 
   g =
     fleet.estates.${estate}.git

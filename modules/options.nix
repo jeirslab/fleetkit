@@ -33,8 +33,7 @@ in
   imports = [
     ./sites.nix
     ./estates.nix
-    # The secrets block (fleet.estates.<e>.secrets, fleet.report.sops, ...)
-    # is secrets.nix's schemaModule, added by lib/default.nix (ADR-0009).
+    ./secrets.nix
     ./loose.nix
     ./zones.nix
     ./backends.nix

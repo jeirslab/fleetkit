@@ -1,0 +1,129 @@
+{
+    "estates": [
+        {
+            "keys": [],
+            "keysComment": null,
+            "model": {
+                "anchors": {
+                    "admin": {
+                        "age": "age1zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+                        "id": null,
+                        "kind": "operator",
+                        "ssh": null
+                    },
+                    "host_db": {
+                        "age": null,
+                        "id": "apps/db",
+                        "kind": "host",
+                        "ssh": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholderPlaceholderPlaceholder00"
+                    },
+                    "host_web": {
+                        "age": "age1wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww",
+                        "id": "apps/web",
+                        "kind": "host",
+                        "ssh": null
+                    }
+                },
+                "missingKeys": [],
+                "rules": [
+                    {
+                        "anchors": [
+                            "admin",
+                            "host_db",
+                            "host_web"
+                        ],
+                        "path": "apps/db.yaml"
+                    },
+                    {
+                        "anchors": [
+                            "admin",
+                            "host_web"
+                        ],
+                        "path": "apps/web.yaml"
+                    }
+                ]
+            },
+            "name": "apps",
+            "prefix": "",
+            "root": "",
+            "rules": [],
+            "rulesComment": null
+        },
+        {
+            "keys": [],
+            "keysComment": null,
+            "model": {
+                "anchors": {
+                    "host_node1": {
+                        "age": "age1nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+                        "id": "lan/node1",
+                        "kind": "host",
+                        "ssh": null
+                    },
+                    "ops_admin": {
+                        "age": "age1pppppppppppppppppppppppppppppppppppppppppppppppppppppppppp",
+                        "id": null,
+                        "kind": "operator",
+                        "ssh": null
+                    }
+                },
+                "missingKeys": [],
+                "rules": [
+                    {
+                        "anchors": [
+                            "host_node1",
+                            "ops_admin"
+                        ],
+                        "path": "ops/node1.yaml"
+                    }
+                ]
+            },
+            "name": "ops",
+            "prefix": "",
+            "root": "",
+            "rules": [],
+            "rulesComment": null
+        },
+        {
+            "keys": [
+                {
+                    "age": "age1mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm",
+                    "name": "master"
+                },
+                {
+                    "age": "age1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "name": "app_host"
+                }
+            ],
+            "keysComment": "legacy/.sops.yaml, anchors prefixed legacy_",
+            "model": {
+                "anchors": {},
+                "missingKeys": [],
+                "rules": []
+            },
+            "name": "legacy",
+            "prefix": "legacy_",
+            "root": "legacy",
+            "rules": [
+                {
+                    "anchors": [
+                        "master"
+                    ],
+                    "pathRegex": "secrets/vpn\\.yaml$"
+                },
+                {
+                    "anchors": [
+                        "master",
+                        "app_host"
+                    ],
+                    "pathRegex": "^secrets/app\\.yaml$"
+                }
+            ],
+            "rulesComment": "legacy/.sops.yaml, in its order, re-rooted under legacy/"
+        }
+    ],
+    "header": "Rendered from the registry. Do not edit: run `secrets render`.",
+    "protect": [
+        "^legacy/secrets/vpn\\.yaml$"
+    ]
+}
