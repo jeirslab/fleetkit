@@ -25,6 +25,11 @@
 # Reference validation is done with config.assertions (see modules/lib.nix);
 # plain lib.evalModules does not enforce assertions, so every consumer goes
 # through `checked`.
+#
+# `secrets` is secrets.nix's lib (ADR-0009): its schemaModule (the secrets
+# block, fleet.estates.<e>.secrets and the reports derived from it) is part of
+# every model, as modules/secrets.nix was.
+{ secrets }:
 let
   tenantOwned = [
     "owner"
@@ -45,7 +50,11 @@ let
     let
       sources = builtins.mapAttrs (_: toString) tenants;
       eval = lib.evalModules {
-        modules = [ ../modules/options.nix ]
+        # ADR-0009: the secrets schema comes from secrets.nix.
+        modules = [
+          ../modules/options.nix
+          secrets.schemaModule
+        ]
         ++ map (src: src + "/fleet") (builtins.attrValues sources)
         ++ modules;
       };

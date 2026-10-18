@@ -2,7 +2,7 @@
 # Evaluation only; nothing here is a secret (secrets are named, as sops file
 # and key path, for the deploy runner to decrypt).
 #
-#   import ./backend.nix { lib; fleet; estate; } { id; project; } -> backend | null
+#   import ./backend.nix { lib; fleet; estate; mkSopsRef; } { id; project; } -> backend | null
 #
 #   pg       postgres://, the connection string from connRef (it carries the
 #            password). A project listed in localStacks keeps local state (the
@@ -17,12 +17,14 @@
   lib,
   fleet,
   estate,
+  # secrets.nix's sopsRef (ADR-0009), passed by the flake.
+  mkSopsRef,
 }:
 { id, project }:
 let
   where = "backendFor ${project}: fleet.backends.${id}";
   b = fleet.backends.${id} or (throw "${where}: no such backend");
-  sopsRef = import ../sops-ref.nix { inherit fleet estate where; };
+  sopsRef = mkSopsRef { inherit fleet estate where; };
   val = ref: { inherit (sopsRef ref) path extract; };
   sub = ref: k: (val ref) // { extract = (val ref).extract ++ [ k ]; };
   s3 = endpoint: region: bucket: prefix: env: {

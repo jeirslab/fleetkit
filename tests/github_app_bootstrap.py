@@ -21,6 +21,12 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOL = os.path.join(ROOT, "tools", "github-app-bootstrap")
+# TOOL is the wrapper kept at the old path (ADR-0009); the source checks below
+# read the tool it runs, in secrets.nix's tools/.
+MOVED = os.path.join(
+    subprocess.run([sys.executable, os.path.join(ROOT, "tools", "secrets_nix_tool.py"), "--dir"],
+                   capture_output=True, text=True, check=True).stdout.strip(),
+    "github-app-bootstrap")
 PEM = "FAKE-PEM-LINE-ONE\nTESTKEYMATERIAL\nFAKE-PEM-LAST-LINE\n"  # stand-in; the tool does not parse the key
 fails = []
 
@@ -331,7 +337,7 @@ def main():
         check(r.returncode != 0 and "unrecognized arguments" in r.stderr and len(conversions()) == before,
               "--rescue-dir is not an option any more")
         # (c) no code path writes the response in plaintext: the removed names stay removed
-        src = open(TOOL).read()
+        src = open(MOVED).read()
         for gone in ("write_rescue", "die_rescued", "gettempdir", "rescue-dir", "rescue_dir", ".decrypted"):
             check(gone not in src, f"tool source no longer mentions {gone}")
         check(len(re.findall(r"\bos\.open\(|(?<![.\w])open\(", src)) == 2 and src.count("NamedTemporaryFile") == 1,

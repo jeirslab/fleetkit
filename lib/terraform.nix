@@ -32,6 +32,8 @@
   lib,
   fleet,
   estate,
+  # secrets.nix's sopsRef (ADR-0009), passed by the flake.
+  mkSopsRef,
 }:
 let
   guests = fleet.guests.${estate} or { };
@@ -48,7 +50,7 @@ let
   provOf = site: fleet.sites.${site}.providers.proxmox;
 
   where = "mkPulumi: fleet.estates.${estate}";
-  sopsRef = import ./sops-ref.nix { inherit fleet estate where; };
+  sopsRef = mkSopsRef { inherit fleet estate where; };
 
   # One provider. With a placement it is placement.provider; without one it is
   # the proxmox provider of the one site the managed guests and pools are on.

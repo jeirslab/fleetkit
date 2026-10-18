@@ -1,13 +1,36 @@
 {
   description = "fleetkit: the schema and checks of the fleet model (no data; an estate repo supplies it)";
 
-  # Only nixpkgs.lib is used: no systems, no packages, nothing to build.
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/b5aa0fbd538984f6e3d201be0005b4463d8b09f8";
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/b5aa0fbd538984f6e3d201be0005b4463d8b09f8";
+    # ADR-0009: the secrets schema, the sops reference resolver, the
+    # .sops.yaml renderer and the secrets tools live in secrets.nix (public,
+    # data-free). fleetkit re-exports them under the names it always had.
+    secrets-nix = {
+      url = "github:jeirslab/secrets.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
 
   outputs =
-    { self, nixpkgs, ... }:
+    {
+      self,
+      nixpkgs,
+      secrets-nix,
+      ...
+    }:
     let
-      fleetLib = import ./lib;
+      # ADR-0009: what fleetkit takes from secrets.nix. The schema module
+      # (fleet.estates.<e>.secrets, fleet.report.sops, ...) is part of every
+      # mkFleet; sopsRef resolves sops:<estate>/<file>#<key> for the renderers.
+      secrets = secrets-nix.lib;
+      fleetLib = import ./lib { inherit secrets; };
+      # Every renderer gets nixpkgs' lib (callers may pass their own) and the
+      # sops reference resolver.
+      kitArgs = {
+        inherit (nixpkgs) lib;
+        mkSopsRef = secrets.sopsRef;
+      };
       withLib = f: args: f ({ inherit (nixpkgs) lib; } // args);
       empty = fleetLib.mkFleet { inherit (nixpkgs) lib; };
       adoptRules = import ./lib/pulumi/adopt.nix { inherit (nixpkgs) lib; };
@@ -17,6 +40,9 @@
       # supplied here (pass `lib` to override it).
       lib = {
         inherit (fleetLib) checked tenantOwned;
+        # ADR-0009: secrets.nix's library (mkData, evalRegistry, schemaModule,
+        # sopsRef, tools, ...), re-exported for fleetkit's consumers.
+        inherit secrets;
         mkFleet = withLib fleetLib.mkFleet;
         fleet = withLib fleetLib.fleet;
         # { fleet; estate; nixpkgs; modules; specialArgs; adminPrincipals; }
@@ -32,6 +58,7 @@
         pulumi = import ./lib/pulumi {
           inherit (nixpkgs) lib;
           inherit self;
+          inherit (kitArgs) mkSopsRef;
         };
         # The provider arguments of an estate, in the pinned Terraform
         # providers' own names (Pulumi runs those providers through its bridge,
@@ -39,9 +66,9 @@
         # the stage mkPulumi / mkGithubPulumi compile from; tests read it.
         internal = {
           # { fleet; estate; } -> guests and pools, main.tf.json shaped.
-          guests = args: import ./lib/terraform.nix ({ inherit (nixpkgs) lib; } // args);
+          guests = args: import ./lib/terraform.nix (kitArgs // args);
           # { fleet; estate; } -> the GitHub organisation and repositories.
-          github = args: import ./lib/github.nix ({ inherit (nixpkgs) lib; } // args);
+          github = args: import ./lib/github.nix (kitArgs // args);
         };
         # Pulumi YAML programs (builtins.toJSON into Pulumi.yaml) through
         # Pulumi's terraform-provider bridge at the pinned provider versions;
@@ -61,7 +88,7 @@
           }@args:
           import ./lib/pulumi.nix {
             inherit (nixpkgs) lib;
-            tf = import ./lib/terraform.nix ({ inherit (nixpkgs) lib; } // removeAttrs args [ "adopt" ]);
+            tf = import ./lib/terraform.nix (kitArgs // removeAttrs args [ "adopt" ]);
             project = "${args.estate}-guests";
             adopt = nixpkgs.lib.optionalAttrs adopt adoptRules.proxmox;
           };
@@ -74,7 +101,7 @@
             ...
           }@args:
           let
-            tf = import ./lib/github.nix ({ inherit (nixpkgs) lib; } // removeAttrs args [ "adopt" ]);
+            tf = import ./lib/github.nix (kitArgs // removeAttrs args [ "adopt" ]);
           in
           import ./lib/pulumi.nix {
             inherit (nixpkgs) lib;
@@ -85,10 +112,10 @@
         # The same two stages under their Terraform-era names: tests written
         # against unstable (tests/github.sh, tests/terraform.sh) read these.
         # { fleet; estate; } -> an attrset for builtins.toJSON into main.tf.json.
-        mkTerraform = args: import ./lib/terraform.nix ({ inherit (nixpkgs) lib; } // args);
+        mkTerraform = args: import ./lib/terraform.nix (kitArgs // args);
         # { fleet; estate; } -> the estate's GitHub repositories and organisation
         # as an attrset for builtins.toJSON into main.tf.json.
-        mkGithubTerraform = args: import ./lib/github.nix ({ inherit (nixpkgs) lib; } // args);
+        mkGithubTerraform = args: import ./lib/github.nix (kitArgs // args);
         # { org; tiers ? [ "pipeline" "terraform-admin" ]; name ? null; redirectUrl ? null; }
         # -> the GitHub App manifest for that org (docs/github-app.md).
         mkGithubAppManifest = args: import ./lib/github-app.nix ({ inherit (nixpkgs) lib; } // args);
@@ -98,8 +125,13 @@
         mkWorkflowCaller = args: import ./lib/workflow-caller.nix ({ inherit (nixpkgs) lib; } // args);
       };
 
-      # Experimental: the deploy server as a NixOS service (GitOps mode).
-      nixosModules.fleetkit-server = import ./nixos/fleetkit-server.nix { inherit self; };
+      nixosModules = {
+        # Experimental: the deploy server as a NixOS service (GitOps mode).
+        fleetkit-server = import ./nixos/fleetkit-server.nix { inherit self; };
+        # ADR-0009: sops-nix plus the SSH host key as the identity a host
+        # decrypts with (secrets.nix's nixosModules.secrets).
+        inherit (secrets-nix.nixosModules) secrets;
+      };
 
       # Experimental: the deploy runner (cli/). pulumi, colmena and sops are on
       # its PATH; nix is the host's.
@@ -178,6 +210,9 @@
             meta.mainProgram = "fleetkit";
           };
           default = fleetkit;
+          # ADR-0009: the secrets CLI (check, render, scan, edit, host add,
+          # rekey, refs, deploy-key, app-bootstrap) from secrets.nix.
+          inherit (secrets-nix.packages.${system}) secrets;
         }
       );
 

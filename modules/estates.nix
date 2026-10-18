@@ -1,6 +1,6 @@
 # fleet.estates: the owning organisations (homelab, xgcs) and their core
 # settings: owner, domains, tailnets, environments, backend, pools,
-# placement. Secrets are in ./secrets.nix, the loose blocks (git, cache,
+# placement. Secrets are secrets.nix's schemaModule (ADR-0009), the loose blocks (git, cache,
 # build, substrate, ...) in ./loose.nix; all three extend the same estate
 # submodule, and none of them has a freeform type.
 { lib, config, ... }:

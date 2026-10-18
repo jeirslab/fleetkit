@@ -1,5 +1,9 @@
 # Deploy keys
 
+`tools/deploy-key` lives in [secrets.nix](https://github.com/jeirslab/secrets.nix)
+(ADR-0009; also `secrets deploy-key`). The path here is a wrapper that prints a
+one-line notice and runs it with the same arguments.
+
 `tools/deploy-key` makes the SSH identity a deploy server (or any other
 automation) logs in to a fleet's hosts with, and keeps its private half in a
 sops file. It is the tool for every estate and site that gets a deploy

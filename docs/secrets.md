@@ -1,5 +1,13 @@
 # Secrets and sops recipients
 
+The secrets schema (`fleet.estates.<e>.secrets`, `fleet.report.sops`), the
+`sops:` reference resolver and `tools/sops-config.py` live in
+[secrets.nix](https://github.com/jeirslab/secrets.nix) (ADR-0009). fleetkit
+takes it as the `secrets-nix` input and keeps every name: the schema is part of
+every `mkFleet`, `lib.secrets` is secrets.nix's `lib`, `nixosModules.secrets`
+and `packages.<system>.secrets` are its module and CLI, and
+`tools/sops-config.py` is a wrapper that runs the moved tool.
+
 The kit never decrypts anything. It holds public material only: host keys,
 operator recipients, and which guests may read which secret files. From that it
 derives the list of recipients an estate's `.sops.yaml` needs, and a check that

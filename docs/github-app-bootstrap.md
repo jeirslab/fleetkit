@@ -1,5 +1,10 @@
 # GitHub App bootstrap
 
+`tools/github-app-bootstrap` lives in
+[secrets.nix](https://github.com/jeirslab/secrets.nix) (ADR-0009; also
+`secrets app-bootstrap`). The path here is a wrapper that prints a one-line
+notice and runs it with the same arguments.
+
 `tools/github-app-bootstrap` registers a GitHub App from a manifest file and
 stores its credentials in an existing sops file. It never prints the private
 key, client secret or webhook secret. The manifest is a JSON file you pass in;
