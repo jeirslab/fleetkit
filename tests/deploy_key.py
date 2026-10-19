@@ -113,11 +113,11 @@ def main():
     check(p.returncode != 0 and "--rotate" in p.stderr, "an existing key is not replaced without --rotate")
     check(json.load(open(f))["deploy"]["ssh_key"] == private, "and it is left as it was")
 
-    p = tool("create", "--name", "xg-deploy", *base, "--rotate", "--estate", "xgcs", "--region", "us-ca", "--role", "ship",
+    p = tool("create", "--name", "app-deploy", *base, "--rotate", "--estate", "apps", "--region", "us-ca", "--role", "ship",
              "--comment", "xg deploys")
     pub2 = p.stdout.splitlines()[0] if p.stdout else ""
     check(p.returncode == 0 and pub2 and pub2.split()[1] != pub1.split()[1], "--rotate stores a new key")
-    check('where = { regions = [ "us-ca" ]; estates = [ "xgcs" ]; }' in p.stdout and 'role = "ship"' in p.stdout
+    check('where = { regions = [ "us-ca" ]; estates = [ "apps" ]; }' in p.stdout and 'role = "ship"' in p.stdout
           and pub2.endswith("xg deploys"), "the snippet carries the scope, the role and the comment")
 
     q = tool("public", "--sops-file", f, "--key-path", "nothing/here")

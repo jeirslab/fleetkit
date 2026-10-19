@@ -22,7 +22,7 @@
 let
   where = "backendFor ${project}: fleet.backends.${id}";
   b = fleet.backends.${id} or (throw "${where}: no such backend");
-  sopsRef = import ../sops-ref.nix { inherit fleet estate where; };
+  sopsRef = import ../secrets/sops-ref.nix { inherit fleet estate where; };
   val = ref: { inherit (sopsRef ref) path extract; };
   sub = ref: k: (val ref) // { extract = (val ref).extract ++ [ k ]; };
   s3 = endpoint: region: bucket: prefix: env: {

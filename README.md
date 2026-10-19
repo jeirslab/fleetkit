@@ -52,6 +52,11 @@ outputs = { fleetkit, xgcs, ... }: {
 - `docs/secrets.md` host keys, operators and readers in the model, the
   rendered and checked `.sops.yaml`, and the re-key recipe. The kit never
   decrypts.
+- `lib.secrets`, `nixosModules.secrets`, `packages.<system>.secrets`,
+  `templates.data`: the secrets utility (ADR-0009, ADR-0017). A secrets data
+  repository (sops files and their registry) is one `lib.secrets.mkData` call;
+  the `secrets` command renders, checks, scans and re-keys it. See
+  `docs/registry.md` and `docs/secrets.md`.
 - `tools/gates.sh` parse, eval, lint and provider fidelity. Checks that need
   real data (negative cases, parity) run in the estate repo.
 

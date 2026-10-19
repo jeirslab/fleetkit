@@ -33,6 +33,11 @@ printf 't = "%s%s";\n' 'xo' 'xb-1234567890-abcdefghij' > t.txt;                 
 printf 't = "%s%s";\n' 'AK' 'IAABCDEFGHIJKLMNOP' > t.txt;                       expect aws 1; rm t.txt
 sk="$(printf 'A%.0s' $(seq 1 86))"
 printf 'publicKey = "cache-1:%s==";\n' "$sk" > t.txt;                    expect nixsecret 1; rm t.txt
+printf 'k: ENC[AES256_GCM,data:%s==,iv:x,tag:y,type:str]\nsops:\n  age: []\n' "$sk" > ok.sops.yaml; expect nixshape-ciphertext 0
+printf 'k: ENC[AES256_GCM,data:x]\nn: cache-1:%s==\nsops:\n  age: []\n' "$sk" > t.txt; expect nixsecret-beside-enc 1; rm t.txt
+printf 'a: ENC[AES256_GCM,data:x]\ne: ""\nsops:\n  age: []\n' > ok.sops.yaml; expect empty-string 0
+printf 'a: ENC[AES256_GCM,data:x]\ne: "x"\nsops:\n  age: []\n' > bad.sops.yaml; expect nonempty-string 1; rm bad.sops.yaml
+printf 'a: ENC[AES256_GCM,data:x]\nsops:\n  age: []\n' > ok.sops.yaml
 printf 'c = "host=db user=u %s%s";\n' 'pass' 'word=s3cr3t' > t.txt;      expect connpw 1; rm t.txt
 printf 'c = "host=db %s%s";\n' 'sslpass' 'word=s3cr3t' > t.txt;          expect connsslpw 1; rm t.txt
 printf 'c = "host=db %s%s";\n' 'pass' 'word=$PGPASS' > t.txt;           expect connpw-var 0; rm t.txt

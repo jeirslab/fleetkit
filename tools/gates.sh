@@ -59,7 +59,7 @@ if ! nix shell "$NIXPKGS#statix" "$NIXPKGS#deadnix" -c bash -c '
 ' lint "${NIXFILES[@]}"; then
   lint=fail
 fi
-for t in tests/loose_blocks.sh tests/sops_config.sh "tools/hooks/secrets-scan.sh --all" tests/secrets_scan_selftest.sh; do
+for t in tests/loose_blocks.sh tests/sops_config.sh tests/sops_config_multi.sh "tools/hooks/secrets-scan.sh --all" tests/secrets_scan_selftest.sh; do
   # shellcheck disable=SC2086
   if ! bash $t >&2; then
     lint=fail
@@ -99,6 +99,11 @@ bash tests/pulumi_secret_roots.sh >&2 || fidelity=fail
 # The runner's guest list (what its guard gates) covers every VM and container
 # type of the pinned provider: a provider bump cannot fail open.
 python3 tests/guest_types.py >&2 || fidelity=fail
+# ADR-0009, ADR-0017: the secrets utility: the registry schema and every
+# assertion message, the data template, nixosModules.secrets, and a data
+# repository end to end with keys generated and thrown away (tests/secrets.sh).
+nix shell "$NIXPKGS#sops" "$NIXPKGS#age" "$NIXPKGS#ssh-to-age" "$NIXPKGS#ripgrep" \
+  "$NIXPKGS#openssh" "$NIXPKGS#git" "$NIXPKGS#python3" -c bash tests/secrets.sh >&2 || fidelity=fail
 log "fidelity: $fidelity"
 
 ok=false

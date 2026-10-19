@@ -7,6 +7,24 @@ Public key material only; this tool never decrypts anything. Stdlib only.
 Report shape: {anchors: {name: {kind, ssh, age, id}}, rules: [{path, anchors}],
 missingKeys: [...]}. An anchor with only an ssh key is converted with
 `ssh-to-age` (override with --ssh-to-age).
+
+Multi-estate (ADR-0009): --config takes fleet.report.secrets.sopsConfig (a data
+repository's report.sops) instead of --report:
+
+  {header, estates: [{name, prefix, root, keysComment, rulesComment,
+                      keys: [{name, age}], rules: [{pathRegex, anchors}],
+                      model: <one estate's report, as above>}]}
+
+It writes the header ('# ' per line), then `keys:` with each estate's derived
+anchors (sorted, as --report does) followed by its verbatim keys (in order),
+then `creation_rules:` with each estate's derived rules (sorted) followed by its
+verbatim rules (in order, re-rooted under root). Every anchor name carries the
+estate's prefix. --check compares the text: the file must be exactly what is
+rendered (anchors or rules that differ are named; otherwise a unified diff).
+
+--import FILE reads a hand-written .sops.yaml (anchored age keys, path_regex,
+one age key group of aliases; trailing comments ignored) and prints its keys
+and rules, in order, as the JSON of an estate's secrets.layout.{keys,rules}.
 """
 import argparse
 import json
@@ -116,12 +134,128 @@ def diff(want, have):
     return msgs
 
 
+# ADR-0009: multi-estate .sops.yaml -------------------------------------------
+
+
+def reroot(rx, root):
+    """A verbatim path_regex under root: anchored (^x) -> ^root/x, unanchored -> ^root/.*x."""
+    if not root:
+        return rx
+    base = "^" + re.escape(root.rstrip("/") + "/")
+    return base + rx[1:] if rx.startswith("^") else base + ".*" + rx
+
+
+def comment(text, indent):
+    return [(indent + "# " + ln).rstrip() for ln in text.splitlines()] if text else []
+
+
+def build_config(doc, cmd):
+    """Return (lines, keys: {name: age}, rules: [(path_regex, [names])]) in output order."""
+    keys, key_lines, rule_lines, rules = {}, [], [], []
+    for est in doc.get("estates", []):
+        pre = est.get("prefix") or ""
+        dk, dr = build(est.get("model") or {}, cmd)
+        own = dict(dk)
+        key_lines += comment(est.get("keysComment"), "  ")
+        for n, a in list(dk.items()) + [(k["name"], k["age"]) for k in est.get("keys", [])]:
+            if pre + n in keys:
+                die(f"estate {est.get('name')}: anchor '{pre + n}' is declared twice")
+            own[n] = a
+            keys[pre + n] = a
+            key_lines.append(f"  - &{pre + n} {a}")
+        rule_lines += comment(est.get("rulesComment"), "  ")
+        verbatim = []
+        for r in est.get("rules", []):
+            unknown = [n for n in r["anchors"] if n not in own]
+            if unknown:
+                die(f"estate {est.get('name')}: rule '{r['pathRegex']}' names unknown anchor(s) {', '.join(unknown)}")
+            verbatim.append((reroot(r["pathRegex"], est.get("root") or ""), list(r["anchors"])))
+        for rx, names in dr + verbatim:
+            names = [pre + n for n in names]
+            rules.append((rx, names))
+            rule_lines += [f"  - path_regex: {rx}", "    key_groups:", "      - age:"]
+            rule_lines += [f"          - *{n}" for n in names]
+    lines = comment(doc.get("header"), "") + ["keys:"] + key_lines + ["creation_rules:"] + rule_lines
+    return lines, keys, rules
+
+
+def render_config(doc, cmd):
+    return "\n".join(build_config(doc, cmd)[0]) + "\n"
+
+
+def import_layout(path):
+    """A hand-written .sops.yaml -> {keys: [{name, age}], rules: [{pathRegex, anchors}]}, in order."""
+    keys, rules, section = [], [], None
+    names = set()
+    try:
+        text = open(path).read()
+    except OSError as e:
+        die(f"cannot read {path}: {e}")
+    for ln, raw in enumerate(text.splitlines(), 1):
+        line = re.sub(r"\s+#.*$", "", raw).rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line in ("keys:", "creation_rules:"):
+            section = line[:-1]
+        elif section == "keys" and (m := re.fullmatch(r"  - &(\S+) (age1\S+)", line)):
+            keys.append({"name": m[1], "age": m[2]})
+            names.add(m[1])
+        elif section == "creation_rules" and (m := re.fullmatch(r"  - path_regex: (\S+)", line)):
+            rules.append({"pathRegex": m[1], "anchors": []})
+        elif section == "creation_rules" and line.strip() in ("key_groups:", "- age:"):
+            pass
+        elif section == "creation_rules" and rules and (m := re.fullmatch(r"\s+- \*(\S+)", line)):
+            if m[1] not in names:
+                die(f"{path}:{ln}: unknown anchor {m[1]}")
+            rules[-1]["anchors"].append(m[1])
+        else:
+            die(f"{path}:{ln}: cannot parse {raw!r}")
+    return {"keys": keys, "rules": rules}
+
+
+def check_config(doc, cmd, path):
+    want = render_config(doc, cmd)
+    try:
+        have = open(path).read()
+    except OSError as e:
+        die(f"cannot read {path}: {e}")
+    if want == have:
+        print(f"{path}: ok", file=sys.stderr)
+        return 0
+    print(f"{path} differs from the registry:", file=sys.stderr)
+    msgs = diff(parse(want), parse(have))
+    for m in msgs:
+        print(f"  {m}", file=sys.stderr)
+    if not msgs:
+        import difflib
+        sys.stderr.writelines(difflib.unified_diff(have.splitlines(True), want.splitlines(True),
+                                                   path, "rendered"))
+    return 1
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    p.add_argument("--report", required=True, help="report JSON file, or - for stdin")
+    src = p.add_mutually_exclusive_group(required=True)
+    src.add_argument("--report", help="report JSON file, or - for stdin")
+    src.add_argument("--config", help="multi-estate sopsConfig JSON file, or - for stdin (ADR-0009)")
+    src.add_argument("--import", dest="import_", metavar=".sops.yaml",
+                     help="print a hand-written .sops.yaml's keys and rules as layout JSON (ADR-0009)")
     p.add_argument("--check", metavar=".sops.yaml", help="compare against this file; exit 1 on differences")
     p.add_argument("--ssh-to-age", default="ssh-to-age", metavar="COMMAND")
     a = p.parse_args()
+    if a.import_:
+        json.dump(import_layout(a.import_), sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return
+    if a.config:
+        try:
+            doc = json.load(sys.stdin if a.config == "-" else open(a.config))
+        except (OSError, ValueError) as e:
+            die(f"cannot read config: {e}")
+        if not a.check:
+            sys.stdout.write(render_config(doc, a.ssh_to_age))
+            return
+        sys.exit(check_config(doc, a.ssh_to_age, a.check))
     try:
         report = json.load(sys.stdin if a.report == "-" else open(a.report))
     except (OSError, ValueError) as e:

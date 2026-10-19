@@ -1,12 +1,91 @@
 {
   description = "fleetkit: the schema and checks of the fleet model (no data; an estate repo supplies it)";
 
-  # Only nixpkgs.lib is used: no systems, no packages, nothing to build.
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/b5aa0fbd538984f6e3d201be0005b4463d8b09f8";
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/b5aa0fbd538984f6e3d201be0005b4463d8b09f8";
+    # ADR-0017: the secrets utility (lib.secrets, nixosModules.secrets) wires
+    # hosts to sops-nix.
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
 
   outputs =
-    { self, nixpkgs, ... }:
+    {
+      self,
+      nixpkgs,
+      sops-nix,
+      ...
+    }:
     let
+      inherit (nixpkgs) lib;
+      linuxSystems = [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
+      # The secrets CLI and a data repository's check also run on darwin.
+      secretsSystems = linuxSystems ++ [
+        "x86_64-darwin"
+        "aarch64-darwin"
+      ];
+      pkgsFor = system: nixpkgs.legacyPackages.${system};
+
+      # ADR-0009, ADR-0017: the secrets utility. The schema
+      # (modules/secrets.nix) is part of every mkFleet; sopsRef resolves
+      # sops:<estate>/<file>#<key> for the renderers; mkData is a secrets data
+      # repository's whole flake (docs/registry.md).
+      secretsRuntime =
+        pkgs: with pkgs; [
+          python3
+          bash
+          coreutils
+          gnugrep
+          gnused
+          gawk
+          diffutils
+          git
+          ripgrep
+          sops
+          age
+          ssh-to-age
+          openssh
+          openssl
+        ];
+      # The secrets CLI and the tools it runs (tools/secrets calls the others
+      # beside it).
+      secretsTools = lib.fileset.toSource {
+        root = ./.;
+        fileset = lib.fileset.unions [
+          ./tools/secrets
+          ./tools/secrets-check.py
+          ./tools/secrets-refs.py
+          ./tools/sops-config.py
+          ./tools/deploy-key
+          ./tools/github-app-bootstrap
+          ./tools/hooks/secrets-scan.sh
+        ];
+      };
+      secrets = {
+        # ADR-0009, ADR-0017: a secrets data repository's whole flake
+        # (lib/secrets/mk-data.nix): { root; registry; sync ? { }; allow ? { }; }.
+        mkData = import ./lib/secrets/mk-data.nix {
+          inherit lib pkgsFor self;
+          systems = secretsSystems;
+        };
+        # Evaluate a registry on its own: { config; options; failures; ok; guard; checkReport; }.
+        evalRegistry = import ./lib/secrets/eval-registry.nix { inherit lib; };
+        # The schema (fleet.estates.<e>.secrets, fleet.sopsConfig,
+        # fleet.secretHosts, fleet.report.{sops,anchorDrift,secrets}); mkFleet
+        # already has it.
+        schemaModule = ./modules/secrets.nix;
+        # The stand-in for the fleet model that evalRegistry adds.
+        standaloneModule = ./lib/secrets/standalone.nix;
+        # sops:<estate>/<file>#<key> -> { name; path; key; extract; expr; }.
+        sopsRef = import ./lib/secrets/sops-ref.nix;
+        # The tools' directory (stdlib Python and bash).
+        tools = "${secretsTools}/tools";
+      };
       fleetLib = import ./lib;
       withLib = f: args: f ({ inherit (nixpkgs) lib; } // args);
       empty = fleetLib.mkFleet { inherit (nixpkgs) lib; };
@@ -17,6 +96,9 @@
       # supplied here (pass `lib` to override it).
       lib = {
         inherit (fleetLib) checked tenantOwned;
+        # ADR-0009, ADR-0017: the secrets utility: mkData, evalRegistry,
+        # schemaModule, standaloneModule, sopsRef, tools (docs/registry.md).
+        inherit secrets;
         mkFleet = withLib fleetLib.mkFleet;
         fleet = withLib fleetLib.fleet;
         # { fleet; estate; nixpkgs; modules; specialArgs; adminPrincipals; }
@@ -98,88 +180,141 @@
         mkWorkflowCaller = args: import ./lib/workflow-caller.nix ({ inherit (nixpkgs) lib; } // args);
       };
 
-      # Experimental: the deploy server as a NixOS service (GitOps mode).
-      nixosModules.fleetkit-server = import ./nixos/fleetkit-server.nix { inherit self; };
+      nixosModules = {
+        # Experimental: the deploy server as a NixOS service (GitOps mode).
+        fleetkit-server = import ./nixos/fleetkit-server.nix { inherit self; };
+        # ADR-0009, ADR-0017: sops-nix plus the SSH host key as the identity a
+        # host decrypts with.
+        secrets = import ./nixos/secrets.nix sops-nix;
+      };
 
       # Experimental: the deploy runner (cli/). pulumi, colmena and sops are on
       # its PATH; nix is the host's.
-      packages = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-linux" ] (
+      packages = lib.genAttrs secretsSystems (
         system:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
-          py = pkgs.python3Packages;
-          # The Ansible add-on's playbook runs (docs/addons.md): ansible-core
-          # and the community package's collections (vyos.vyos,
-          # ansible.netcommon, ...), all from this nixpkgs; nothing is
-          # fetched by ansible-galaxy at deploy time. The collections it has
-          # are listed in providers/ansible/ (tests/gen_ansible_collections.py).
-          ansible = pkgs.python3.withPackages (ps: [
-            ps.ansible-core
-            ps.ansible
-          ]);
-          ansibleBin = pkgs.runCommand "fleetkit-ansible" { } ''
-            mkdir -p $out/bin
-            for b in ${ansible}/bin/ansible*; do ln -s "$b" $out/bin/; done
-          '';
+          pkgs = pkgsFor system;
         in
-        rec {
-          inherit ansible;
-          fleetkit = py.buildPythonApplication {
-            pname = "fleetkit";
+        {
+          # ADR-0009, ADR-0017: the secrets CLI (check, render, scan, edit,
+          # host add, rekey, refs, import, deploy-key, app-bootstrap).
+          secrets = pkgs.stdenvNoCC.mkDerivation {
+            pname = "secrets";
             version = "0.1.0";
-            pyproject = true;
-            src = ./cli;
-            build-system = [ py.setuptools ];
-            dependencies = with py; [
-              click
-              fastapi
-              uvicorn
-              pydantic
-              pulumi
-            ];
-            nativeCheckInputs = [
-              py.pytestCheckHook
-              py.httpx
-              pkgs.git
-              # tests/test_real_pulumi.py runs the real engine, offline (a file
-              # backend, the random and tls providers that ship beside it).
-              pkgs.pulumi-bin
-            ];
-            # The guest list is checked against the pinned provider's name map
-            # (tests/test_guests.py), which is not under cli/.
-            preCheck = ''
-              export FLEETKIT_PROVIDER_NAMES=${./providers/pulumi/names}
-              export HOME=$TMPDIR
+            src = secretsTools;
+            nativeBuildInputs = [ pkgs.makeWrapper ];
+            dontBuild = true;
+            installPhase = ''
+              runHook preInstall
+              mkdir -p $out/share/fleetkit-secrets $out/bin
+              cp -r tools $out/share/fleetkit-secrets/
+              makeWrapper ${pkgs.python3}/bin/python3 $out/bin/secrets \
+                --add-flags $out/share/fleetkit-secrets/tools/secrets \
+                --prefix PATH : ${lib.makeBinPath (secretsRuntime pkgs)}
+              runHook postInstall
             '';
-            makeWrapperArgs = [
-              "--suffix"
-              "PATH"
-              ":"
-              (nixpkgs.lib.makeBinPath [
-                pkgs.pulumi-bin
-                pkgs.colmena
-                pkgs.sops
-                pkgs.git
-              ])
-              # The ansible/ansible provider runs `ansible-playbook` from PATH:
-              # this one, ahead of any the host has. Only its ansible-*
-              # commands, not the environment's python.
-              "--prefix"
-              "PATH"
-              ":"
-              "${ansibleBin}/bin"
-              # Collections from the environment only: not ones a user of the
-              # host installed under ~/.ansible (a playbook's own collections/
-              # beside it are still read).
-              "--set"
-              "ANSIBLE_COLLECTIONS_PATH"
-              "${ansible}/${pkgs.python3.sitePackages}"
-            ];
-            meta.mainProgram = "fleetkit";
+            meta = {
+              description = "The secrets command line: check, render, scan, edit, host add, rekey, refs, import, deploy-key, app-bootstrap";
+              mainProgram = "secrets";
+            };
           };
-          default = fleetkit;
+        }
+        // lib.optionalAttrs (lib.elem system linuxSystems) (
+          let
+            pkgs = nixpkgs.legacyPackages.${system};
+            py = pkgs.python3Packages;
+            # The Ansible add-on's playbook runs (docs/addons.md): ansible-core
+            # and the community package's collections (vyos.vyos,
+            # ansible.netcommon, ...), all from this nixpkgs; nothing is
+            # fetched by ansible-galaxy at deploy time. The collections it has
+            # are listed in providers/ansible/ (tests/gen_ansible_collections.py).
+            ansible = pkgs.python3.withPackages (ps: [
+              ps.ansible-core
+              ps.ansible
+            ]);
+            ansibleBin = pkgs.runCommand "fleetkit-ansible" { } ''
+              mkdir -p $out/bin
+              for b in ${ansible}/bin/ansible*; do ln -s "$b" $out/bin/; done
+            '';
+          in
+          rec {
+            inherit ansible;
+            fleetkit = py.buildPythonApplication {
+              pname = "fleetkit";
+              version = "0.1.0";
+              pyproject = true;
+              src = ./cli;
+              build-system = [ py.setuptools ];
+              dependencies = with py; [
+                click
+                fastapi
+                uvicorn
+                pydantic
+                pulumi
+              ];
+              nativeCheckInputs = [
+                py.pytestCheckHook
+                py.httpx
+                pkgs.git
+                # tests/test_real_pulumi.py runs the real engine, offline (a file
+                # backend, the random and tls providers that ship beside it).
+                pkgs.pulumi-bin
+              ];
+              # The guest list is checked against the pinned provider's name map
+              # (tests/test_guests.py), which is not under cli/.
+              preCheck = ''
+                export FLEETKIT_PROVIDER_NAMES=${./providers/pulumi/names}
+                export HOME=$TMPDIR
+              '';
+              makeWrapperArgs = [
+                "--suffix"
+                "PATH"
+                ":"
+                (nixpkgs.lib.makeBinPath [
+                  pkgs.pulumi-bin
+                  pkgs.colmena
+                  pkgs.sops
+                  pkgs.git
+                ])
+                # The ansible/ansible provider runs `ansible-playbook` from PATH:
+                # this one, ahead of any the host has. Only its ansible-*
+                # commands, not the environment's python.
+                "--prefix"
+                "PATH"
+                ":"
+                "${ansibleBin}/bin"
+                # Collections from the environment only: not ones a user of the
+                # host installed under ~/.ansible (a playbook's own collections/
+                # beside it are still read).
+                "--set"
+                "ANSIBLE_COLLECTIONS_PATH"
+                "${ansible}/${pkgs.python3.sitePackages}"
+              ];
+              meta.mainProgram = "fleetkit";
+            };
+            default = fleetkit;
+          }
+        )
+      );
+
+      # ADR-0009, ADR-0017: the secrets CLI and what it runs (a data
+      # repository's `nix develop`).
+      devShells = lib.genAttrs secretsSystems (
+        system:
+        let
+          pkgs = pkgsFor system;
+        in
+        {
+          secrets = pkgs.mkShell {
+            packages = [ self.packages.${system}.secrets ] ++ secretsRuntime pkgs;
+          };
         }
       );
+
+      templates.data = {
+        path = ./templates/data;
+        description = "A secrets data repository: registry.nix, hosts.json, .sops.yaml, one fleetkit.lib.secrets.mkData call";
+      };
 
       # The schema's own description of itself, from a model with no data
       # (tests/guest_fidelity.py and tests/loose_blocks.sh read it).

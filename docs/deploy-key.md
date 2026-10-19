@@ -46,7 +46,7 @@ fleet-deploy = { principals = [ principals.fleet-deploy.id ]; role = "deploy"; }
 the hosts outside it never get the key:
 
 ```sh
-tools/deploy-key create --name xg-deploy --estate xgcs      ...   # one estate
+tools/deploy-key create --name app-deploy --estate apps      ...   # one estate
 tools/deploy-key create --name lab-ca-deploy --region us-ca ...   # one site's region
 ```
 
