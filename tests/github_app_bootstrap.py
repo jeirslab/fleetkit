@@ -90,6 +90,7 @@ def check(cond, msg):
 
 class Api(http.server.BaseHTTPRequestHandler):
     seen = []
+    hidden_polls = 0  # installations listings that still show no installation (an install in progress)
 
     def log_message(self, *a):
         pass
@@ -115,6 +116,9 @@ class Api(http.server.BaseHTTPRequestHandler):
             return
         page = self.path.split("page=")[-1]
         data = [{"id": 1, "account": {"login": "other"}}, {"id": 777, "account": {"login": "Acme"}}] if page == "1" else []
+        if Api.hidden_polls > 0 and page == "1":
+            Api.hidden_polls -= 1
+            data = [{"id": 1, "account": {"login": "other"}}]
         body = json.dumps(data).encode()
         self.send_response(200)
         self.send_header("Content-Length", str(len(body)))
@@ -485,6 +489,54 @@ def main():
                            capture_output=True, text=True, env=env)
         check(r.returncode != 0 and "Traceback" not in r.stderr and "TESTKEYMATERIAL" not in r.stderr,
               f"openssl that cannot be executed: {r.stderr}")
+
+        # --wait-installation: one run registers, stores and records the installation
+        sfw = os.path.join(tmp, "wait.json")
+        rc, err, out = run(tmp, manifest, sfw, api_port=port, extra=("--wait-installation", "--openssl", openssl))
+        check(rc == 0, f"create with --wait-installation exits 0: {err}")
+        check(stored(sfw).get('["github"]["app"]["installation_id"]') == "777"
+              and stored(sfw).get('["github"]["app"]["app_id"]') == "4242", "credentials and installation_id stored in one run")
+        check("install: https://github.com/apps/fleetkit-test/installations/new" in out and "Recorded installation_id 777" in out,
+              f"install URL printed before the installation is recorded: {out}")
+        for leak in SECRETS + ("FAKE-PEM",):
+            check(leak not in out + err, f"{leak} not printed with --wait-installation")
+        # an install that only shows up on the third listing is waited for
+        Api.hidden_polls = 2
+        polls_before = len([x for x in Api.seen if x.startswith("/app/installations")])
+        r = subprocess.run([sys.executable, TOOL, "--org", "acme", "--sops-file", sfw, "--key-prefix", "github.app",
+                            "--record-installation", "--wait-installation", "--poll-interval", "0.2", "--timeout", "10",
+                            "--sops", sops, "--openssl", openssl, "--api", f"http://127.0.0.1:{port}"],
+                           capture_output=True, text=True, timeout=60)
+        polls = len([x for x in Api.seen if x.startswith("/app/installations")]) - polls_before
+        check(r.returncode == 0 and "Waiting for the App to be installed on acme" in r.stderr and polls >= 3,
+              f"a late installation is waited for ({polls} listings): {r.stderr}")
+        Api.hidden_polls = 0
+        # never installed: gives up after --timeout with what to do next
+        r = subprocess.run([sys.executable, TOOL, "--org", "nobody", "--sops-file", sfw, "--key-prefix", "github.app",
+                            "--record-installation", "--wait-installation", "--poll-interval", "0.2", "--timeout", "1",
+                            "--sops", sops, "--openssl", openssl, "--api", f"http://127.0.0.1:{port}"],
+                           capture_output=True, text=True, timeout=60)
+        check(r.returncode != 0 and "not installed on nobody within 1 s" in r.stderr and "--record-installation" in r.stderr
+              and "Traceback" not in r.stderr, f"wait times out plainly: {r.stderr}")
+        # --wait-installation without openssl is refused before anything reaches GitHub
+        before = len(conversions())
+        r = subprocess.run([sys.executable, TOOL, "--org", "acme", "--manifest", os.path.join(tmp, "m.json"), "--sops-file", sfw,
+                            "--key-prefix", "x", "--sops", sops, "--wait-installation", "--openssl", os.path.join(tmp, "no-openssl"),
+                            "--no-browser", "--api", f"http://127.0.0.1:{port}"], capture_output=True, text=True, timeout=30)
+        check(r.returncode != 0 and "not found" in r.stderr and len(conversions()) == before,
+              "--wait-installation without openssl refused up front")
+
+        # --bind: the page and the callback on the address given, never all interfaces
+        sfa = os.path.join(tmp, "bind.json")
+        rc, err, _ = run(tmp, manifest, sfa, api_port=port, extra=("--bind", "127.0.0.2"))
+        check(rc == 0 and "Open http://127.0.0.2:" in err, f"--bind 127.0.0.2 serves there and redirects there: {err}")
+        for everywhere in ("0.0.0.0", "::", ""):
+            before = len(conversions())
+            r = subprocess.run([sys.executable, TOOL, "--org", "acme", "--manifest", os.path.join(tmp, "m.json"),
+                                "--sops-file", sfa, "--key-prefix", "x", "--sops", sops, "--no-browser", "--bind", everywhere,
+                                "--api", f"http://127.0.0.1:{port}"], capture_output=True, text=True, timeout=30)
+            check(r.returncode != 0 and "all interfaces" in r.stderr and "Open http" not in r.stderr
+                  and len(conversions()) == before, f"--bind {everywhere!r} refused: {r.stderr}")
 
         # state mismatch is rejected but the real callback still works
         sf4 = os.path.join(tmp, "s.yaml")

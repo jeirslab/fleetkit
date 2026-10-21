@@ -51,6 +51,18 @@ Not losing the one-time credentials:
 short-lived RS256 JWT with `openssl dgst -sha256 -sign` (key on stdin), lists
 GET /app/installations and writes `installation_id` for the org/user.
 
+--wait-installation makes one run do both: after the create flow has stored
+the credentials it prints the install URL, then polls GET /app/installations
+(a fresh JWT each time) until the App is installed on the org/user, and
+writes `installation_id`. With --record-installation it polls instead of
+failing when the App is not installed yet. Both give up after --timeout.
+
+--bind chooses the one address the local page and the callback listen on:
+127.0.0.1 (default), `tailnet` (this machine's `tailscale ip -4`, so a
+browser on another of the operator's devices can finish the flow), or one
+explicit address. Never all interfaces. The callback carries only a one-time
+code that is useless without the state, which is checked.
+
 The sops file must already exist and be decryptable with the caller's key (the
 preflight above); the tool does not create one. --key-prefix is split on '.'
 or '/' into the sops path. The manifest is whatever JSON file the caller
@@ -333,8 +345,26 @@ def convert(code, a, owner):
     return out, text("html_url"), body
 
 
-def wait_for_code(owner, is_user, manifest, state, github, port, timeout):
-    """Serve the form and the callback on 127.0.0.1; return the code."""
+def resolve_bind(bind):
+    """The one address to listen on: 127.0.0.1, `tailnet` or an explicit one."""
+    if bind in ("", "0.0.0.0", "::", "[::]", "*"):
+        die("refusing to listen on all interfaces; use 127.0.0.1, `tailnet` or one address")
+    if bind != "tailnet":
+        return bind
+    if shutil.which("tailscale") is None:
+        die("--bind tailnet needs the `tailscale` command; nothing was sent to GitHub")
+    try:
+        rc, out, err = run_cmd(["tailscale", "ip", "-4"], stdout=subprocess.PIPE)
+    except CmdError as e:
+        die(f"--bind tailnet: {e}; nothing was sent to GitHub")
+    addr = out.decode().split()[0] if rc == 0 and out.split() else ""
+    if not re.fullmatch(r"100\.\d{1,3}\.\d{1,3}\.\d{1,3}", addr):
+        die(f"--bind tailnet: no tailnet IPv4 address ({scrub(err) or 'tailscale ip -4 printed none'}); nothing was sent to GitHub")
+    return addr
+
+
+def wait_for_code(owner, is_user, manifest, state, github, port, timeout, bind="127.0.0.1"):
+    """Serve the form and the callback on `bind`; return the code."""
     result = {}
     done = threading.Event()
 
@@ -353,7 +383,7 @@ def wait_for_code(owner, is_user, manifest, state, github, port, timeout):
             from urllib.parse import urlparse, parse_qs
             u = urlparse(self.path)
             if u.path == "/":
-                m = dict(manifest, redirect_url=f"http://127.0.0.1:{self.server.server_port}/callback")
+                m = dict(manifest, redirect_url=f"http://{bind}:{self.server.server_port}/callback")
                 self._send(200, form_page(owner, is_user, m, state, github))
             elif u.path == "/callback":
                 q = parse_qs(u.query)
@@ -367,11 +397,11 @@ def wait_for_code(owner, is_user, manifest, state, github, port, timeout):
                 self._send(404, b"not found")
 
     try:
-        srv = http.server.HTTPServer(("127.0.0.1", port), H)
+        srv = http.server.HTTPServer((bind, port), H)
     except OSError as e:
-        die(f"cannot listen on 127.0.0.1:{port}: {e.strerror or e}; nothing was sent to GitHub")
+        die(f"cannot listen on {bind}:{port}: {e.strerror or e}; nothing was sent to GitHub")
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    url = f"http://127.0.0.1:{srv.server_port}/"
+    url = f"http://{bind}:{srv.server_port}/"
     result["url"] = url
     return srv, done, result
 
@@ -443,9 +473,8 @@ def make_jwt(openssl, app_id, pem):
     return f"{signing_input}.{b64u(sig)}"
 
 
-def record_installation(a, owner, prefix):
-    app_id = read_key(a.sops, a.sops_file, prefix, "app_id").strip()
-    pem = read_key(a.sops, a.sops_file, prefix, "app_pem")
+def find_installation(a, owner, app_id, pem):
+    """The App's installation on `owner`, or None if there is none yet."""
     jwt = make_jwt(a.openssl, app_id, pem)
     found = None
     page = 1
@@ -471,7 +500,26 @@ def record_installation(a, owner, prefix):
                 found = it
                 break
         page += 1
+    return found
+
+
+def record_installation(a, owner, prefix, wait=False, install_url=None):
+    app_id = read_key(a.sops, a.sops_file, prefix, "app_id").strip()
+    pem = read_key(a.sops, a.sops_file, prefix, "app_pem")
+    found = find_installation(a, owner, app_id, pem)
+    if found is None and wait:
+        where = install_url or "the App's page, Install App"
+        print(f"Waiting for the App to be installed on {owner} (up to {a.timeout} s): {where}", file=sys.stderr)
+        deadline = time.monotonic() + a.timeout
+        try:
+            while found is None and time.monotonic() < deadline:
+                time.sleep(a.poll_interval)
+                found = find_installation(a, owner, app_id, pem)
+        except KeyboardInterrupt:
+            die(f"interrupted before the App was installed on {owner}; install it, then run this with --record-installation", 1)
     if found is None:
+        if wait:
+            die(f"the App was not installed on {owner} within {a.timeout} s; install it, then run this with --record-installation", 1)
         die(f"the App is not installed on {owner}; install it first (docs/github-app-bootstrap.md)", 1)
     _, failed = store(a.sops, a.sops_file, prefix, {"installation_id": str(found["id"])})
     if failed:
@@ -489,6 +537,11 @@ def main():
     ap.add_argument("--sops-file", required=True, help="existing sops file to write; your key must decrypt it")
     ap.add_argument("--key-prefix", required=True, help="dotted or slashed path the keys are written under")
     ap.add_argument("--record-installation", action="store_true")
+    ap.add_argument("--wait-installation", action="store_true",
+                    help="after registering (or with --record-installation), wait until the App is installed and record it")
+    ap.add_argument("--bind", default="127.0.0.1",
+                    help="address the local page and callback listen on: 127.0.0.1 (default), `tailnet`, or one address")
+    ap.add_argument("--poll-interval", type=float, default=5, help=argparse.SUPPRESS)
     ap.add_argument("--sops", default="sops", help="sops command")
     ap.add_argument("--openssl", default="openssl", help="openssl command")
     ap.add_argument("--github", default="https://github.com", help=argparse.SUPPRESS)
@@ -506,21 +559,22 @@ def main():
         die(f"invalid key prefix {a.key_prefix!r}")
     if shutil.which(a.sops) is None:
         die(f"'{a.sops}' not found")
+    if (a.record_installation or a.wait_installation) and shutil.which(a.openssl) is None:
+        die(f"'{a.openssl}' not found (needed to sign the App JWT)")
     if a.record_installation:
-        if shutil.which(a.openssl) is None:
-            die(f"'{a.openssl}' not found (needed to sign the App JWT)")
         preflight(a)
-        record_installation(a, owner, a.key_prefix)
+        record_installation(a, owner, a.key_prefix, wait=a.wait_installation)
         return
     if not a.manifest:
         die("--manifest is required unless --record-installation")
     manifest = load_manifest(a.manifest)
+    bind = resolve_bind(a.bind)
     # Last point at which failing costs nothing: after this GitHub hands out
     # credentials exactly once.
     preflight(a, rescue=True)
     state = secrets.token_urlsafe(24)
 
-    srv, done, res = wait_for_code(owner, bool(a.user), manifest, state, a.github, a.port, a.timeout)
+    srv, done, res = wait_for_code(owner, bool(a.user), manifest, state, a.github, a.port, a.timeout, bind)
     print(f"Open {res['url']} and confirm the App on GitHub.", file=sys.stderr)
     if not a.no_browser:
         webbrowser.open(res["url"])
@@ -538,8 +592,11 @@ def main():
         die_with_rescue(a, owner, b"", body,
                         f"the App '{values['app_slug']}' (id {values['app_id']}) now exists on GitHub, but not all of its "
                         "credentials were stored.", stored, failed)
+    install_url = f"https://github.com/apps/{values['app_slug']}/installations/new"
     print(f"slug: {values['app_slug']}\nid: {values['app_id']}\nhtml_url: {html_url}\n"
-          f"install: https://github.com/apps/{values['app_slug']}/installations/new")
+          f"install: {install_url}", flush=True)
+    if a.wait_installation:
+        record_installation(a, owner, a.key_prefix, wait=True, install_url=install_url)
 
 
 if __name__ == "__main__":
