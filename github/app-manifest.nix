@@ -38,5 +38,11 @@
       members = "write";
       organization_administration = "write";
     };
+    # A CI runner host registering ephemeral self-hosted runners for the org,
+    # and nothing else: give the runners their own App with only this tier, so
+    # a compromised runner host holds no org or repository permission.
+    runners = {
+      organization_self_hosted_runners = "write";
+    };
   };
 }

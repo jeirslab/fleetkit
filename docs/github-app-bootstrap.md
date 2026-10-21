@@ -36,7 +36,8 @@ tools/github-app-bootstrap --org ORG --manifest app.json \
 (`https://github.com/settings/apps/new`). `--key-prefix` is split on `.` or `/`
 into the sops path (`github.app` becomes `["github"]["app"]`). Other options:
 `--sops` and `--openssl` (commands), `--port`, `--timeout` (default 3000 s),
-`--no-browser` (print the local URL instead of opening it). It needs `sops` on
+`--no-browser` (print the local URL instead of opening it), `--bind` and
+`--wait-installation` (below). It needs `sops` on
 the PATH and is stdlib Python otherwise. There is no option for a rescue
 location: a rescue is always encrypted and always next to the sops file
 ("If storing fails" below).
@@ -163,6 +164,26 @@ will not return the client or webhook secrets again):
 | `webhook_secret` | webhook secret |
 | `installation_id` | added by step 3 |
 
+### On another device: `--bind`
+
+The local page and GitHub's redirect back to it listen on `127.0.0.1` by
+default, so the browser must be on the machine running the tool. On a remote
+dev machine use `--bind tailnet` (its `tailscale ip -4`) or `--bind <one
+address>`, with `--no-browser`, and open the printed URL from a device on the
+same tailnet. The redirect carries only the one-time code, which is useless
+without the state the tool checks; plain HTTP stays inside WireGuard. All
+interfaces (`0.0.0.0`, `::`) are refused.
+
+### All in one run: `--wait-installation`
+
+With `--wait-installation` the tool does steps 1 to 3 in one run: after the
+credentials are stored it prints the install URL, polls `GET
+/app/installations` (a fresh JWT each time, every 5 s) until the App is
+installed on the org, and writes `installation_id`. It needs `openssl`
+(checked before anything reaches GitHub) and gives up after `--timeout`,
+saying to finish with `--record-installation`. The person only clicks
+Create on GitHub and then Install.
+
 ## Step 2: install the App
 
 Registering the App gives it access to nothing. Open the install URL the tool
@@ -185,7 +206,8 @@ stdin), lists `GET /app/installations`, picks the installation whose account is
 the org (or user), and writes `installation_id` under the prefix. It fails if
 the App is not installed there, if `openssl` is not on the PATH (checked
 before anything is read), or if the sops file does not pass the same
-`sops decrypt` check as step 1.
+`sops decrypt` check as step 1. With `--wait-installation` it waits for the
+installation instead of failing, up to `--timeout`.
 
 ## Retiring an old App
 

@@ -20,6 +20,10 @@ render() { # NAME TIERS-NIX
 render both '[ "pipeline" "terraform-admin" ]' || status=fail
 render pipeline '[ "pipeline" ]' || status=fail
 render admin '[ "terraform-admin" ]' || status=fail
+render runners '[ "runners" ]' || status=fail
+nix eval --json "$ROOT#lib" --apply 'l: l.mkGithubAppManifest { org = "acme"; tiers = [ "pipeline" ]; name = "acme-x"; description = "d"; extraPermissions = { organization_self_hosted_runners = "write"; contents = "write"; statuses = "read"; }; }' >"$TMP/extra.json" 2>"$TMP/extra.err" || { tail -n 20 "$TMP/extra.err" >&2; status=fail; }
+nix eval --json "$ROOT#lib" --apply 'l: (builtins.tryEval (l.mkGithubAppManifest { org = "acme"; extraPermissions = { contents = "owner"; }; })).success' >"$TMP/badlevel.json" 2>/dev/null
+[[ $(cat "$TMP/badlevel.json") == false ]] || { echo "github_app: an extraPermissions level that is not read/write/admin was accepted" >&2; status=fail; }
 nix eval --json "$ROOT#lib" --apply 'l: (builtins.tryEval (l.mkGithubAppManifest { org = "acme"; tiers = [ "nope" ]; })).success' >"$TMP/bad.json" 2>/dev/null
 [[ $(cat "$TMP/bad.json") == false ]] || { echo "github_app: unknown tier was accepted" >&2; status=fail; }
 
@@ -37,7 +41,7 @@ if "variables" in PERMS or "actions_variables" not in PERMS: print("github_app: 
 if "invented_permission" in PERMS: print("github_app: selftest: invented key is in the pinned list"); sys.exit(1)
 RANK = {"read": 1, "write": 2, "admin": 3}
 bad = []
-for n in ("both", "pipeline", "admin"):
+for n in ("both", "pipeline", "admin", "runners", "extra"):
     m = load(n)
     for k in m:
         if k not in KEYS: bad.append(f"{n}: unknown manifest key {k}")
@@ -60,6 +64,13 @@ if set(b) != set(p) | set(a): bad.append("both is not the union of the tiers")
 for k, v in p.items():
     if k not in a or RANK[a[k]] < RANK[v]: bad.append(f"terraform-admin alone lacks pipeline permission {k}={v}")
 if not (set(a) - set(p)): bad.append("terraform-admin adds nothing to pipeline")
+# runners stands alone: exactly the one org permission, nothing on repositories.
+if load("runners")["default_permissions"] != {"organization_self_hosted_runners": "write"}:
+    bad.append(f"runners tier is not exactly organization_self_hosted_runners=write: {load('runners')['default_permissions']}")
+e = load("extra")
+want = dict(p, organization_self_hosted_runners="write", contents="write")  # statuses stays write: higher wins
+if e["default_permissions"] != want: bad.append(f"extraPermissions not merged higher-wins: {e['default_permissions']}")
+if e["name"] != "acme-x" or e["description"] != "d": bad.append("name or description argument not used")
 for x in bad: print("github_app:", x)
 sys.exit(1 if bad else 0)
 PY

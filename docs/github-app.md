@@ -2,7 +2,8 @@
 
 One declaration, `github/app-manifest.nix`, describes the GitHub App an
 estate's pipeline uses. `lib.mkGithubAppManifest { org; tiers ? [ "pipeline"
-"terraform-admin" ]; name ? null; redirectUrl ? null; }` renders it as the
+"terraform-admin" ]; name ? null; redirectUrl ? null; description ? null;
+extraPermissions ? { }; }` renders it as the
 manifest attrset (`builtins.toJSON` it). Pure evaluation; the kit never talks
 to GitHub. Creating the App from the manifest is a separate step (the
 bootstrap command, its own issue).
@@ -92,6 +93,24 @@ managing the org. Selecting both takes the higher level per permission.
 | `contents` | write | Commit managed files (raises the pipeline level). |
 | `members` | write | Org membership and teams. |
 | `organization_administration` | write | Org settings. |
+
+### runners (an App of its own)
+
+| Permission | Level | Why |
+| ---------- | ----- | --- |
+| `organization_self_hosted_runners` | write | Mint org runner registration tokens for ephemeral self-hosted runners. |
+
+Give a runner host its own App with only this tier
+(`tiers = [ "runners" ]; name = "<org>-runners";`). Its private key sits on a
+host that runs untrusted pull-request code, so it must not open the org or
+any repository; the fleet App's key does.
+
+### extraPermissions
+
+A permission no tier has, for one estate, without forking the data:
+`extraPermissions = { organization_self_hosted_runners = "write"; }`. It merges
+like a tier (the higher level wins) and is checked against the pinned
+permission list like every tier.
 
 ## Installing the App (second step)
 
