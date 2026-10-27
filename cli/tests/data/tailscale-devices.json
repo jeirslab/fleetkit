@@ -1,0 +1,8 @@
+{"devices": [
+ {"name": "dumpy.tamarin-gray.ts.net", "hostname": "dumpy", "os": "linux", "clientVersion": "1.104.2", "updateAvailable": false, "connectedToControl": true},
+ {"name": "rippy.tamarin-gray.ts.net", "hostname": "rippy", "os": "linux", "clientVersion": "1.102.2-t6cac91817-g6ff0ddc72", "updateAvailable": true, "connectedToControl": true},
+ {"name": "caddy.tamarin-gray.ts.net", "hostname": "caddy", "os": "linux", "clientVersion": "1.96.4-t8cf541dfd-g62bc84ce7", "updateAvailable": true, "connectedToControl": false},
+ {"name": "s22.tamarin-gray.ts.net", "hostname": "s22", "os": "android", "clientVersion": "1.58.2-tb0e1bbb62-gcd1f0649958", "updateAvailable": true, "connectedToControl": true},
+ {"name": "gl-mt3000.tamarin-gray.ts.net", "hostname": "gl-mt3000", "os": "linux", "clientVersion": "1.66.4-1 (OpenWrt)", "updateAvailable": true, "connectedToControl": true},
+ {"name": "mystery.tamarin-gray.ts.net", "hostname": "mystery", "os": "linux", "clientVersion": "", "connectedToControl": true}
+]}

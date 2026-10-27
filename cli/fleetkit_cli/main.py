@@ -7,6 +7,7 @@
   fleetkit adopt ESTATE [options]        import what already exists into state
   fleetkit serve [--listen ...]          the same deploys over HTTP (api.py)
   fleetkit tools [list|check|NAME ...]   the repo's custom tools (tools_main.py)
+  fleetkit tailnet versions [options]    Tailscale client versions of the tailnets (tailnet.py)
 
 Run from the estate repo (or pass --flake / set FLEETKIT_FLAKE). Pulumi state
 goes to PULUMI_BACKEND_URL, which must be set; PULUMI_CONFIG_PASSPHRASE(_FILE)
@@ -355,6 +356,60 @@ def serve(ctx: click.Context, repo: str | None, listen: str, token_file: str | N
         gitops.start_polling()
     uvicorn.run(create_app(manager, s, token, gitops, scoped), host=host or "127.0.0.1", port=int(port),
                 log_level="info")
+
+
+@cli.group("tailnet")
+def tailnet_group() -> None:
+    """Tailnets declared in fleetkit.toml ([[tailnets]]); see tailnet.py."""
+
+
+@tailnet_group.command("versions")
+@click.option("--format", "fmt", type=click.Choice(["table", "markdown", "json"]), default="table",
+              help="What is printed on stdout.")
+@click.option("--summary-file", type=click.Path(path_type=Path),
+              help="Also append the Markdown report to this file (GITHUB_STEP_SUMMARY).")
+@click.option("--json-file", type=click.Path(path_type=Path), help="Also write the JSON report here.")
+@click.option("--only", multiple=True, help="Only this tailnet (repeat).")
+@click.option("--fleet-host", "fleet_hosts", multiple=True,
+              help="A fleet host name, instead of asking nix for .#nixosConfigurations (repeat).")
+@click.option("--fail-on-stale-fleet", is_flag=True, help="Exit 1 when a fleet NixOS host is stale.")
+@click.option("--set-auto-update-default", is_flag=True,
+              help="Turn on the Tailscale cloud tailnet-wide default for device auto-update "
+                   "(PATCH /api/v2/tailnet/-/settings devicesAutoUpdatesOn). Changes the tailnet.")
+@click.pass_context
+def tailnet_versions(ctx: click.Context, fmt: str, summary_file: Path | None, json_file: Path | None,
+                     only: tuple[str, ...], fleet_hosts: tuple[str, ...], fail_on_stale_fleet: bool,
+                     set_auto_update_default: bool) -> None:
+    """The Tailscale client version of every node, asked of the control servers.
+
+    Exit 0 whatever the report says; --fail-on-stale-fleet exits 1 when a
+    NixOS host of the fleet is behind the version of the package flake."""
+    from . import tailnet as tn
+
+    repo = Path(ctx.obj["flake"] or os.getcwd()).resolve()
+    sops = os.environ.get("FLEETKIT_SOPS", "sops")
+    try:
+        nets, latest_cfg = tn.load_config(repo)
+        nets = [t for t in nets if not only or t.name in only]
+        if not nets:
+            raise tn.TailnetError("no tailnet matches --only")
+        latest = tn.package_latest(latest_cfg)
+        root = os.environ.get("FLEETKIT_SECRETS_ROOT") or latest_cfg.get("secrets_root")
+        sroot = (repo / root).resolve() if root else None
+        hosts = {h.lower() for h in fleet_hosts} or tn.fleet_hosts_from_flake(repo, os.environ.get("FLEETKIT_NIX", "nix"))
+        rep = tn.collect(nets, latest, tn.upstream_latest(), hosts, lambda t: tn.resolve_secret(repo, t.secret, sops, sroot),
+                         set_auto=set_auto_update_default)
+    except tn.TailnetError as e:
+        raise click.ClickException(str(e))
+    click.echo({"table": tn.render_text, "markdown": tn.render_markdown,
+                "json": lambda r: json.dumps(r.to_json(), indent=2)}[fmt](rep))
+    if summary_file:
+        with summary_file.open("a") as f:
+            f.write(tn.render_markdown(rep))
+    if json_file:
+        json_file.write_text(json.dumps(rep.to_json(), indent=2) + "\n")
+    if fail_on_stale_fleet and rep.stale_fleet():
+        sys.exit(1)
 
 
 @cli.command("tools", add_help_option=False,

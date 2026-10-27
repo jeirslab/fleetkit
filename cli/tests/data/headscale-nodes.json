@@ -1,0 +1,4 @@
+{"nodes": [
+ {"id": "1", "name": "vpn", "givenName": "vpn", "ipAddresses": ["100.64.0.1"], "online": true, "user": {"name": "xgcs"}},
+ {"id": "2", "name": "laptop", "givenName": "xander-laptop", "ipAddresses": ["100.64.0.2"], "online": false, "user": {"name": "xander"}}
+]}
