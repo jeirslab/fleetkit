@@ -67,4 +67,4 @@ def run(repo: Path, tdir: Path, args: list[str]) -> None:
     python = os.environ.get("FLEETKIT_TOOLS_PYTHON") or str(ensure_venv(repo, tdir))
     script = tools_main.__file__
     os.chdir(repo)
-    os.execv(python, [python, "-I", script, "--tools-dir", str(tdir), *args])
+    os.execv(python, [python, "-P", script, "--tools-dir", str(tdir), *args])
