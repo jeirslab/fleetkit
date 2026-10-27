@@ -12,9 +12,12 @@ tool that prints them (Pulumi does print a backend URL it cannot open) shows
 """
 from __future__ import annotations
 
+import atexit
 import json
 import os
+import shutil
 import subprocess
+import tempfile
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -34,6 +37,30 @@ def _sops(s: Settings, v: dict[str, Any], ev: Emitter, st: dict[str, Any] | None
     return ev.secret(p.stdout.strip())
 
 
+_TMP: list[str] = []
+
+
+def _cleanup() -> None:
+    while _TMP:
+        shutil.rmtree(_TMP.pop(), ignore_errors=True)
+
+
+atexit.register(_cleanup)
+
+
+def _passphrase_file(value: str) -> str:
+    """The passphrase in a 0600 file of a 0700 directory (on the runtime tmpfs
+    when there is one), removed when the process ends. Only the path goes into
+    the environment of Pulumi."""
+    d = tempfile.mkdtemp(prefix="fleetkit-pp-", dir=os.environ.get("XDG_RUNTIME_DIR") or None)
+    _TMP.append(d)
+    f = os.path.join(d, "passphrase")
+    fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(value)
+    return f
+
+
 def _with_params(url: str, params: dict[str, str]) -> str:
     if not params:
         return url
@@ -46,7 +73,16 @@ def env_for(s: Settings, stack: str, backend: dict[str, Any] | None, ev: Emitter
             st: dict[str, Any] | None = None) -> dict[str, str]:
     """`st`: the stack as evaluated, for the secret roots its flake declares."""
     env = s.base_env()
-    ev.secret(s.passphrase)
+    if s.passphrase is not None:
+        ev.secret(s.passphrase)
+    elif backend is not None and backend.get("passphraseSecret"):
+        # No passphrase in the runner's environment: the one the model declares
+        # (fleet.backends.<b>.passphraseRef), decrypted now into a temporary file.
+        env["PULUMI_CONFIG_PASSPHRASE_FILE"] = _passphrase_file(_sops(s, backend["passphraseSecret"], ev, st))
+    else:
+        raise RenderError(
+            f"stack {stack}: no Pulumi passphrase. Set PULUMI_CONFIG_PASSPHRASE (or _FILE), or declare "
+            "passphraseRef on the stack's backend (fleet.backends.<name>.passphraseRef)")
     if backend is None:
         if not s.backend_url:
             raise RenderError(f"stack {stack} names no backend and PULUMI_BACKEND_URL is not set; "

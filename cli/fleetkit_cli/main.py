@@ -11,7 +11,7 @@
 
 Run from the estate repo (or pass --flake / set FLEETKIT_FLAKE). Pulumi state
 goes to PULUMI_BACKEND_URL, which must be set; PULUMI_CONFIG_PASSPHRASE(_FILE)
-encrypts its secrets; SOPS_AGE_KEY_FILE decrypts the model's.
+(or the backend's passphraseRef) encrypts its secrets; SOPS_AGE_KEY_FILE decrypts the model's.
 """
 from __future__ import annotations
 

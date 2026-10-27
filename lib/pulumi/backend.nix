@@ -13,6 +13,9 @@
 #            garage: bucket, the endpoint the garage guest's lan address, port
 #            3900, credsRef a subtree with access_key_id and secret_access_key.
 #   local    a directory, relative to the runner's state directory.
+#
+# passphraseRef (any type) adds passphraseSecret = { path; extract }: where the
+# deploy runner decrypts the stack passphrase from.
 {
   lib,
   fleet,
@@ -38,6 +41,8 @@ let
     in
     g.ipv4.lan or (throw "${where}: garage guest ${gid} has no lan address");
 in
+let
+  base =
 if b.type == "local" then
   {
     type = "local";
@@ -72,3 +77,5 @@ else if b.provider == "garage" then
     }
 else
   throw "${where}: no Pulumi mapping for this backend"
+in
+base // lib.optionalAttrs (b.passphraseRef != null) { passphraseSecret = val b.passphraseRef; }

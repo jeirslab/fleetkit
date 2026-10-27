@@ -116,9 +116,10 @@ let
             description = "Operator anchor names (secrets.operators) that can decrypt this file. Default: all of the estate's operators.";
           };
           sharedWith = mkOption {
-            type = types.listOf types.str;
-            default = [ ];
-            description = "Estates whose repositories may take a key of this file as an Actions secret (repos.<estate>.<key>.actions.secrets.<NAME>.sourceRef). The owning estate's explicit grant; without it a repository can only use its own estate's files.";
+            type = types.attrsOf (types.listOf types.str);
+            default = { };
+            example = { homelab = [ "integrations/headscale/vpn/api_key" ]; };
+            description = "sharedWith.<estate> = [ keys ]: the keys of this file that repositories of <estate> may take as an Actions secret (repos.<estate>.<key>.actions.secrets.<NAME>.sourceRef). The owning estate's explicit grant, key by key; without it a repository can only use its own estate's files, and a key not listed here is refused.";
           };
           ref = mkOption {
             type = types.lazyAttrsOf types.str;

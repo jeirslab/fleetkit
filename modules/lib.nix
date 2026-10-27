@@ -63,14 +63,14 @@ in
   # a hand-written literal for an undeclared key fails like any other
   # dangling reference. With `estate`, the ref must also live in that
   # estate's secrets (an option owned by one estate cannot read another's),
-  # except for the files in `grantedPrefixes` ("sops:<owner>/<file>#"): the
-  # owner's explicit grant (secrets.files.<f>.sharedWith).
+  # except for the refs in `grantedRefs` ("sops:<owner>/<file>#<key>"): the
+  # owner's explicit, per-key grant (secrets.files.<f>.sharedWith.<estate>).
   secretRefAssertions =
     {
       where,
       ids,
       estate ? null,
-      grantedPrefixes ? [ ],
+      grantedRefs ? [ ],
     }:
     value:
     let
@@ -91,8 +91,8 @@ in
       )
     ]
     ++ lib.optional (estate != null) {
-      assertion = lib.hasPrefix "sops:${estate}/" value || lib.any (p: lib.hasPrefix p value) grantedPrefixes;
-      message = "${where}: secret reference \"${shown}\" belongs to another estate (expected sops:${estate}/..., or a file of another estate that lists \"${estate}\" in its sharedWith)";
+      assertion = lib.hasPrefix "sops:${estate}/" value || lib.elem value grantedRefs;
+      message = "${where}: secret reference \"${shown}\" belongs to another estate (expected sops:${estate}/..., or a key that another estate grants to \"${estate}\" in its sharedWith)";
     };
 
   # One assertion per element of a list of references.

@@ -46,7 +46,8 @@ class GitSettings:
 class Settings:
     flake: Path | None
     state_dir: Path
-    passphrase: str
+    # None: the stack's backend declares passphraseRef (backends.env_for decrypts it).
+    passphrase: str | None = None
     # A fallback for stacks whose Pulumi.nix names no backend.
     backend_url: str | None = None
     stack: str = "main"
@@ -74,10 +75,6 @@ class Settings:
                 raise SettingsError(f"{flake_path} has no flake.nix; pass --flake, set FLEETKIT_FLAKE "
                                     "or FLEETKIT_REPO")
         passphrase = _read_secret("PULUMI_CONFIG_PASSPHRASE")
-        if passphrase is None:
-            raise SettingsError(
-                "PULUMI_CONFIG_PASSPHRASE (or PULUMI_CONFIG_PASSPHRASE_FILE) is not set; "
-                "it encrypts the secrets Pulumi keeps in state")
         default_sd = (flake_path / ".fleet" / "fleetkit") if flake_path else Path("/var/lib/fleetkit")
         sd = Path(state_dir or os.environ.get("FLEETKIT_STATE_DIR") or default_sd)
         roots = [Path(p) for p in os.environ.get("FLEETKIT_SECRET_ROOTS", "").split(":") if p]
@@ -116,10 +113,9 @@ class Settings:
         )
 
     def base_env(self) -> dict[str, str]:
-        env = {
-            "PULUMI_CONFIG_PASSPHRASE": self.passphrase,
-            "PULUMI_SKIP_UPDATE_CHECK": "1",
-        }
+        env = {"PULUMI_SKIP_UPDATE_CHECK": "1"}
+        if self.passphrase is not None:
+            env["PULUMI_CONFIG_PASSPHRASE"] = self.passphrase
         for k in ("SOPS_AGE_KEY_FILE", "SOPS_AGE_KEY"):
             if os.environ.get(k):
                 env[k] = os.environ[k]

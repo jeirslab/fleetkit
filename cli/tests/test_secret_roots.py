@@ -254,3 +254,35 @@ def test_the_real_engine_reads_a_file_under_a_declared_root(real, tmp_path):
     out = subprocess.run(["pulumi", "stack", "output", "--json", "--stack", real.s.stack], cwd=wd, env=env,
                          capture_output=True, text=True, check=True).stdout
     assert json.loads(out) == {"read": "from the tenant"}
+
+
+def test_the_passphrase_comes_from_the_declared_ref_into_a_temporary_file(estate, tmp_path):
+    """No passphrase in the environment: backend.passphraseSecret is decrypted
+    (the sops is a stand-in that prints the file) into a 0600 file named by
+    PULUMI_CONFIG_PASSPHRASE_FILE; the value is never in the environment,
+    never in an event, and the file goes with the process (atexit)."""
+    tenant = root(tmp_path, "tenant", "s3cret-passphrase\n")
+    sops = tmp_path / "sops"
+    sops.write_text('#!/bin/sh\nfor a; do f=$a; done\ncat "$f"\n')
+    sops.chmod(0o755)
+    estate.s.sops, estate.s.passphrase = str(sops), None
+    _, st = declare(estate, [tenant], secrets=(),
+                    backend={"type": "local", "path": "state",
+                             "passphraseSecret": {"path": SECRET, "extract": ["pp"]}})
+    seen = []
+    ev = Emitter(seen.append)
+    env = backends.env_for(estate.s, "mini-guests", st["backend"], ev, st)
+    assert "PULUMI_CONFIG_PASSPHRASE" not in env
+    f = env["PULUMI_CONFIG_PASSPHRASE_FILE"]
+    assert open(f).read() == "s3cret-passphrase\n".strip()
+    assert oct(os.stat(f).st_mode & 0o777) == "0o600" and oct(os.stat(os.path.dirname(f)).st_mode & 0o777) == "0o700"
+    assert "s3cret-passphrase" not in json.dumps(seen) and ev.redact("x s3cret-passphrase y") == "x [secret] y"
+    backends._cleanup()
+    assert not os.path.exists(f)
+
+
+def test_no_passphrase_anywhere_is_refused(estate, tmp_path):
+    estate.s.passphrase = None
+    _, st = declare(estate, [], secrets=(), backend={"type": "local", "path": "state"})
+    with pytest.raises(render.RenderError, match="no Pulumi passphrase"):
+        backends.env_for(estate.s, "mini-guests", st["backend"], Emitter(lambda e: None), st)
