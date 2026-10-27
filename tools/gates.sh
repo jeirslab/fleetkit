@@ -93,6 +93,9 @@ bash tests/pulumi_nix.sh >&2 || fidelity=fail
 # after their guests, and each bad declaration of tests/cases-addons.json
 # refused (tests/addons.sh).
 bash tests/addons.sh >&2 || fidelity=fail
+# NixOS-module add-ons (addons/nix, nixosModules.addons): off changes nothing,
+# on renders services.tailscale, the cert unit and timer, the Headscale settings.
+bash tests/nix-addons.sh >&2 || fidelity=fail
 # The secret roots an estate's flake declares, read the runner's way from
 # checkouts of two commits (a flake input each; path inputs, evaluation only).
 bash tests/pulumi_secret_roots.sh >&2 || fidelity=fail

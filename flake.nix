@@ -186,6 +186,10 @@
         # ADR-0009, ADR-0017: sops-nix plus the SSH host key as the identity a
         # host decrypts with.
         secrets = import ./nixos/secrets.nix sops-nix;
+        # addons/README.md: NixOS-module add-ons under fleetkit.addons.<name>,
+        # all off until switched on. `addons` imports every one.
+        addons = ./addons/nix;
+        addons-tailscale = ./addons/nix/pkgs/tailscale;
       };
 
       # Experimental: the deploy runner (cli/). pulumi, colmena and sops are on
