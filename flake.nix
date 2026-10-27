@@ -275,6 +275,8 @@
                   pkgs.colmena
                   pkgs.sops
                   pkgs.git
+                  # builds the venv of the repo's custom tools (docs/tools.md)
+                  pkgs.uv
                 ])
                 # The ansible/ansible provider runs `ansible-playbook` from PATH:
                 # this one, ahead of any the host has. Only its ansible-*

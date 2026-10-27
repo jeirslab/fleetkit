@@ -6,6 +6,7 @@
   fleetkit deploy ESTATE [options]       pulumi up + colmena apply
   fleetkit adopt ESTATE [options]        import what already exists into state
   fleetkit serve [--listen ...]          the same deploys over HTTP (api.py)
+  fleetkit tools [list|check|NAME ...]   the repo's custom tools (tools_main.py)
 
 Run from the estate repo (or pass --flake / set FLEETKIT_FLAKE). Pulumi state
 goes to PULUMI_BACKEND_URL, which must be set; PULUMI_CONFIG_PASSPHRASE(_FILE)
@@ -87,9 +88,11 @@ def _printer(as_json: bool):
 @click.option("--flake", envvar="FLEETKIT_FLAKE", help="The estate repo (default: cwd).")
 @click.option("--state-dir", envvar="FLEETKIT_STATE_DIR",
               help="Work dirs and job logs (default: <flake>/.fleet/fleetkit).")
+@click.option("--tools-dir", envvar="FLEETKIT_TOOLS_DIR",
+              help="The custom tools' directory in the repo (default: tools_dir of fleetkit.toml, else tools).")
 @click.pass_context
-def cli(ctx: click.Context, flake: str | None, state_dir: str | None) -> None:
-    ctx.obj = {"flake": flake, "state_dir": state_dir}
+def cli(ctx: click.Context, flake: str | None, state_dir: str | None, tools_dir: str | None) -> None:
+    ctx.obj = {"flake": flake, "state_dir": state_dir, "tools_dir": tools_dir}
 
 
 @cli.command()
@@ -352,6 +355,29 @@ def serve(ctx: click.Context, repo: str | None, listen: str, token_file: str | N
         gitops.start_polling()
     uvicorn.run(create_app(manager, s, token, gitops, scoped), host=host or "127.0.0.1", port=int(port),
                 log_level="info")
+
+
+@cli.command("tools", add_help_option=False,
+             context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@click.pass_context
+def tools_cmd(ctx: click.Context, args: tuple[str, ...]) -> None:
+    """The custom tools of the repo: `tools list`, `tools check`, `tools NAME ...`.
+
+    Each folder of the tools directory is a tool (docs/tools.md). They run in a
+    venv built from their requirements.txt files."""
+    from . import tools_env, tools_main
+
+    repo = Path(ctx.obj["flake"] or os.getcwd()).resolve()
+    tdir = tools_env.tools_dir(repo, ctx.obj["tools_dir"])
+    if list(args) == ["list"]:  # needs no packages: no venv
+        for line in tools_main.listing(tdir):
+            click.echo(line)
+        return
+    try:
+        tools_env.run(repo, tdir, list(args))
+    except RuntimeError as e:
+        raise click.ClickException(str(e))
 
 
 def main() -> None:
