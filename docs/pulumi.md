@@ -505,14 +505,21 @@ On the command line SIGINT, SIGTERM and SIGHUP are that cancel (`deploy`,
 `preview`, `adopt`): the run ends through its cleanup instead of dying where
 it stands, and prints what was done.
 
-`PULUMI_CONFIG_PASSPHRASE(_FILE)` encrypts Pulumi's secrets in state;
-`SOPS_AGE_KEY_FILE` decrypts the model's. `pulumi-bin`, `colmena`, `sops` and
+`PULUMI_CONFIG_PASSPHRASE(_FILE)` encrypts Pulumi's secrets in state. When
+neither is set, the stack's backend can declare where the passphrase is:
+`fleet.backends.<b>.passphraseRef = "sops:<estate>/<file>#<key>"` (any backend
+type). The runner decrypts it with sops (`backends.env_for`, the same path and
+secret roots as `connRef`) into a 0600 file in a 0700 temporary directory
+(under `$XDG_RUNTIME_DIR` when set), passes only the path as
+`PULUMI_CONFIG_PASSPHRASE_FILE`, registers the value for redaction, and
+removes the directory when the process ends. An environment passphrase wins.
+With neither, the run is refused. `SOPS_AGE_KEY_FILE` decrypts the model's. `pulumi-bin`, `colmena`, `sops` and
 `git` come with the package; `nix` is the host's.
 
 ### Where sops files are looked up (`render.secret_roots`)
 
 A stack's sops files (those its invokes read, and its backend's `urlSecret` /
-`env`) are relative paths. Each is looked up, in this order, under:
+`env` / `passphraseSecret`) are relative paths. Each is looked up, in this order, under:
 
 1. the estate repo: the working tree, or in GitOps mode the checkout of the
    job's commit;

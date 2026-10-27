@@ -237,7 +237,7 @@ starts with the option path (`fleet.repos.<estate>.<key>...`):
 | Option | Rule |
 | ------ | ---- |
 | `actions.secrets.<NAME>` | the name is letters, digits and `_`, does not start with a digit and does not start with `GITHUB_` (GitHub reserves that prefix) |
-| `actions.secrets.<NAME>.sourceRef` | a `sops:` reference that a declared secrets file of the same estate provides, or a file of another estate that lists this estate in its `secrets.files.<f>.sharedWith` (the owner's explicit grant, one file at a time); a value that is not a `sops:` reference is refused without being echoed |
+| `actions.secrets.<NAME>.sourceRef` | a `sops:` reference that a declared secrets file of the same estate provides, or a key that another estate grants to this estate in its `secrets.files.<f>.sharedWith.<estate> = [ keys ]` (the owner's explicit grant, key by key: the file's other keys stay unreachable, and a ref to one is refused); a value that is not a `sops:` reference is refused without being echoed |
 | `actions.variables.<NAME>` | the same name rule as a secret |
 | `actions.secrets`, `actions.variables` | names are compared without regard to case, as GitHub does: the `GITHUB_` prefix is refused in any case, and two names of one repository that differ only in case are refused |
 | `labels.<name>.color` | exactly six hex digits, no leading `#` |

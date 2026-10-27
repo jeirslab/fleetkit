@@ -56,6 +56,7 @@ let
         };
         # local
         path = nullable types.str "local: state directory, relative to the deploy runner's state directory (default pulumi-state).";
+        passphraseRef = nullable sopsRef "Any type: sops ref of the passphrase of the Pulumi stacks on this backend (PULUMI_CONFIG_PASSPHRASE). The deploy runner decrypts it at run time into a temporary file (PULUMI_CONFIG_PASSPHRASE_FILE) when the runner's environment sets no passphrase.";
         # pg
         schemaPrefix = nullable types.str "pg: state schema prefix.";
         connRef = nullable sopsRef "pg: sops ref of the connection string.";
@@ -148,7 +149,7 @@ let
     ++ lib.concatLists (
       lib.mapAttrsToList (f: v: secretRef "${where}.${f}" v) (
         lib.filterAttrs (_: v: v != null) {
-          inherit (b) connRef credsRef;
+          inherit (b) connRef credsRef passphraseRef;
           "credentials.accessKeyIdRef" = if b.credentials == null then null else b.credentials.accessKeyIdRef;
           "credentials.secretAccessKeyRef" = if b.credentials == null then null else b.credentials.secretAccessKeyRef;
         }
