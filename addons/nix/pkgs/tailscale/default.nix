@@ -151,6 +151,7 @@ in
         wantedBy = [ "multi-user.target" ];
         path = [
           pkgs.coreutils
+          pkgs.jq
           pkgs.systemd
         ];
         serviceConfig = {
@@ -162,6 +163,12 @@ in
         startLimitIntervalSec = 3600;
         startLimitBurst = 10;
         script = ''
+          # After a restart tailscaled has no network map for a few seconds, and `tailscale cert`
+          # then fails with "no netmap available": wait until it is connected (up to 2 minutes).
+          for _ in $(seq 60); do
+            ${tailscaleBin} status --json 2>/dev/null | jq -e '.BackendState == "Running"' >/dev/null && break
+            sleep 2
+          done
           install -d -m 0750 -o root -g ${lib.escapeShellArg cert.group} ${lib.escapeShellArg cert.dir}
           before=$(cat ${lib.escapeShellArg cert.certFile} 2>/dev/null | sha256sum || true)
           ${tailscaleBin} cert \
