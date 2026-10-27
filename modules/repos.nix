@@ -11,6 +11,21 @@ let
     default = null;
   };
 
+  # "sops:<owner>/<file>#" for every file of another estate that lists `estate`
+  # in its sharedWith.
+  grantedTo =
+    estate:
+    lib.concatLists (
+      lib.mapAttrsToList (
+        owner: e:
+        lib.concatLists (
+          lib.mapAttrsToList (
+            f: file: lib.optional (owner != estate && lib.elem estate file.sharedWith) "sops:${owner}/${f}#"
+          ) e.secrets.files
+        )
+      ) config.fleet.estates
+    );
+
   repoType =
     estate:
     types.submodule (
@@ -392,6 +407,7 @@ let
                 where = w "actions.secrets.${s}.sourceRef";
                 ids = ids.secretRef;
                 inherit estate;
+                grantedPrefixes = grantedTo estate;
               } sv.sourceRef
             ) r.actions.secrets
           )

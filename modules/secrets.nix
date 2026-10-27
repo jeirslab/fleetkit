@@ -115,6 +115,11 @@ let
             defaultText = lib.literalExpression "attrNames fleet.estates.<estate>.secrets.operators";
             description = "Operator anchor names (secrets.operators) that can decrypt this file. Default: all of the estate's operators.";
           };
+          sharedWith = mkOption {
+            type = types.listOf types.str;
+            default = [ ];
+            description = "Estates whose repositories may take a key of this file as an Actions secret (repos.<estate>.<key>.actions.secrets.<NAME>.sourceRef). The owning estate's explicit grant; without it a repository can only use its own estate's files.";
+          };
           ref = mkOption {
             type = types.lazyAttrsOf types.str;
             readOnly = true;
