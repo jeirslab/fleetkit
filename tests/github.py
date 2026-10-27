@@ -64,6 +64,8 @@ REPOS = {"app": "app", "site": "site-public", "mirror": "mirror"}
 LOGINS = {"alice-example": "admin", "bob-example": "member", "carol-example": "member"}
 ENV_BRANCHES = ["main", "release/1.x"]
 SECRET_FILE = "secrets/gh.json"
+# A file another estate shares with gh (sharedWith): data.sops_file name -> source_file.
+SHARED_FILES = {"other_shared": "secrets/shared.json"}
 
 
 def as_list(v):
@@ -241,8 +243,8 @@ def check(doc, schema, full=None):
             name = m.group(1)
             if name not in sops_files:
                 problems.append(f"{path}: data.sops_file.{name} is not rendered")
-            elif sops_files[name].get("source_file") != SECRET_FILE:
-                problems.append(f"data.sops_file.{name}: source_file is not '{SECRET_FILE}'")
+            elif sops_files[name].get("source_file") != SHARED_FILES.get(name, SECRET_FILE):
+                problems.append(f"data.sops_file.{name}: source_file is not '{SHARED_FILES.get(name, SECRET_FILE)}'")
         if isinstance(val, str) and "PRIVATE KEY" in val:
             problems.append(f"{path}: contains private key material")
     want = 5 if full else 3

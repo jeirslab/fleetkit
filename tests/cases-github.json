@@ -38,9 +38,11 @@
   ],
   "positive": [
     "_: {",
+    "  fleet.estates.other.secrets = { backend = \"sops\"; files.shared = { path = \"secrets/shared.json\"; keys = [ \"k\" ]; sharedWith = [ \"gh\" ]; }; };",
     "  fleet.repos.gh.app = {",
     "    actions = {",
     "      secrets.REPO_TOKEN.sourceRef = \"sops:gh/gh#repo-token\";",
+    "      secrets.SHARED_TOKEN.sourceRef = \"sops:other/shared#k\";",
     "      variables.DEPLOY_TARGET = \"staging\";",
     "      variables.REF_LOOKALIKE = \"\\${github_repository.app.name} %{ if true }x%{ endif }\";",
     "    };",
@@ -99,6 +101,18 @@
     "}"
   ],
   "negative": [
+    {
+      "name": "secret-other-estate-not-shared",
+      "description": "a ref to another estate's file that does not list this estate in sharedWith",
+      "expect": "fleet\\.repos\\.gh\\.app\\.actions\\.secrets\\.FOREIGN\\.sourceRef: secret reference \"sops:other/private#k\" belongs to another estate",
+      "module": [
+        "_: {",
+        "  fleet.estates.other.secrets = { backend = \"sops\"; files.private = { path = \"secrets/private.json\"; keys = [ \"k\" ]; sharedWith = [ \"third\" ]; }; };",
+        "  fleet.repos.gh.app.actions.secrets.FOREIGN.sourceRef = \"sops:other/private#k\";",
+        "}"
+      ],
+      "noecho": false
+    },
     {
       "name": "literal-secret",
       "description": "a literal secret value where a sops ref is required",
