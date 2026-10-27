@@ -222,3 +222,60 @@ a replacement; `realise` built before anything runs).
 
 Not verified: a playbook against a real guest (a VyOS VM) through a real
 deploy, and `network_cli` from the runner.
+
+## NixOS-module add-ons (`addons/nix`)
+
+A second kind of add-on: a NixOS module a host imports (see `addons/README.md`). It is
+not part of the estate model; the host's own configuration switches it on.
+
+- One folder per add-on, `addons/nix/pkgs/<name>/default.nix`; options under
+  `fleetkit.addons.<name>` (not `infra.addons`); off until `enable` is set.
+- Flake outputs: `nixosModules.addons` (imports every add-on) and
+  `nixosModules.addons-<name>`. Importing changes nothing by itself.
+- Checked by `tests/nix-addons.sh` (evaluation only; part of the eval gates).
+
+A consumer declares what it uses, per host:
+
+```nix
+{
+  imports = [ inputs.fleetkit.nixosModules.addons ];
+
+  fleetkit.addons.tailscale = {
+    enable = true;
+    # package = inputs.jeirslab-nixpkgs.legacyPackages.${pkgs.system}.tailscale;  # a newer build
+    cert = {
+      enable = true;
+      domain = "dumpy.tamarin-gray.ts.net";
+      group = "tailscale-cert";          # default; add the services that read the key
+      reloadUnits = [ "caddy.service" ];
+    };
+  };
+  # Reference the files from other modules:
+  #   config.fleetkit.addons.tailscale.cert.certFile  (/var/lib/tailscale-cert/<domain>.crt)
+  #   config.fleetkit.addons.tailscale.cert.keyFile   (/var/lib/tailscale-cert/<domain>.key)
+}
+```
+
+### tailscale (`fleetkit.addons.tailscale`)
+
+| Option | Meaning |
+| --- | --- |
+| `enable` | `services.tailscale.enable = true` and `services.tailscale.package = cfg.package`. The rest stays the host's `services.tailscale.*`. |
+| `package` | Default `pkgs.tailscale`. Set a newer build; the host's choice wins over nixpkgs' default. |
+| `cert.enable`, `cert.domain` | The node's TLS certificate from `tailscale cert`. `domain` is the MagicDNS name, required. |
+| `cert.dir` | Default `/var/lib/tailscale-cert` (0750 root:group). |
+| `cert.group` | Default `tailscale-cert`; created if missing. Key is 0640 root:group, certificate 0644. |
+| `cert.reloadUnits` | Units reloaded (restarted if they cannot reload) after a renewal that changed the certificate. Empty by default. |
+| `cert.certFile`, `cert.keyFile` | Read-only: the final paths. |
+| `headscale.certificates.enable` | For the host that runs the Headscale server: renders `dns.certificates` and `dns.challenge.provider` into `services.headscale.settings` (merged). |
+| `headscale.certificates.zone` | `dns.certificates.zone`: the public DNS zone. |
+| `headscale.certificates.challenge.provider.name` | `dns.challenge.provider.name`: `cloudflare`, `gigahost`, `rfc2136` or `webhook`. |
+| `headscale.certificates.challenge.provider.apiTokenFile` | Rendered as `api_token_path`. A path, never the token; load it into the unit (`LoadCredential`). |
+| `headscale.certificates.minVersion` | Default `0.34.0`; an older `services.headscale.package` gets a warning. |
+
+The `tailscale-cert` service (oneshot, after `tailscaled`, retries on failure) runs at
+boot and from a daily, persistent timer. The Headscale keys are those of upstream
+juanfont/headscale#3554 (`dns.certificates.{enabled,zone}`, `dns.challenge.provider`;
+`dns.base_domain` must be a public domain in the zone, and `enabled` needs `magic_dns`).
+Other provider settings (rfc2136, webhook) are not options here; set them under
+`services.headscale.settings.dns.challenge.provider` yourself.
