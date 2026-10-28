@@ -76,6 +76,6 @@ else if b.provider == "garage" then
       AWS_SECRET_ACCESS_KEY = sub b.credsRef "secret_access_key";
     }
 else
-  throw "${where}: no Pulumi mapping for this backend"
+  throw "${where}: no Pulumi mapping for this backend";
 in
 base // lib.optionalAttrs (b.passphraseRef != null) { passphraseSecret = val b.passphraseRef; }

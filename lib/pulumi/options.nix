@@ -98,6 +98,11 @@ let
         default = null;
         description = "local: the state directory; relative to the runner's state directory.";
       };
+      passphraseSecret = mkOption {
+        type = types.nullOr sopsValue;
+        default = null;
+        description = "Where the stack passphrase is (fleet.backends.<b>.passphraseRef), when the runner's environment has none.";
+      };
     };
   };
 
