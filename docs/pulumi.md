@@ -908,6 +908,28 @@ user, with its state dir); with `pg` or `s3`, from any operator's machine.
 Pulumi's own stack lock keeps it apart from a running deploy, and it writes
 nowhere a deploy reads.
 
+## Forgetting a retired resource (`fleetkit forget`, `cli/fleetkit_cli/forget.py`)
+
+A guest retired from the model and deleted in Proxmox stays in the stack's
+state, protected (the runner protects every guest), and every later preview
+fails with `cannot be deleted because it is protected`. `fleetkit forget`
+drops that one entry from state (`pulumi state unprotect`, then
+`pulumi state delete`); nothing real is touched.
+
+```sh
+fleetkit forget homelab homelab-guests '<urn>'           # the checks and the report only
+fleetkit forget homelab homelab-guests '<urn>' --apply   # remove it
+```
+
+Refused, with nothing changed, unless: the URN is not in the rendered program
+of the stack; it is in the stack's state; and, for a Proxmox container or VM,
+its vmid (the state id) is not among the guests the cluster reports
+(`/api2/json/cluster/resources?type=vm`, read with the endpoint and API token
+of the provider resource in the stack's state). A provider or stack resource is
+never forgotten. The engine's own refusal of a resource others depend on
+stands (no `--force`). Like adoption it is a CLI command only (no API route:
+the API's jobs are deploys); run it where the stack's state is reachable.
+
 ## GitOps (`fleetkit serve --repo`, `cli/fleetkit_cli/gitops.py`)
 
 The branch is the desired state, and the server deploys it on itself:

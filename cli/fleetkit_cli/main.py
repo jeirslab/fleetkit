@@ -5,6 +5,7 @@
   fleetkit preview ESTATE [options]      pulumi preview + colmena build
   fleetkit deploy ESTATE [options]       pulumi up + colmena apply
   fleetkit adopt ESTATE [options]        import what already exists into state
+  fleetkit forget ESTATE STACK URN       drop a resource the program no longer has from state
   fleetkit serve [--listen ...]          the same deploys over HTTP (api.py)
   fleetkit tools [list|check|NAME ...]   the repo's custom tools (tools_main.py)
   fleetkit tailnet versions [options]    Tailscale client versions of the tailnets (tailnet.py)
@@ -25,6 +26,7 @@ from pathlib import Path
 import click
 
 from . import adopt as adoption
+from . import forget as forgetting
 from . import guard, pipeline, render
 from .events import Cancelled, Emitter
 from .settings import Settings, SettingsError
@@ -288,6 +290,52 @@ def adopt_cmd(ctx: click.Context, estate: str, stacks: tuple[str, ...], resource
             click.echo(line)
     if not report["ok"]:
         ctx.exit(1)
+
+
+@cli.command("forget")
+@click.argument("estate")
+@click.argument("stack")
+@click.argument("urn")
+@click.option("--apply", "apply_", is_flag=True, help="Remove it. Without it: the checks and the report only.")
+@click.option("--json", "as_json", is_flag=True, help="The report as one JSON document on stdout.")
+@click.pass_context
+def forget_cmd(ctx: click.Context, estate: str, stack: str, urn: str, apply_: bool, as_json: bool) -> None:
+    """Drop one resource from a stack's state (`pulumi state delete`); nothing real is touched.
+
+    For a resource the stack's program no longer declares and the state still
+    holds, protected, so that every preview fails on it (a retired guest).
+    Refused unless the URN is absent from the rendered program and present in
+    state; a Proxmox guest is refused unless its vmid is absent from the
+    cluster the stack's provider points at. --apply unprotects and deletes it.
+    The engine's refusal of a resource others depend on stands."""
+    s = _settings(ctx)
+
+    def sink(e: dict) -> None:  # stdout carries the report only
+        if e["kind"] == "log":
+            click.echo(f"  {e['stage']:>6} | {e['line']}", err=True)
+        elif e["kind"] in ("diagnostic", "error", "failed-step"):
+            rest = {k: v for k, v in e.items() if k not in ("ts", "stage", "kind", "trace")}
+            click.secho(f"[{e['stage']}] {e['kind']} {json.dumps(rest)}", fg="red", err=True)
+
+    ev = Emitter(sink)
+    try:
+        with _signals(ev):
+            report = forgetting.run(s, estate, stack, urn, ev, apply_)
+    except Cancelled as e:
+        raise _cancelled(e)
+    except KeyboardInterrupt:
+        ev.cancel()
+        raise click.ClickException("interrupted")
+    except Exception as e:  # noqa: BLE001 - shown as the command's error
+        if ev.cancelled:
+            raise click.ClickException(ev.redact(f"cancelled ({type(e).__name__}: {e})"))
+        known = isinstance(e, (forgetting.ForgetError, render.RenderError))
+        raise click.ClickException(ev.redact(str(e) if known else f"{type(e).__name__}: {e}"))
+    if as_json:
+        click.echo(json.dumps(report, indent=1))
+    else:
+        for line in forgetting.text(report):
+            click.echo(line)
 
 
 @cli.command()
