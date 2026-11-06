@@ -808,3 +808,35 @@ def test_a_fault_in_the_check_is_not_reported_as_a_failed_fetch(sc, monkeypatch)
     assert sc.jobs() == []
     with pytest.raises(RuntimeError, match="a bug in a field check"):  # it reaches the server's log
         sc.c.post("/v1/deploys", json=OK, headers=TH)
+
+
+# ── a job that cannot be recorded does not hold the estate ───────────────────
+
+
+def test_job_write_failure_does_not_hold_estate(env, monkeypatch):
+    from fleetkit_cli.jobs import Job
+
+    c, fake, m, tmp = env
+    real = Job.save
+
+    def full_disk(self):
+        (self._dir / f"{self.id}.json.tmp").write_text("")
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(Job, "save", full_disk)
+    r = c.post("/v1/deploys", json={"estate": "mini"}, headers=H)
+    assert r.status_code == 500 and "no job was created" in r.json()["detail"]["error"]
+    assert m.active == {} and not list((tmp / "jobs").glob("*.tmp"))
+    monkeypatch.setattr(Job, "save", real)
+    assert c.post("/v1/deploys", json={"estate": "mini"}, headers=H).status_code == 202
+    fake.gate.set()
+
+
+def test_startup_removes_leftover_tmp_record(env):
+    *_, tmp = env
+    d = tmp / "jobs"
+    (d / "dead00000000.json.tmp").write_text("")
+    (d / "dead00000000.jsonl").write_text("")
+    m2 = JobManager(tmp, Fake())
+    assert m2.jobs == {} and m2.active == {}
+    assert not list(d.glob("dead*"))

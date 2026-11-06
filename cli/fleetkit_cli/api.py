@@ -38,7 +38,7 @@ from pydantic import BaseModel, Field
 from . import render
 from . import tokens as tk
 from .gitops import GitError
-from .jobs import TERMINAL, BusyError, Job, JobManager
+from .jobs import TERMINAL, BusyError, Job, JobManager, JobStoreError
 from .pipeline import DeployRequest
 from .settings import Settings
 from .tokens import Authenticator, Principal, Token
@@ -117,6 +117,8 @@ def create_app(manager: JobManager, settings: Optional[Settings], token: Optiona
             return manager.submit(req, by=p.name).record()
         except BusyError as e:
             raise HTTPException(409, {"error": f"estate {req.estate} is deploying", "job": str(e)})
+        except JobStoreError as e:
+            raise HTTPException(500, {"error": f"no job was created: {e}"})
 
     @app.get("/v1/deploys")
     def deploys(limit: int = 50, p: Principal = Depends(auth)) -> list[dict[str, Any]]:

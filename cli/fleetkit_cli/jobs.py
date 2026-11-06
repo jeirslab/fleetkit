@@ -31,6 +31,11 @@ class BusyError(Exception):
     pass
 
 
+class JobStoreError(Exception):
+    """The job could not be recorded on disk (a full disk, a read-only state
+    directory). No job was created and the estate is not held."""
+
+
 class Job:
     def __init__(self, jid: str, req: DeployRequest, d: Path, by: str | None = None):
         self.id = jid
@@ -96,6 +101,14 @@ class JobManager:
         self._load()
 
     def _load(self) -> None:
+        # A leftover <id>.json.tmp is a record whose write was cut off (a full
+        # disk, a crash). It names no running job: remove it, and the log of a
+        # job that never got a record.
+        for t in self.dir.glob("*.json.tmp"):
+            jid = t.name[: -len(".json.tmp")]
+            t.unlink(missing_ok=True)
+            if not (self.dir / f"{jid}.json").exists():
+                (self.dir / f"{jid}.jsonl").unlink(missing_ok=True)
         for f in sorted(self.dir.glob("*.json")):
             try:
                 r = json.loads(f.read_text())
@@ -118,10 +131,16 @@ class JobManager:
             if busy:
                 raise BusyError(busy)
             j = Job(uuid.uuid4().hex[:12], req, self.dir, by)
+            j.emitter = Emitter(j.add)
+            try:
+                j.save()
+            except OSError as e:
+                # Nothing is registered yet, so the estate is not held and the
+                # next request is not refused as busy. Drop the half-written file.
+                (self.dir / f"{j.id}.json.tmp").unlink(missing_ok=True)
+                raise JobStoreError(f"the job could not be recorded in {self.dir}: {e}") from e
             self.jobs[j.id] = j
             self.active[req.estate] = j.id
-            j.emitter = Emitter(j.add)
-            j.save()
         self.pool.submit(self._run, j)
         return j
 
