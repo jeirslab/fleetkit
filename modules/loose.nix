@@ -71,6 +71,19 @@ let
         }
       ];
 
+  # The auth references may also be keys another estate grants in sharedWith
+  # (one token for the organisations of several estates).
+  sopsRefGranted =
+    estate: where: value:
+    if builtins.isString value then
+      h.secretRefAssertions {
+        inherit where estate;
+        ids = ids.secretRef;
+        grantedRefs = h.grantedTo config.fleet.estates estate;
+      } value
+    else
+      sopsRef estate where value;
+
   gitChecks =
     estate: g:
     let
@@ -280,7 +293,7 @@ let
           assertion = auth ? ${k};
           message = "${w "auth.${k}"}: required when auth.kind is \"${toString authKind}\" but missing";
         }
-      ] ++ opt auth k (sopsRef estate (w "auth.${k}"))) authNeeds
+      ] ++ opt auth k (sopsRefGranted estate (w "auth.${k}"))) authNeeds
     );
 
   cacheChecks =

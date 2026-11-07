@@ -119,7 +119,7 @@ let
             type = types.attrsOf (types.listOf types.str);
             default = { };
             example = { homelab = [ "integrations/headscale/vpn/api_key" ]; };
-            description = "sharedWith.<estate> = [ keys ]: the keys of this file that repositories of <estate> may take as an Actions secret (repos.<estate>.<key>.actions.secrets.<NAME>.sourceRef). The owning estate's explicit grant, key by key; without it a repository can only use its own estate's files, and a key not listed here is refused.";
+            description = "sharedWith.<estate> = [ keys ]: the keys of this file that repositories of <estate> may take as an Actions secret (repos.<estate>.<key>.actions.secrets.<NAME>.sourceRef), and the credentials of its git block (git.auth.*Ref). The owning estate's explicit grant, key by key; without it a repository can only use its own estate's files, and a key not listed here is refused.";
           };
           ref = mkOption {
             type = types.lazyAttrsOf types.str;

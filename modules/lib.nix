@@ -58,6 +58,22 @@ in
   # Reference validation: see refAssertion in the let block above.
   inherit refAssertion;
 
+  # "sops:<owner>/<file>#<key>" for every key of another estate's file that
+  # lists `estate` in its sharedWith (the keys it names, nothing else).
+  grantedTo =
+    estates: estate:
+    lib.concatLists (
+      lib.mapAttrsToList (
+        owner: e:
+        lib.concatLists (
+          lib.mapAttrsToList (
+            f: file:
+            lib.optionals (owner != estate) (map (k: "sops:${owner}/${f}#${k}") (file.sharedWith.${estate} or [ ]))
+          ) e.secrets.files
+        )
+      ) estates
+    );
+
   # A sops reference ("sops:<estate>/<file>#<key>") must be one that a
   # declared secrets file derives (ids = config.fleet.report.ids.secretRef);
   # a hand-written literal for an undeclared key fails like any other
