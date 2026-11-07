@@ -459,5 +459,7 @@ It runs under the `fidelity` gate in `tools/gates.sh`.
 ## Three rules the renderer keeps
 
 - `archive_on_destroy` is true unless a repository sets `archiveOnDestroy = false`: leaving the configuration archives a repository and never deletes it by default.
+- `retainOnDelete = true` (Pulumi only) renders `lifecycle.retain_on_delete` instead of `prevent_destroy` (the engine refuses to delete a protected resource): once deployed, removing the repository from the model drops its state entry and leaves the real repository alone (no archive). Use it to hand a repository to another stack or owner, in this order: set it and deploy, remove the declaration and deploy, then declare it in the new place and adopt it. The Terraform renderer does not translate it.
+- `git.auth` references may name a key another estate grants in `secrets.files.<f>.sharedWith`, so two organisations can use one token.
 - `github_team_members` is rendered only for a team that has members; the provider requires at least one.
 - `github_actions_organization_permissions` is rendered only when the estate declares `actions.enabledRepositories`. Declaring only secrets or variables must not set an organisation-wide policy.

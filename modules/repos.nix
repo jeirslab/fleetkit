@@ -11,21 +11,7 @@ let
     default = null;
   };
 
-  # "sops:<owner>/<file>#<key>" for every key of another estate's file that
-  # lists `estate` in its sharedWith (the keys it names, nothing else).
-  grantedTo =
-    estate:
-    lib.concatLists (
-      lib.mapAttrsToList (
-        owner: e:
-        lib.concatLists (
-          lib.mapAttrsToList (
-            f: file:
-            lib.optionals (owner != estate) (map (k: "sops:${owner}/${f}#${k}") (file.sharedWith.${estate} or [ ]))
-          ) e.secrets.files
-        )
-      ) config.fleet.estates
-    );
+  grantedTo = h.grantedTo config.fleet.estates;
 
   repoType =
     estate:
@@ -177,6 +163,11 @@ let
             type = types.nullOr types.bool;
             default = null;
             description = "github_repository.archive_on_destroy: archive the repository instead of deleting it when it leaves the configuration. null = true, the safe choice; say false to allow deletion.";
+          };
+          retainOnDelete = mkOption {
+            type = types.nullOr types.bool;
+            default = null;
+            description = "Pulumi only. true: removing the repository from the model drops its state entry and leaves the real repository untouched (no archive, no delete), for handing it to another stack or owner. It replaces prevent_destroy for this repository, so set it (and deploy) before removing the declaration. null = false.";
           };
           fork = mkOption {
             type = types.bool;

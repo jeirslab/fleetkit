@@ -221,6 +221,18 @@ let
     );
 
   # ---- repositories ------------------------------------------------------
+  # A repository is protected (prevent_destroy) unless it is declared with
+  # retainOnDelete: then it is not, and retain_on_delete (Pulumi only) says
+  # that removing it from the model drops its state entry and leaves the real
+  # repository alone. The two cannot hold together (the engine refuses to
+  # delete a protected resource, retained or not).
+  lifecycleOf =
+    r: extra:
+    if (r.retainOnDelete or null) == true then
+      { retain_on_delete = true; } // extra
+    else
+      { prevent_destroy = true; } // extra;
+
   renderRepo =
     k: r:
     {
@@ -228,7 +240,7 @@ let
       inherit (r) visibility archived;
       # A repository removed from the model is archived, never deleted.
       archive_on_destroy = if r.archiveOnDestroy == null then true else r.archiveOnDestroy;
-      lifecycle.prevent_destroy = true;
+      lifecycle = lifecycleOf r { };
     }
     // lib.optionalAttrs (r.description != null) { inherit (r) description; }
     // lib.optionalAttrs (r.features != null) {
@@ -246,10 +258,7 @@ let
     // lib.optionalAttrs (r.template.includeAllBranches or false) {
       # The provider reads a template back without include_all_branches, so a
       # declared true would differ from state on every plan after the first.
-      lifecycle = {
-        prevent_destroy = true;
-        ignore_changes = [ "template[0].include_all_branches" ];
-      };
+      lifecycle = lifecycleOf r { ignore_changes = [ "template[0].include_all_branches" ]; };
     };
 
   # The optional repository settings: each is rendered only when the estate

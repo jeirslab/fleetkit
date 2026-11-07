@@ -286,6 +286,7 @@ let
       unsupported = lib.attrNames (
         removeAttrs lc [
           "prevent_destroy"
+          "retain_on_delete"
           "ignore_changes"
         ]
       );
@@ -300,6 +301,7 @@ let
       options = dropNulls {
         provider = if tfProviders ? ${local} then "\${${providerKey local}}" else null;
         protect = if lc.prevent_destroy or false then true else null;
+        retainOnDelete = if lc.retain_on_delete or false then true else null;
         ignoreChanges = if lc ? ignore_changes then map (convPath m.f) lc.ignore_changes else null;
         replaceOnChanges = if lib.elem type replaceOnAny then [ "*" ] else null;
         dependsOn =
