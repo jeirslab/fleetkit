@@ -108,7 +108,7 @@ def test_live_guest_is_refused(lab):
     assert fakes.urn(p, "old") in w.state and w.deleted == [] and w.unprotected == []
 
 
-@pytest.mark.parametrize("inputs", [{"endpoint": ENDPOINT}, {"apiToken": TOKEN}, {}])
+@pytest.mark.parametrize("inputs", [{"endpoint": ENDPOINT}, {}])
 def test_unknown_cluster_is_refused(lab, inputs):
     estate, w, p = lab
     w.state[fakes.urn(p, "provider-proxmox")]["inputs"] = inputs
@@ -171,6 +171,15 @@ def test_falls_back_to_the_program_and_sops(lab, monkeypatch):
     assert seen == [{"path": "secrets/pve.yaml", "extract": ["pve", "api_token"]}]
     assert cluster.asked == [(ENDPOINT, TOKEN, True)] and report["checked"]["vmid"] == "9002"
     assert TOKEN not in json.dumps(events)
+
+
+def test_endpoint_missing_in_state_comes_from_the_program(lab):
+    """fakes.program writes the endpoint into the provider block: state with only a token is enough."""
+    estate, w, p = lab
+    w.state[fakes.urn(p, "provider-proxmox")]["inputs"] = {"apiToken": wrapped(TOKEN)}
+    cluster = Cluster(101)
+    go(estate, p, "old", cluster)
+    assert cluster.asked == [(ENDPOINT, TOKEN, False)]
 
 
 def test_no_token_anywhere_still_refuses(lab, monkeypatch):
