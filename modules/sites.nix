@@ -278,11 +278,15 @@ let
             default = null;
             description = "The file to upload, normally a Nix store path of the built image (a derivation, or its out path). Set: the estate whose managed guests use the image renders a proxmox_virtual_environment_file that uploads it to datastore on node, as fileName (source_file.path; evaluation does not build it, the deploy's host must have it), and those guests depend on it. null = the image is on the datastore already. A new source is a new fileName: a changed fileName replaces the upload.";
           };
-          build = req (
-            types.submodule {
-              options.method = req (types.enum [ "nix" ]);
-            }
-          );
+          build = mkOption {
+            type = types.nullOr (
+              types.submodule {
+                options.method = req (types.enum [ "nix" ]);
+              }
+            );
+            default = null;
+            description = "How the image is made, when this lab makes it (method nix). null = the image is not built here (a template Proxmox ships, or one already on the datastore).";
+          };
           volumeId = mkOption {
             type = types.str;
             readOnly = true;
