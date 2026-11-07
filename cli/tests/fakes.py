@@ -92,6 +92,7 @@ class World:
         self.pulumi_cancel = 0  # calls of `pulumi cancel`: must stay 0
         self.unprotected = []  # urns given to `pulumi state unprotect`
         self.protected = []    # urns given to `pulumi state protect`
+        self.deleted = []      # urns given to `pulumi state delete`
         self.protect_fails = set()  # urns `pulumi state protect` fails for
         self.pending = []      # the state's pending_operations: [{type, resource: {urn}}]
         self.destroyed = []    # keys whose real resource an up destroyed
@@ -136,6 +137,17 @@ class FakeStack:
         self.w.pulumi_cancel += 1
 
     def _run_pulumi_cmd_sync(self, args, *a, **kw):
+        if args[:2] == ["stack", "export"]:  # --show-secrets: the same export, secrets in clear
+            assert args[2:] == ["--show-secrets"], args
+            return SimpleNamespace(stdout=json.dumps({"version": 3, "deployment": self.export_stack().deployment}))
+        if args[:2] == ["state", "delete"]:
+            # pulumi state delete refuses a protected resource without --force.
+            assert args[3:] == ["--yes"], args
+            if self.w.state[args[2]].get("protect"):
+                raise RuntimeError(f"error: Resource {args[2]} is protected; use --force to delete it")
+            del self.w.state[args[2]]
+            self.w.deleted.append(args[2])
+            return SimpleNamespace(stdout="")
         assert args[0] == "state" and args[1] in ("protect", "unprotect") and args[3:] == ["--yes"], args
         if args[1] == "protect" and args[2] in self.w.protect_fails:
             raise RuntimeError(f"error: could not protect {args[2]}")
