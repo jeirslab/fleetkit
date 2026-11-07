@@ -12,7 +12,10 @@ behind the checks that make it safe:
   2. the URN is in the stack's state;
   3. a Proxmox guest (container or VM) must be gone from the cluster: its vmid
      (the state id) is looked up in the Proxmox API of the cluster the provider
-     resource in state points at, with that provider's own endpoint and token.
+     resource in state points at, with that provider's own endpoint and token
+     (state inputs, then outputs: `apiToken` is a secret wrapper holding JSON
+     text, `insecure` a JSON string; failing that, the provider block of the
+     rendered program, its token read from the sops file the program reads).
      Anything that cannot be established (no provider, no token, an API error)
      refuses: the state entry of a live guest is what keeps a deploy from
      creating a second one;
@@ -25,6 +28,7 @@ Without apply it reports what it would remove and changes nothing.
 from __future__ import annotations
 
 import json
+import re
 import ssl
 import urllib.error
 import urllib.request
@@ -33,6 +37,7 @@ from typing import Any, Callable, Optional
 from . import backends, guard, infra, render
 from .events import Emitter
 from .guests import GUEST_TYPES
+from .render import RenderError
 from .settings import Settings
 
 PROVIDER_PREFIX = "pulumi:providers:proxmox"
@@ -78,20 +83,96 @@ def _provider(resources: list[dict[str, Any]], r: dict[str, Any]) -> dict[str, A
     return hit[0]
 
 
+SECRET_SIG = "4dabf18193072939515e22adb298388d"
+
+
+def _plain(v: Any) -> Any:
+    """A provider property as a value: a secret wrapper ({sig, plaintext}, the
+    plaintext JSON text) is opened, and a string that is JSON text of a string,
+    bool or number is decoded. Anything else comes back as it is."""
+    if isinstance(v, dict) and SECRET_SIG in v:
+        v = v.get("plaintext", v.get("ciphertext"))
+    if isinstance(v, str):
+        try:
+            d = json.loads(v)
+        except ValueError:
+            return v
+        return d if isinstance(d, (str, bool, int, float)) else v
+    return v
+
+
+def _truthy(v: Any) -> bool:
+    v = _plain(v)
+    return v.strip().lower() == "true" if isinstance(v, str) else bool(v)
+
+
+def _first(d: dict[str, Any], *names: str) -> Any:
+    for n in names:
+        v = _plain(d.get(n))
+        if v not in (None, ""):
+            return v
+    return None
+
+
+def _from_state(prov: dict[str, Any]) -> tuple[Any, Any, bool]:
+    """(endpoint, token, insecure) from the provider's inputs, then its outputs."""
+    found: list[Any] = [None, None, False]
+    for side in ("inputs", "outputs"):
+        d = prov.get(side) or {}
+        found[0] = found[0] or _first(d, "endpoint")
+        found[1] = found[1] or _first(d, "apiToken", "api_token")
+        found[2] = found[2] or _truthy(d.get("insecure"))
+    return found[0], found[1], found[2]
+
+
+_EXPR = re.compile(r'^\$\{([^.}\[]+)\.data\["(.+)"\]\}$')
+
+
+def _from_program(s: Settings, st: dict[str, Any], program: dict[str, Any], prov_urn: str,
+                  ev: Emitter) -> tuple[Any, Any, bool]:
+    """(endpoint, token, insecure) from the provider block of the rendered
+    program: the endpoint as written, the token read from the sops file of the
+    data source it names (`${var.data["key"]}`), with the helper the backends
+    use. (None, None, False) when the program cannot tell."""
+    name = prov_urn.rsplit("::", 1)[-1]
+    props = ((program.get("resources") or {}).get(name) or {}).get("properties") or {}
+    endpoint = _first(props, "endpoint")
+    insecure = _truthy(props.get("insecure"))
+    token = None
+    m = _EXPR.match(str(props.get("apiToken") or props.get("api_token") or ""))
+    if m:
+        args = ((((program.get("variables") or {}).get(m.group(1)) or {}).get("fn::invoke") or {})
+                .get("arguments") or {})
+        src = args.get("sourceFile")
+        if isinstance(src, str):
+            try:
+                token = backends._sops(s, {"path": src, "extract": m.group(2).split(".")}, ev, st)  # noqa: SLF001
+            except RenderError:
+                token = None
+    elif isinstance(props.get("apiToken"), str) and props["apiToken"]:
+        token = props["apiToken"]
+    return endpoint, token, insecure
+
+
 def _check_gone(resources: list[dict[str, Any]], r: dict[str, Any], ev: Emitter,
-                fetch: Callable[[str, str, bool], set[str]]) -> dict[str, Any]:
+                fetch: Callable[[str, str, bool], set[str]],
+                from_program: Optional[Callable[[str], tuple[Any, Any, bool]]] = None) -> dict[str, Any]:
     vmid = str(r.get("id") or "")
     if not vmid.isdigit():
         raise ForgetError(f"{r['urn']} is a guest whose state id {vmid!r} is not a vmid: it cannot be checked "
                           f"against the cluster, so it is not forgotten")
     prov = _provider(resources, r)
-    inputs = prov.get("inputs") or {}
-    endpoint, token = inputs.get("endpoint"), inputs.get("apiToken")
-    if not endpoint or not token or not isinstance(token, str):
+    endpoint, token, insecure = _from_state(prov)
+    if token:
+        ev.secret(token)
+    if (not endpoint or not token) and from_program:
+        p_end, p_tok, p_ins = from_program(prov["urn"])
+        endpoint, token, insecure = endpoint or p_end, token or p_tok, insecure or p_ins
+    if not endpoint or not token or not isinstance(token, str) or not isinstance(endpoint, str):
         raise ForgetError(f"the provider {prov['urn']} has no endpoint and apiToken in state: the cluster cannot be "
                           f"asked whether vmid {vmid} is gone")
     ev.secret(token)
-    present = fetch(endpoint, token, bool(inputs.get("insecure")))
+    present = fetch(endpoint, token, insecure)
     if vmid in present:
         raise ForgetError(f"vmid {vmid} ({r['urn']}) EXISTS in the cluster at {endpoint}: not forgotten. Delete the "
                           f"guest through the model and a deploy, or declare it again")
@@ -113,10 +194,11 @@ def run(s: Settings, estate: str, stack: str, urn: str, ev: Emitter, apply: bool
         env = backends.env_for(s, stack, st["backend"], ev, st)
         real = infra.open_stack(s, project.wd, stack, env, ev, install=False)
         resources = _secret_state(real)
-        for e in resources:  # a provider's inputs hold the token
-            tok = (e.get("inputs") or {}).get("apiToken")
-            if isinstance(tok, str):
-                ev.secret(tok)
+        for e in resources:  # a provider's inputs and outputs hold the token
+            for side in ("inputs", "outputs"):
+                tok = _first(e.get(side) or {}, "apiToken", "api_token")
+                if isinstance(tok, str):
+                    ev.secret(tok)
         r = next((x for x in resources if x["urn"] == urn), None)
         if r is None:
             raise ForgetError(f"{urn} is not in the state of {stack}")
@@ -126,7 +208,8 @@ def run(s: Settings, estate: str, stack: str, urn: str, ev: Emitter, apply: bool
         if r["type"].startswith(guard.STATE_ONLY):
             raise ForgetError(f"{urn}: a provider or stack resource is not forgotten by this command")
         if r["type"] in GUEST_TYPES:
-            report["checked"] = _check_gone(resources, r, ev, fetch)
+            report["checked"] = _check_gone(resources, r, ev, fetch,
+                                            lambda u: _from_program(s, st, program, u, ev))
         if not apply:
             return report
         ev.check()
