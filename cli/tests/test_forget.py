@@ -108,10 +108,88 @@ def test_live_guest_is_refused(lab):
     assert fakes.urn(p, "old") in w.state and w.deleted == [] and w.unprotected == []
 
 
-@pytest.mark.parametrize("inputs", [{"endpoint": ENDPOINT}, {"apiToken": TOKEN}, {}])
+@pytest.mark.parametrize("inputs", [{"endpoint": ENDPOINT}, {}])
 def test_unknown_cluster_is_refused(lab, inputs):
     estate, w, p = lab
     w.state[fakes.urn(p, "provider-proxmox")]["inputs"] = inputs
+    with pytest.raises(forget.ForgetError, match="no endpoint and apiToken"):
+        go(estate, p, "old", Cluster(), apply=True)
+    assert w.deleted == []
+
+
+def wrapped(v):
+    """A secret in state as `stack export --show-secrets` writes it for a bridged provider."""
+    return {"4dabf18193072939515e22adb298388d": "1b47061264138c4ac30d75fd1eb44270", "plaintext": json.dumps(v)}
+
+
+def test_real_state_shape(lab):
+    """The bridged provider's state: apiToken a secret wrapper of JSON text, insecure a JSON string."""
+    estate, w, p = lab
+    w.state[fakes.urn(p, "provider-proxmox")]["inputs"] = {
+        "__internal": {"name": "proxmox", "version": "0.115.0"}, "version": "0.115.0",
+        "endpoint": ENDPOINT, "insecure": "true", "apiToken": wrapped(TOKEN)}
+    cluster, events = Cluster(101), []
+    report = go(estate, p, "old", cluster, events=events)
+    assert cluster.asked == [(ENDPOINT, TOKEN, True)]
+    assert report["checked"]["endpoint"] == ENDPOINT
+    assert TOKEN not in json.dumps(events)
+
+
+def test_state_outputs_are_read_when_inputs_lack_them(lab):
+    estate, w, p = lab
+    prov = w.state[fakes.urn(p, "provider-proxmox")]
+    prov["inputs"] = {"version": "0.115.0"}
+    prov["outputs"] = {"endpoint": ENDPOINT, "insecure": "false", "api_token": wrapped(TOKEN)}
+    cluster = Cluster(101)
+    go(estate, p, "old", cluster)
+    assert cluster.asked == [(ENDPOINT, TOKEN, False)]
+
+
+def program_with_token(p):
+    """The rendered program as lib.toPulumi writes it: the token from a sops data source."""
+    q = json.loads(json.dumps(p))
+    del q["resources"]["old"]
+    q["resources"]["provider-proxmox"]["properties"] = {
+        "endpoint": ENDPOINT, "insecure": "true", "apiToken": '${sops_file_pve.data["pve.api_token"]}'}
+    q["variables"] = {"sops_file_pve": {"fn::invoke": {
+        "function": "sops:index/getFile:getFile", "arguments": {"sourceFile": "secrets/pve.yaml"}}}}
+    return q
+
+
+def test_falls_back_to_the_program_and_sops(lab, monkeypatch):
+    estate, w, p = lab
+    w.state[fakes.urn(p, "provider-proxmox")]["inputs"] = {}
+    estate.stack(program_with_token(p))
+    seen = []
+
+    def sops(s, v, ev, st=None):
+        seen.append(v)
+        return ev.secret(TOKEN)
+    monkeypatch.setattr(forget.backends, "_sops", sops)
+    cluster, events = Cluster(101), []
+    report = go(estate, p, "old", cluster, events=events)
+    assert seen == [{"path": "secrets/pve.yaml", "extract": ["pve", "api_token"]}]
+    assert cluster.asked == [(ENDPOINT, TOKEN, True)] and report["checked"]["vmid"] == "9002"
+    assert TOKEN not in json.dumps(events)
+
+
+def test_endpoint_missing_in_state_comes_from_the_program(lab):
+    """fakes.program writes the endpoint into the provider block: state with only a token is enough."""
+    estate, w, p = lab
+    w.state[fakes.urn(p, "provider-proxmox")]["inputs"] = {"apiToken": wrapped(TOKEN)}
+    cluster = Cluster(101)
+    go(estate, p, "old", cluster)
+    assert cluster.asked == [(ENDPOINT, TOKEN, False)]
+
+
+def test_no_token_anywhere_still_refuses(lab, monkeypatch):
+    estate, w, p = lab
+    w.state[fakes.urn(p, "provider-proxmox")]["inputs"] = {}
+    estate.stack(program_with_token(p))
+
+    def sops(s, v, ev, st=None):
+        raise forget.RenderError("sops could not decrypt")
+    monkeypatch.setattr(forget.backends, "_sops", sops)
     with pytest.raises(forget.ForgetError, match="no endpoint and apiToken"):
         go(estate, p, "old", Cluster(), apply=True)
     assert w.deleted == []

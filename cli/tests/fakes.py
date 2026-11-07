@@ -128,6 +128,7 @@ class FakeStack:
     def export_stack(self):
         return SimpleNamespace(version=3, deployment={"resources": [
             {"urn": u, "type": r["type"], "id": r["id"], "inputs": r["inputs"],
+             **({"outputs": r["outputs"]} if r.get("outputs") else {}),
              **({"importID": r["importID"]} if r.get("importID") else {}),
              **({"protect": True} if r.get("protect") else {})} for u, r in self.w.state.items()],
             **({"pending_operations": list(self.w.pending)} if self.w.pending else {})})
