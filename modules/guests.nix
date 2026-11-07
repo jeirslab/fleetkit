@@ -408,7 +408,7 @@ let
       device = nullable (types.strMatching "hostpci[0-9]+") "vm only: hostpci.device. Default hostpci<i>.";
       pcie = mkOption {
         type = types.str;
-        description = "pcie device id (<site>/<node>/<dev>) -> hostpci.id = that device's pci address. Must be on the guest's node.";
+        description = "pcie device id (<site>/<node>/<dev>) -> hostpci.mapping = that device's cluster mapping name when it declares one, else hostpci.id = its pci address. Must be on the guest's node.";
       };
       pcieExpress = nullable types.bool "hostpci.pcie.";
       rombar = nullable types.bool "hostpci.rombar.";
@@ -1021,7 +1021,12 @@ let
               let
                 p = pcieById x.pcie;
               in
-              if p == null then null else p.pci;
+              if p == null || p.mapping != null then null else p.pci;
+            mapping =
+              let
+                p = pcieById x.pcie;
+              in
+              if p == null then null else p.mapping;
             pcie = x.pcieExpress;
             inherit (x) rombar xvga;
           }) g.hostpci
@@ -1566,7 +1571,9 @@ let
         ++ optional (p != null) (
           check w (lib.hasPrefix "${g.on}/" id) "pcie device \"${id}\" is not on the guest's node ${g.on}"
         )
-        ++ optional (p != null && needPci) (check w (p.pci != null) "pcie device \"${id}\" has no pci address");
+        ++ optional (p != null && needPci) (
+          check w (p.pci != null || p.mapping != null) "pcie device \"${id}\" has no pci address or mapping"
+        );
     in
     concatLists (imap0 (i: x: one "${where}.hostpci[${toString i}].pcie" x.pcie true) g.hostpci)
     ++ concatLists (

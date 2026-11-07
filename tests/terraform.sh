@@ -142,5 +142,41 @@ if ! out=$(nix eval --impure --json "$ROOT#lib" --apply "l: builtins.attrNames (
   status=fail
 fi
 
+# PCI passthrough: a node pcie device with a cluster mapping renders
+# hostpci.mapping and no id (an API token may set only a mapped device); one
+# without renders hostpci.id as before.
+cat >"$TMP/hostpci.nix" <<'NIX'
+_: {
+  fleet.sites.s1.nodes.n1.pcie = {
+    gpu0 = { kind = "gpu"; name = "G0"; pci = "0000:0a:00"; mapping = "map-g0"; };
+    gpu1 = { kind = "gpu"; name = "G1"; pci = "0000:41:00"; };
+  };
+  fleet.guests.gaps.pt = {
+    vmid = 9590; kind = "vm"; on = "s1/n1";
+    networkInterfaces = [ { network = "lan"; address = "192.0.2.99"; } ];
+    disks = [ { role = "root"; size = 8; interface = "scsi0"; } ];
+    hostpci = [
+      { pcie = "s1/n1/gpu0"; pcieExpress = true; }
+      { pcie = "s1/n1/gpu1"; pcieExpress = true; }
+    ];
+  };
+}
+NIX
+if ! render gaps "$TMP/hostpci.nix"; then
+  echo "FAIL hostpci: did not render" >&2
+  tail -n 20 "$TMP/gaps.err" >&2
+  status=fail
+elif ! out=$(python3 -c '
+import json, sys
+h = json.load(open(sys.argv[1]))["resource"]["proxmox_virtual_environment_vm"]["pt"]["hostpci"]
+assert h == [
+    {"device": "hostpci0", "mapping": "map-g0", "pcie": True},
+    {"device": "hostpci1", "id": "0000:41:00", "pcie": True},
+], h
+' "$TMP/gaps.json" 2>&1); then
+  echo "FAIL hostpci: $out" >&2
+  status=fail
+fi
+
 printf '{"terraform":"%s"}\n' "$status"
 [[ $status == pass ]]

@@ -161,7 +161,7 @@ storage that lists `import`, on the guest's node when the image names one),
 itself), `source.clone.{datastore,node}`,
 `vm.cloudInit.datastore`, `vm.efiDisk.datastore` (as a disk's), `pool` /
 `effectivePool` (pool id of the site provider, or `"none"`), `hostpci.*.pcie` and `devicePassthrough.*.pcie` (pcie device on
-the guest's node; hostpci needs a pci address),
+the guest's node; hostpci needs a pci address or a cluster mapping, `sites.*.nodes.*.pcie.*.mapping`),
 `initialization.userAccount.keys` (`<principal>/ssh/<label>` resolving to
 a principal public key; resolved to the key text in providerView),
 estate key, substrate both ways, vmid per cluster (allowlist), and the
@@ -591,7 +591,7 @@ them (with a map line) when a guest needs one:
   `tablet_device`, `migrate`, `reboot*`, `stop_on_destroy`, `timeout_*`,
   `cpu.{affinity,flags,hotplugged,numa,sockets}`, `memory.{hugepages,keep_hugepages,shared}`,
   `disk.{aio,file_id,path_in_datastore,queues,serial,speed,replicate}`,
-  `agent.{timeout,trim,type,wait_for_ip}`, `clone.retries`, `hostpci.{mapping,mdev,rom_file}`,
+  `agent.{timeout,trim,type,wait_for_ip}`, `clone.retries`, `hostpci.{mdev,rom_file}`,
   `initialization.{file_format,*_data_file_id}`,
   `network_device.{disconnected,enabled,queues,trunks}`, `mac_addresses`.
   One vm exists, so its use says little about generality; llm-1's GPU

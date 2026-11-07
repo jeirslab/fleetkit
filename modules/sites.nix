@@ -134,6 +134,12 @@ let
           kind = req (types.enum [ "gpu" ]);
           name = req types.str;
           pci = nullable pciAddr;
+          # The cluster resource mapping (Datacenter > Resource Mappings > PCI)
+          # that names this device. A VM's hostpci of it renders
+          # hostpci.mapping = <name> and no hostpci.id: only root@pam may set a
+          # raw device, an API token only a mapped one. The mapping itself is
+          # made on the cluster.
+          mapping = nullable types.str;
         };
       }
     );
