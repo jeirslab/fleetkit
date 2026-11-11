@@ -154,9 +154,11 @@ let
       {
         options = {
           id = h.mkId id;
+          # windows: a machine the model records (address, keys) without building or deploying it.
           osType = req (types.enum [
             "debian-pve"
             "nixos"
+            "windows"
           ]);
           address = req ipv4;
           hostKeys.age = nullable (types.strMatching "age1[02-9ac-hj-np-z]{58}");
