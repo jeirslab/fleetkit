@@ -25,13 +25,15 @@
 #
 # Per repository, besides the repository itself: github_actions_secret,
 # github_actions_variable, github_issue_label and github_repository_file
-# (repos.<estate>.<key>.actions.secrets / actions.variables / labels / files).
+# (repos.<estate>.<key>.actions.secrets / actions.variables / labels / files)
+# and github_repository_collaborator (repos.<estate>.<key>.collaborators).
 #
 # What the render reports in locals instead of rendering:
 #   fleet_unrendered            what the model holds but the kit cannot render:
 #                               deploy keys, every environment's branches
 #                               (those of a skipped environment too), outside
-#                               collaborators, some git.actions blocks
+#                               collaborators with no repository grant, some
+#                               git.actions blocks
 #   fleet_skipped_rulesets      rulesets above git.plan
 #   fleet_skipped_environments  environments of a private repository on plan
 #                               "free" (an organisation or a personal account)
@@ -176,6 +178,7 @@ let
   repoVariables = lib.mapAttrs (_: r: (repoActions r).variables or { }) repos;
   repoLabels = lib.mapAttrs (_: r: r.labels or { }) repos;
   repoFiles = lib.mapAttrs (_: r: r.files or { }) repos;
+  repoCollaborators = lib.mapAttrs (_: r: r.collaborators or [ ]) repos;
   repoRunners = lib.mapAttrs (_: r: r.runners or { }) repos;
   # [ { k; n; v; } ] for one per-repository attrset.
   flat =
@@ -510,6 +513,29 @@ let
       // lib.optionalAttrs ((x.v.message or null) != null) { commit_message = tfText x.v.message; };
     }) (flat repoFiles)
   );
+  # One github_repository_collaborator per (repository, principal). It manages
+  # the grants declared here only: collaborators added by hand are left alone.
+  repoCollaboratorResources = named "repository collaborators" (
+    lib.concatLists (
+      lib.mapAttrsToList (
+        k: cs:
+        map (c: {
+          raw = "${k}_${c.principal}";
+          label = "repository \"${k}\" collaborator \"${c.principal}\"";
+          value = {
+            repository = repoName k;
+            username = loginOf c.principal;
+            inherit (c) permission;
+          };
+        }) cs
+      ) repoCollaborators
+    )
+  );
+  # An outside collaborator is rendered through its repository grants; one
+  # listed in members.outside with no grant has nothing to render.
+  grantedPrincipals = lib.genAttrs (lib.concatMap (cs: map (c: c.principal) cs) (
+    lib.attrValues repoCollaborators
+  )) (_: true);
   # Terraform cannot register a runner: report the declared ones only.
   runnerReport = map (x: {
     repository = "${estate}/${x.k}";
@@ -597,6 +623,7 @@ builtins.seq planRank {
       github_actions_variable = repoActionsVariables;
       github_issue_label = issueLabels;
       github_repository_file = repositoryFiles;
+      github_repository_collaborator = repoCollaboratorResources;
     }
     // lib.optionalAttrs isOrg orgResources
   );
@@ -619,7 +646,9 @@ builtins.seq planRank {
     fleet_unrendered =
       deployKeys
       ++ envBranches
-      ++ map (p: "outside_collaborator:${p}") (lib.optionals isOrg (members.outside or [ ]))
+      ++ map (p: "outside_collaborator:${p}") (
+        lib.filter (p: !(grantedPrincipals ? ${p})) (lib.optionals isOrg (members.outside or [ ]))
+      )
       ++ lib.optionals isOrg (
         map (k: "actions.${k}") (
           lib.filter (k: actions != null && actions ? ${k}) [

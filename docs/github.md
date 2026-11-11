@@ -24,6 +24,7 @@ estate repo.
 | `resource.github_actions_variable.<key>_<NAME>` | `repos.<estate>.<key>.actions.variables.<NAME>` (the value is plain text, not a secret) |
 | `resource.github_issue_label.<key>_<name>` | `repos.<estate>.<key>.labels.<name>` (`color`, optional `description`); one resource per label, so labels made by hand are left alone |
 | `resource.github_repository_file.<key>_<path>` | `repos.<estate>.<key>.files.<path>` (`content`, optional `branch`, `message`, `overwrite`): `file`, `content`, `overwrite_on_create`, and `branch` / `commit_message` when set (otherwise the default branch and the provider's message). Meant for a workflow file the lab keeps in a tenant repository |
+| `resource.github_repository_collaborator.<key>_<principal>` | `repos.<estate>.<key>.collaborators = [ { principal; permission; } ]`: `repository`, `username` (the principal's `github` login) and `permission` (`pull`, `triage`, `push`, `maintain` or `admin`; default `pull`). This is how an outside collaborator of an organisation is declared: access to one repository, no membership. One resource per grant, so collaborators added by hand are left alone. A principal listed in `members.outside` with no grant stays in `locals.fleet_unrendered` |
 | `github_organization_settings` | `git.organization`, when `git.kind == "org"`: each key is the provider argument in camelCase (see "Optional settings" for the list) |
 | `github_membership` | one per member; the role comes from the `admin` / `member` lists, and a principal id is resolved to its `github` login through `fleet.operators.principals` |
 | `github_team`, `github_team_members`, `github_team_repository` | `git.teams` (`name`, `privacy`, `description`, `members`, `maintainers`, `repos`); membership is authoritative |
@@ -247,6 +248,8 @@ starts with the option path (`fleet.repos.<estate>.<key>...`):
 | `pages.buildType` | `legacy` or `workflow` |
 | `topics` | each topic is lowercase letters, digits and hyphens, at most 50 characters, and does not start with a hyphen (the provider's own rule) |
 | `squashMergeCommitTitle`, `squashMergeCommitMessage`, `mergeCommitTitle`, `mergeCommitMessage` | one of the values GitHub has for that setting |
+| `collaborators[].principal` | a declared principal with a `github` login |
+| `collaborators[].permission` | `pull`, `triage`, `push`, `maintain` or `admin` |
 | `runners.<name>.labels` | at least one label |
 | `runners.<name>.on` | a declared guest, and a guest of the same estate as the repository |
 
@@ -278,8 +281,10 @@ its own backend configuration. Any `lib` argument is supplied by the kit.
 
 ## Deliberately not rendered
 
-- Outside collaborators: GitHub holds them per repository and the model does
-  not say which, so `git.members.outside` is listed in `locals.fleet_unrendered`.
+- Outside collaborators with no grant: GitHub holds them per repository, so
+  one is rendered through `repos.<estate>.<key>.collaborators`. A principal in
+  `git.members.outside` that no repository grants is listed in
+  `locals.fleet_unrendered`.
 - Deploy keys: the model names a deploy key and whether it is read-only but
   holds no public key, so no `github_repository_deploy_key` is rendered; each
   is listed in `locals.fleet_unrendered`, never invented.

@@ -160,6 +160,10 @@ let
       # (not escaped).
       github_issue_label = _: a: "${repoOf a.repository}:${plain a.name}";
 
+      # docs/repository_collaborator.md: "repository:username" (the import
+      # id of the resource; the username as the model renders it).
+      github_repository_collaborator = _: a: "${repoOf a.repository}:${a.username}";
+
       # docs/actions_variable.md: "the repository name, and variable name
       # separated by a `:`".
       github_actions_variable = _: a: "${repoOf a.repository}:${a.variable_name}";

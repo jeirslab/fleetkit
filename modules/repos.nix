@@ -255,6 +255,31 @@ let
             default = { };
             description = "Files kept in the repository by path (github_repository_file), e.g. a workflow file.";
           };
+          collaborators = mkOption {
+            type = types.listOf (
+              types.submodule {
+                options = {
+                  principal = mkOption {
+                    type = types.str;
+                    description = "A principal id (fleet.operators.principals) whose github login is granted access to this repository.";
+                  };
+                  permission = mkOption {
+                    type = types.enum [
+                      "pull"
+                      "triage"
+                      "push"
+                      "maintain"
+                      "admin"
+                    ];
+                    default = "pull";
+                    description = "github_repository_collaborator.permission.";
+                  };
+                };
+              }
+            );
+            default = [ ];
+            description = "People with access to this one repository, outside any organisation membership (github_repository_collaborator, one resource per principal). An organisation's outside collaborator exists only through grants like these.";
+          };
           runners = mkOption {
             type = types.lazyAttrsOf (
               types.submodule {
@@ -411,6 +436,17 @@ let
             assertion = builtins.match "[0-9A-Fa-f]{6}" lv.color != null;
             message = "${w "labels.${l}.color"}: \"${lv.color}\" is not six hex digits without a leading #";
           }) r.labels
+          ++ lib.concatMap (c: [
+            (h.refAssertion {
+              where = w "collaborators";
+              kind = "principal";
+              ids = ids.principal;
+            } c.principal)
+            {
+              assertion = (config.fleet.operators.principals.${c.principal} or { github = ""; }).github != null;
+              message = "${w "collaborators"}: principal \"${c.principal}\" has no github login";
+            }
+          ]) r.collaborators
           ++ lib.concatLists (
             lib.mapAttrsToList (
               f: _:
