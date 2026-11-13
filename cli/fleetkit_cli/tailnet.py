@@ -1,4 +1,4 @@
-"""Tailnet client versions: `fleetkit tailnet versions`.
+"""Tailnet client versions: `fleetkit tailnet versions`; a node's routes: `fleetkit tailnet routes`.
 
 Asks the control servers which Tailscale client each node runs, instead of
 logging in to the nodes:
@@ -247,6 +247,29 @@ def set_auto_update_default(t: Tailnet, key: str, fetch: Fetch) -> bool:
           {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
           json.dumps({"devicesAutoUpdatesOn": True}).encode())
     return True
+
+
+EXIT_ROUTES = ("0.0.0.0/0", "::/0")
+
+
+def device_routes(t: Tailnet, key: str, node: str, fetch: Fetch = http_json) -> tuple[str, dict]:
+    """(device id, {advertisedRoutes, enabledRoutes}) of a node by its short name; Tailscale only."""
+    if t.kind != "tailscale":
+        raise TailnetError(f"{t.name}: routes are read through Tailscale's API only")
+    h = {"Authorization": f"Bearer {key}"}
+    devs = fetch("GET", f"{t.url}/api/v2/tailnet/-/devices", h, None).get("devices", [])
+    match = [d for d in devs if short(d.get("name") or "") == node.lower()]
+    if len(match) != 1:
+        raise TailnetError(f"{t.name}: {len(match)} devices named {node!r}")
+    dev_id = match[0].get("nodeId") or match[0]["id"]
+    return dev_id, fetch("GET", f"{t.url}/api/v2/device/{dev_id}/routes", h, None)
+
+
+def set_device_routes(t: Tailnet, key: str, dev_id: str, routes: list[str], fetch: Fetch = http_json) -> dict:
+    """POST /api/v2/device/{id}/routes: the routes enabled from those the device advertises."""
+    return fetch("POST", f"{t.url}/api/v2/device/{dev_id}/routes",
+                 {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                 json.dumps({"routes": routes}).encode())
 
 
 def fleet_hosts_from_flake(repo: Path, nix: str = "nix") -> set[str]:

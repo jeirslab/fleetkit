@@ -8,6 +8,7 @@
   fleetkit serve [--listen ...]          the same deploys over HTTP (api.py)
   fleetkit tools [list|check|NAME ...]   the repo's custom tools (tools_main.py)
   fleetkit tailnet versions [options]    Tailscale client versions of the tailnets (tailnet.py)
+  fleetkit tailnet routes NODE [--exit on|off]   a node's advertised and enabled routes; approve or withdraw it as an exit node
 
 Run from the estate repo (or pass --flake / set FLEETKIT_FLAKE). Pulumi state
 goes to PULUMI_BACKEND_URL, which must be set; PULUMI_CONFIG_PASSPHRASE(_FILE)
@@ -410,6 +411,41 @@ def tailnet_versions(ctx: click.Context, fmt: str, summary_file: Path | None, js
         json_file.write_text(json.dumps(rep.to_json(), indent=2) + "\n")
     if fail_on_stale_fleet and rep.stale_fleet():
         sys.exit(1)
+
+
+@tailnet_group.command("routes")
+@click.argument("node")
+@click.option("--exit", "exit_node", type=click.Choice(["on", "off"]),
+              help="Enable (approve) or disable the node as an exit node, among the routes it advertises. Changes the tailnet.")
+@click.option("--only", help="The tailnet (default: the first Tailscale one in fleetkit.toml).")
+@click.pass_context
+def tailnet_routes(ctx: click.Context, node: str, exit_node: str | None, only: str | None) -> None:
+    """A node's advertised and enabled routes (Tailscale's API); --exit approves it as an exit node."""
+    from . import tailnet as tn
+
+    repo = Path(ctx.obj["flake"] or os.getcwd()).resolve()
+    sops = os.environ.get("FLEETKIT_SOPS", "sops")
+    try:
+        nets, cfg = tn.load_config(repo)
+        nets = [t for t in nets if t.kind == "tailscale" and (not only or t.name == only)]
+        if not nets:
+            raise tn.TailnetError("no Tailscale tailnet in fleetkit.toml matches")
+        t = nets[0]
+        root = os.environ.get("FLEETKIT_SECRETS_ROOT") or cfg.get("secrets_root")
+        key = tn.resolve_secret(repo, t.secret, sops, (repo / root).resolve() if root else None)
+        dev_id, r = tn.device_routes(t, key, node)
+        if exit_node:
+            enabled = [x for x in r.get("enabledRoutes", []) if x not in tn.EXIT_ROUTES]
+            if exit_node == "on":
+                missing = [x for x in tn.EXIT_ROUTES if x not in r.get("advertisedRoutes", [])]
+                if missing:
+                    raise tn.TailnetError(f"{node} does not advertise {', '.join(missing)}: turn on Run as exit node on it")
+                enabled += list(tn.EXIT_ROUTES)
+            r = tn.set_device_routes(t, key, dev_id, enabled)
+    except tn.TailnetError as e:
+        raise click.ClickException(str(e))
+    click.echo(f"{t.name}/{node}: advertised {', '.join(r.get('advertisedRoutes', [])) or '-'}; "
+               f"enabled {', '.join(r.get('enabledRoutes', [])) or '-'}")
 
 
 @cli.command("tools", add_help_option=False,
