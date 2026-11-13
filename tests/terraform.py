@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Check a rendered main.tf.json against the pinned bpg/proxmox schema.
 
-  terraform.py RENDERED.json [--estate mini|tenant|bare] [--schema FILE]
+  terraform.py RENDERED.json [--estate mini|tenant|bare|gaps] [--schema FILE]
 
 Fails (exit 1, problems on stderr) when:
   - a resource type is not in the schema, or an argument / nested block name
-    (recursively) is not an attribute or block of that resource;
+    (recursively) is not an attribute or block of that resource, or a string,
+    number or bool argument holds a value of another type;
   - the managed guests (lxc and vm) or the pool are not at their expected
     addresses, or the adopted guest is rendered / not in locals.fleet_unmanaged;
   - any api_token is a literal instead of a ${data.sops_file...} reference,
@@ -14,7 +15,28 @@ Fails (exit 1, problems on stderr) when:
     placement.tokenRef, tenant and bare the provider's tokenRef, resolved
     through the secrets of the estate that owns it (mini);
   - the guest with an lxc_extra_conf companion is not listed in
-    locals.fleet_unrendered_companions.
+    locals.fleet_unrendered_companions, or does not ignore its description;
+  - a lifecycle.ignore_changes entry does not start at an attribute or block
+    of its resource, or is listed twice;
+  - for the estate "gaps" (every option added for adopting existing guests):
+    an argument is not exactly the expected value, or one that must be absent
+    (the console block and pool_id of the guest that opts out of both, the
+    defaults of the others) is rendered (EXPECT, ABSENT);
+  - for the estate "quiet" (adoption.unrecorded): the guests that ignore what
+    an import does not record do not carry exactly that list under
+    lifecycle.ignore_changes, after their own, or the guests that set it back
+    to "apply" carry a lifecycle at all;
+  - for the estate "tmpl" (a VM template from an uploaded image, and its
+    clone by reference): the upload, the template's template / started /
+    on_boot / disk.import_from, the clone's vm_id and node_name from the
+    template, or either depends_on is not exactly what is expected, or the
+    template renders a startup or the clone an import_from;
+  - for the estate "addon" (the Ansible add-on switched on): the
+    ansible_playbook resources (checked against the pinned ansible/ansible
+    schema) are not exactly the expected host, variables, groups and
+    depends_on, a playbook is not the store path of the fixture's playbook,
+    or the provider is not pinned; for every other estate: anything of the
+    add-on is rendered at all.
 Evaluation only; no network.
 """
 import argparse
@@ -26,9 +48,14 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCHEMA = f"{ROOT}/providers/schemas/bpg-proxmox-0.115.0.schema.json"
 PROVIDER = "registry.opentofu.org/bpg/proxmox"
+# The Ansible add-on's provider (modules/addons.nix, lib/ansible.nix).
+ANSIBLE_SCHEMA = f"{ROOT}/providers/schemas/ansible-ansible-1.5.0.schema.json"
+ANSIBLE_PROVIDER = "registry.opentofu.org/ansible/ansible"
+PLAYBOOK = "ansible_playbook"
 LXC = "proxmox_virtual_environment_container"
 VM = "proxmox_virtual_environment_vm"
 POOL = "proxmox_virtual_environment_pool"
+FILE = "proxmox_virtual_environment_file"
 META = {"lifecycle", "depends_on", "count", "for_each", "provider", "provisioner"}
 SOPS_REF = re.compile(r'^\$\{data\.sops_file\.([A-Za-z0-9_-]+)\.data\["(.+)"\]\}$')
 
@@ -66,7 +93,155 @@ ESTATES = {
         key="site-token",
         endpoint=EP,
     ),
+    "gaps": dict(
+        managed={LXC: "mapped", VM: "efi"},
+        pool="gpool",
+        adopted=None,
+        companion="conf",
+        file="mini_tf",
+        key="site-token",
+        endpoint=EP,
+    ),
+    "quiet": dict(
+        managed={LXC: "ct", VM: "machine"},
+        pool=None,
+        adopted=None,
+        companion=None,
+        file="mini_tf",
+        key="site-token",
+        endpoint=EP,
+    ),
+    "tmpl": dict(
+        managed={VM: "base", FILE: "vyos"},
+        pool=None,
+        adopted=None,
+        companion=None,
+        file="mini_tf",
+        key="site-token",
+        endpoint=EP,
+    ),
+    "addon": dict(
+        managed={VM: "router", PLAYBOOK: "vyos"},
+        pool=None,
+        adopted="kept",
+        companion=None,
+        file="mini_tf",
+        key="site-token",
+        endpoint=EP,
+    ),
 }
+# What adoption.unrecorded = "ignore" puts under ignore_changes, per kind
+# (modules/guests.nix, unrecordedArgs).
+UNRECORDED = {
+    LXC: ["cpu", "memory", "vm_id", "console"],
+    VM: ["cpu", "memory", "scsi_hardware", "agent", "operating_system", "efi_disk"],
+}
+IDMAP = [
+    {"type": t, "container_id": c, "host_id": h, "size": n}
+    for t in ("uid", "gid")
+    for c, h, n in ((0, 100000, 1000), (1000, 1000, 1), (1001, 101001, 64535))
+]
+# Per estate: (resource type, name) -> argument -> the exact rendered value.
+EXPECT = {"gaps": {
+    (LXC, "mapped"): {"idmap": IDMAP},
+    (LXC, "conf"): {
+        "console": {"type": "console"},
+        "pool_id": "gpool",
+        "description": "raw lines",
+        "lifecycle": {"ignore_changes": ["operating_system", "description"]},
+    },
+    (VM, "efi"): {
+        "scsi_hardware": "virtio-scsi-single",
+        "efi_disk": {"datastore_id": "local", "file_format": "raw", "type": "4m", "pre_enrolled_keys": True},
+        "initialization": {
+            "datastore_id": "local",
+            "interface": "ide2",
+            "upgrade": True,
+            "ip_config": [{"ipv4": {"address": "192.0.2.73/24"}}],
+        },
+        "clone": {"vm_id": 9000, "full": True},
+        "lifecycle": {"ignore_changes": ["clone"]},
+        "pool_id": "gpool",
+    },
+    (POOL, "gpool"): {"pool_id": "gpool", "comment": "guests of the gaps estate"},
+}, "quiet": {
+    (LXC, "ct"): {"lifecycle": {"ignore_changes": UNRECORDED[LXC]}},
+    (VM, "machine"): {"lifecycle": {"ignore_changes": UNRECORDED[VM]}},
+    # Its own first, then what is not there yet: cpu once.
+    (LXC, "mixed"): {"lifecycle": {"ignore_changes": ["operating_system", "cpu", "memory", "vm_id", "console"]}},
+    # The ignore does not take the arguments out of the render.
+    (LXC, "loudct"): {"vm_id": 9604, "console": {"type": "console"}},
+    (VM, "loudvm"): {"vm_id": 9605},
+}, "tmpl": {
+    # The image's upload: to its datastore on its node, as its file name.
+    (FILE, "vyos"): {
+        "node_name": "n1",
+        "datastore_id": "local",
+        "content_type": "import",
+        "source_file": {
+            "path": "/nix/store/00000000000000000000000000000000-vyos.qcow2",
+            "file_name": "vyos-1.qcow2",
+        },
+    },
+    # Never started, whatever the site's defaults say; its disk from the upload.
+    (VM, "base"): {
+        "template": True,
+        "started": False,
+        "on_boot": False,
+        "disk": [{"datastore_id": "local", "interface": "scsi0", "size": 8, "import_from": "local:import/vyos-1.qcow2"}],
+        "depends_on": [f"{FILE}.vyos"],
+    },
+    # The clone: the template's vmid and node, created after it.
+    (VM, "router"): {
+        "clone": {"vm_id": 9701, "node_name": "n1"},
+        "disk": [{"datastore_id": "local", "interface": "scsi0", "size": 8}],
+        "lifecycle": {"ignore_changes": ["clone"]},
+        "started": True,
+        "depends_on": [f"{VM}.base"],
+    },
+}, "addon": {
+    # A directory playbook and its entry, against a managed VM: after it, as
+    # colmena.targetUser, the secret as a path only.
+    (PLAYBOOK, "vyos"): {
+        "name": "router",
+        "replayable": True,
+        "groups": ["routers"],
+        "extra_vars": {
+            "ansible_host": "192.0.2.95",
+            "ansible_user": "vyos",
+            "ansible_connection": "ansible.netcommon.network_cli",
+            "ansible_network_os": "vyos.vyos.vyos",
+            "vyos_password_file": "/run/secrets/vyos-admin",
+        },
+        "depends_on": [f"{VM}.router"],
+    },
+    # A playbook file against an adopted container: nothing to wait for.
+    (PLAYBOOK, "tune"): {
+        "name": "kept",
+        "replayable": True,
+        "extra_vars": {"ansible_host": "192.0.2.96", "ansible_user": "admin"},
+    },
+}}
+# Per estate and resource: the store path its playbook must be.
+STORE = r"/nix/store/[0-9a-df-np-sv-z]{32}-"
+PLAYBOOKS = {"addon": {
+    (PLAYBOOK, "vyos"): re.compile(rf"^{STORE}vyos/site\.yml$"),
+    (PLAYBOOK, "tune"): re.compile(rf"^{STORE}tune\.yml$"),
+}}
+# Per estate: arguments that must not be rendered at all.
+ABSENT = {"gaps": {
+    (LXC, "mapped"): ["console", "pool_id", "lifecycle"],
+    (LXC, "conf"): ["idmap"],
+}, "quiet": {
+    (LXC, "loudct"): ["lifecycle"],
+    (VM, "loudvm"): ["lifecycle"],
+}, "tmpl": {
+    (VM, "base"): ["startup", "clone", "lifecycle"],
+    (VM, "router"): ["template", "on_boot"],
+}, "addon": {
+    (PLAYBOOK, "tune"): ["depends_on", "groups"],
+}}
+PRIMITIVE = {"string": str, "number": (int, float), "bool": bool}
 TOKEN_PATH = "secrets/tf.json"
 
 
@@ -84,6 +259,10 @@ def check_attr_value(value, typ, where, problems):
     """Keys inside an object-typed attribute must be members of that object."""
     members = object_members(typ)
     if members is None:
+        want = PRIMITIVE.get(typ) if isinstance(typ, str) else None
+        is_ref = isinstance(value, str) and "${" in value
+        if want and not is_ref and (not isinstance(value, want) or (typ == "number" and isinstance(value, bool))):
+            problems.append(f"{where}: {value!r} is not a {typ}")
         return
     items = value if isinstance(value, list) else [value]
     for i, item in enumerate(items):
@@ -132,7 +311,7 @@ def check(doc, schemas, x):
     for rtype, instances in resources.items():
         res = schemas.get(rtype)
         if res is None:
-            problems.append(f"resource type '{rtype}' is not in the bpg/proxmox schema")
+            problems.append(f"resource type '{rtype}' is not in the bpg/proxmox or ansible/ansible schema")
             continue
         for name, body in instances.items():
             where = f"{rtype}.{name}"
@@ -141,6 +320,13 @@ def check(doc, schemas, x):
             lc = body.get("lifecycle")
             if lc is not None and (not isinstance(lc, dict) or not lc):
                 problems.append(f"{where}: empty or malformed lifecycle must be dropped")
+            ignored = (lc or {}).get("ignore_changes") or [] if isinstance(lc, dict) else []
+            known = {**res["block"].get("attributes", {}), **res["block"].get("block_types", {})}
+            for path in ignored:
+                if re.split(r"[.\[]", path)[0] not in known:
+                    problems.append(f"{where}: lifecycle.ignore_changes '{path}' is not an attribute or block")
+            if len(set(ignored)) != len(ignored):
+                problems.append(f"{where}: lifecycle.ignore_changes lists an argument twice: {ignored}")
 
     for rtype, name in x["managed"].items():
         if name not in resources.get(rtype, {}):
@@ -172,8 +358,40 @@ def check(doc, schemas, x):
             problems.append(
                 f"locals.fleet_unrendered_companions does not list the guest '{x['companion']}'"
             )
+        # Its marker lines come back as description text: ignored, not fought.
+        ignored = (resources.get(LXC, {}).get(x["companion"], {}).get("lifecycle") or {}).get("ignore_changes") or []
+        if "description" not in ignored:
+            problems.append(f"{LXC}.{x['companion']}: lifecycle.ignore_changes does not hold description")
     elif companions:
         problems.append(f"unexpected locals.fleet_unrendered_companions {companions}")
+
+    estate = next(n for n, e in ESTATES.items() if e is x)
+    if estate in EXPECT:
+        for (rtype, name), want in EXPECT[estate].items():
+            body = resources.get(rtype, {}).get(name)
+            if body is None:
+                problems.append(f"missing {rtype}.{name}")
+                continue
+            for arg, value in want.items():
+                if body.get(arg) != value:
+                    problems.append(f"{rtype}.{name}.{arg}: {body.get(arg)!r}, expected {value!r}")
+            for arg in ABSENT[estate].get((rtype, name), []):
+                if arg in body:
+                    problems.append(f"{rtype}.{name}.{arg}: rendered, but must be absent")
+        for (rtype, name), pattern in PLAYBOOKS.get(estate, {}).items():
+            got = resources.get(rtype, {}).get(name, {}).get("playbook")
+            if not isinstance(got, str) or not pattern.match(got):
+                problems.append(f"{rtype}.{name}.playbook: {got!r} is not the fixture's playbook in the store")
+
+    # The add-on: its provider is pinned exactly when its resources are rendered.
+    pinned = doc.get("terraform", {}).get("required_providers", {}).get("ansible")
+    if estate in PLAYBOOKS:
+        if pinned != {"source": "ansible/ansible", "version": "1.5.0"}:
+            problems.append(f"required_providers.ansible is {pinned!r}, not ansible/ansible 1.5.0")
+        if set(resources.get(PLAYBOOK, {})) != {n for _, n in PLAYBOOKS[estate]}:
+            problems.append(f"{PLAYBOOK}: {sorted(resources.get(PLAYBOOK, {}))}, expected {sorted(n for _, n in PLAYBOOKS[estate])}")
+    elif pinned is not None or PLAYBOOK in resources:
+        problems.append("the Ansible add-on is rendered for an estate that does not switch it on")
 
     endpoint = doc.get("provider", {}).get("proxmox", {}).get("endpoint")
     if endpoint != x["endpoint"]:
@@ -214,6 +432,8 @@ def main():
     a = ap.parse_args()
     with open(a.schema, encoding="utf-8") as f:
         schemas = json.load(f)[PROVIDER]["resource_schemas"]
+    with open(ANSIBLE_SCHEMA, encoding="utf-8") as f:
+        schemas = {**schemas, **json.load(f)[ANSIBLE_PROVIDER]["resource_schemas"]}
     with open(a.rendered, encoding="utf-8") as f:
         doc = json.load(f)
     problems = check(doc, schemas, ESTATES[a.estate])

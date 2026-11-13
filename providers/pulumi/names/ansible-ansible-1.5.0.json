@@ -1,0 +1,460 @@
+{
+ "bridge": "1.4.0",
+ "dataSources": {
+  "ansible_inventory": {
+   "f": {
+    "group": {
+     "arr": true,
+     "f": {
+      "group": {
+       "arr": true,
+       "f": {
+        "group": {
+         "arr": true,
+         "f": {
+          "host": {
+           "arr": true,
+           "f": {
+            "ansible_become": {
+             "n": "ansibleBecome"
+            },
+            "ansible_become_exe": {
+             "n": "ansibleBecomeExe"
+            },
+            "ansible_become_flags": {
+             "n": "ansibleBecomeFlags"
+            },
+            "ansible_become_method": {
+             "n": "ansibleBecomeMethod"
+            },
+            "ansible_become_password": {
+             "n": "ansibleBecomePassword"
+            },
+            "ansible_become_user": {
+             "n": "ansibleBecomeUser"
+            },
+            "ansible_connection": {
+             "n": "ansibleConnection"
+            },
+            "ansible_host": {
+             "n": "ansibleHost"
+            },
+            "ansible_password": {
+             "n": "ansiblePassword"
+            },
+            "ansible_port": {
+             "n": "ansiblePort"
+            },
+            "ansible_private_key_file": {
+             "n": "ansiblePrivateKeyFile"
+            },
+            "ansible_python_interpreter": {
+             "n": "ansiblePythonInterpreter"
+            },
+            "ansible_scp_extra_args": {
+             "n": "ansibleScpExtraArgs"
+            },
+            "ansible_sftp_extra_args": {
+             "n": "ansibleSftpExtraArgs"
+            },
+            "ansible_shell_executable": {
+             "n": "ansibleShellExecutable"
+            },
+            "ansible_shell_type": {
+             "n": "ansibleShellType"
+            },
+            "ansible_ssh_common_args": {
+             "n": "ansibleSshCommonArgs"
+            },
+            "ansible_ssh_executable": {
+             "n": "ansibleSshExecutable"
+            },
+            "ansible_ssh_extra_args": {
+             "n": "ansibleSshExtraArgs"
+            },
+            "ansible_ssh_pipelining": {
+             "n": "ansibleSshPipelining"
+            },
+            "ansible_user": {
+             "n": "ansibleUser"
+            },
+            "name": {
+             "n": "name"
+            }
+           },
+           "n": "hosts"
+          },
+          "name": {
+           "n": "name"
+          },
+          "vars": {
+           "map": true,
+           "n": "vars"
+          }
+         },
+         "n": "groups"
+        },
+        "host": {
+         "arr": true,
+         "f": {
+          "ansible_become": {
+           "n": "ansibleBecome"
+          },
+          "ansible_become_exe": {
+           "n": "ansibleBecomeExe"
+          },
+          "ansible_become_flags": {
+           "n": "ansibleBecomeFlags"
+          },
+          "ansible_become_method": {
+           "n": "ansibleBecomeMethod"
+          },
+          "ansible_become_password": {
+           "n": "ansibleBecomePassword"
+          },
+          "ansible_become_user": {
+           "n": "ansibleBecomeUser"
+          },
+          "ansible_connection": {
+           "n": "ansibleConnection"
+          },
+          "ansible_host": {
+           "n": "ansibleHost"
+          },
+          "ansible_password": {
+           "n": "ansiblePassword"
+          },
+          "ansible_port": {
+           "n": "ansiblePort"
+          },
+          "ansible_private_key_file": {
+           "n": "ansiblePrivateKeyFile"
+          },
+          "ansible_python_interpreter": {
+           "n": "ansiblePythonInterpreter"
+          },
+          "ansible_scp_extra_args": {
+           "n": "ansibleScpExtraArgs"
+          },
+          "ansible_sftp_extra_args": {
+           "n": "ansibleSftpExtraArgs"
+          },
+          "ansible_shell_executable": {
+           "n": "ansibleShellExecutable"
+          },
+          "ansible_shell_type": {
+           "n": "ansibleShellType"
+          },
+          "ansible_ssh_common_args": {
+           "n": "ansibleSshCommonArgs"
+          },
+          "ansible_ssh_executable": {
+           "n": "ansibleSshExecutable"
+          },
+          "ansible_ssh_extra_args": {
+           "n": "ansibleSshExtraArgs"
+          },
+          "ansible_ssh_pipelining": {
+           "n": "ansibleSshPipelining"
+          },
+          "ansible_user": {
+           "n": "ansibleUser"
+          },
+          "name": {
+           "n": "name"
+          }
+         },
+         "n": "hosts"
+        },
+        "name": {
+         "n": "name"
+        },
+        "vars": {
+         "map": true,
+         "n": "vars"
+        }
+       },
+       "n": "groups"
+      },
+      "host": {
+       "arr": true,
+       "f": {
+        "ansible_become": {
+         "n": "ansibleBecome"
+        },
+        "ansible_become_exe": {
+         "n": "ansibleBecomeExe"
+        },
+        "ansible_become_flags": {
+         "n": "ansibleBecomeFlags"
+        },
+        "ansible_become_method": {
+         "n": "ansibleBecomeMethod"
+        },
+        "ansible_become_password": {
+         "n": "ansibleBecomePassword"
+        },
+        "ansible_become_user": {
+         "n": "ansibleBecomeUser"
+        },
+        "ansible_connection": {
+         "n": "ansibleConnection"
+        },
+        "ansible_host": {
+         "n": "ansibleHost"
+        },
+        "ansible_password": {
+         "n": "ansiblePassword"
+        },
+        "ansible_port": {
+         "n": "ansiblePort"
+        },
+        "ansible_private_key_file": {
+         "n": "ansiblePrivateKeyFile"
+        },
+        "ansible_python_interpreter": {
+         "n": "ansiblePythonInterpreter"
+        },
+        "ansible_scp_extra_args": {
+         "n": "ansibleScpExtraArgs"
+        },
+        "ansible_sftp_extra_args": {
+         "n": "ansibleSftpExtraArgs"
+        },
+        "ansible_shell_executable": {
+         "n": "ansibleShellExecutable"
+        },
+        "ansible_shell_type": {
+         "n": "ansibleShellType"
+        },
+        "ansible_ssh_common_args": {
+         "n": "ansibleSshCommonArgs"
+        },
+        "ansible_ssh_executable": {
+         "n": "ansibleSshExecutable"
+        },
+        "ansible_ssh_extra_args": {
+         "n": "ansibleSshExtraArgs"
+        },
+        "ansible_ssh_pipelining": {
+         "n": "ansibleSshPipelining"
+        },
+        "ansible_user": {
+         "n": "ansibleUser"
+        },
+        "name": {
+         "n": "name"
+        }
+       },
+       "n": "hosts"
+      },
+      "name": {
+       "n": "name"
+      },
+      "vars": {
+       "map": true,
+       "n": "vars"
+      }
+     },
+     "n": "groups"
+    },
+    "json": {
+     "n": "json"
+    }
+   },
+   "token": "ansible:index/getInventory:getInventory"
+  },
+  "ansible_vault": {
+   "f": {
+    "vault_file": {
+     "n": "vaultFile"
+    },
+    "vault_id": {
+     "n": "vaultId"
+    },
+    "vault_password": {
+     "n": "vaultPassword"
+    },
+    "vault_password_file": {
+     "n": "vaultPasswordFile"
+    },
+    "yaml": {
+     "n": "yaml"
+    }
+   },
+   "token": "ansible:index/getVault:getVault"
+  },
+  "ansible_vault_string": {
+   "f": {
+    "content": {
+     "n": "content"
+    },
+    "plaintext": {
+     "n": "plaintext"
+    },
+    "vault_id": {
+     "n": "vaultId"
+    },
+    "vault_password": {
+     "n": "vaultPassword"
+    },
+    "vault_password_file": {
+     "n": "vaultPasswordFile"
+    }
+   },
+   "token": "ansible:index/getVaultString:getVaultString"
+  }
+ },
+ "package": "ansible",
+ "provider": {},
+ "resources": {
+  "ansible_group": {
+   "f": {
+    "children": {
+     "arr": true,
+     "n": "childrens"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "variables": {
+     "n": "variables"
+    }
+   },
+   "token": "ansible:index/group:Group"
+  },
+  "ansible_host": {
+   "f": {
+    "groups": {
+     "arr": true,
+     "n": "groups"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "variables": {
+     "n": "variables"
+    }
+   },
+   "token": "ansible:index/host:Host"
+  },
+  "ansible_playbook": {
+   "f": {
+    "ansible_playbook_binary": {
+     "n": "ansiblePlaybookBinary"
+    },
+    "ansible_playbook_stderr": {
+     "n": "ansiblePlaybookStderr"
+    },
+    "ansible_playbook_stdout": {
+     "n": "ansiblePlaybookStdout"
+    },
+    "args": {
+     "arr": true,
+     "n": "args"
+    },
+    "check_mode": {
+     "n": "checkMode"
+    },
+    "diff_mode": {
+     "n": "diffMode"
+    },
+    "extra_vars": {
+     "map": true,
+     "n": "extraVars"
+    },
+    "force_handlers": {
+     "n": "forceHandlers"
+    },
+    "groups": {
+     "arr": true,
+     "n": "groups"
+    },
+    "id": {
+     "n": "playbookId"
+    },
+    "ignore_playbook_failure": {
+     "n": "ignorePlaybookFailure"
+    },
+    "limit": {
+     "arr": true,
+     "n": "limits"
+    },
+    "name": {
+     "n": "name"
+    },
+    "playbook": {
+     "n": "playbook"
+    },
+    "replayable": {
+     "n": "replayable"
+    },
+    "tags": {
+     "arr": true,
+     "n": "tags"
+    },
+    "temp_inventory_file": {
+     "n": "tempInventoryFile"
+    },
+    "timeouts": {
+     "f": {
+      "create": {
+       "n": "create"
+      }
+     },
+     "n": "timeouts"
+    },
+    "var_files": {
+     "arr": true,
+     "n": "varFiles"
+    },
+    "vault_files": {
+     "arr": true,
+     "n": "vaultFiles"
+    },
+    "vault_id": {
+     "n": "vaultId"
+    },
+    "vault_password_file": {
+     "n": "vaultPasswordFile"
+    },
+    "verbosity": {
+     "n": "verbosity"
+    }
+   },
+   "token": "ansible:index/playbook:Playbook"
+  },
+  "ansible_vault": {
+   "f": {
+    "args": {
+     "arr": true,
+     "n": "args"
+    },
+    "id": {
+     "n": "ansibleVaultId"
+    },
+    "vault_file": {
+     "n": "vaultFile"
+    },
+    "vault_id": {
+     "n": "vaultId"
+    },
+    "vault_password_file": {
+     "n": "vaultPasswordFile"
+    },
+    "yaml": {
+     "n": "yaml"
+    }
+   },
+   "token": "ansible:index/vault:Vault"
+  }
+ },
+ "source": "ansible/ansible",
+ "version": "1.5.0"
+}

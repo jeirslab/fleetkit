@@ -22,13 +22,17 @@
 #
 # Derived, read-only per guest: id, ipv4.<network> (from networkInterfaces;
 # config.nix reads guests.<e>.<g>.ipv4.lan) and effectivePool (the guest's
-# pool, else the estate's placement.pool).
+# pool, else the estate's placement.pool; null when pool = "none").
 #
 # Also owned here: fleet.report.ipCollisions (data, never an error),
 # fleet.report.vmidCollisions + fleet.allow.vmidCollisions (a vmid used
 # twice in one cluster fails unless allowlisted with a reason),
 # fleet.report.guestOptionPaths (every modelled guest option path, for the
-# fidelity test) and fleet.estates.<estate>.guestDefaults.
+# fidelity test), fleet.report.lxcExtraConfIdmap (guests whose raw lxc.conf
+# lines carry an id mapping the provider would own),
+# fleet.report.unrecordedIgnored (guests with adoption.unrecorded = "ignore"
+# and the provider arguments that puts under ignore_changes) and
+# fleet.estates.<estate>.guestDefaults.
 { lib, config, ... }:
 let
   inherit (lib)
@@ -97,10 +101,14 @@ let
   knobOptions = {
     description = nullable types.str "description (both kinds).";
     tags = nullable (types.listOf types.str) "tags (both kinds). Lists replace, never merge.";
-    pool = nullable types.str "Pool id (<estate>/proxmox/<pool>) -> pool_id. null = the estate's placement.pool; see effectivePool.";
+    pool = nullable types.str "Pool id (<estate>/proxmox/<pool>) -> pool_id, or \"none\": in no pool, no pool_id is rendered. null = silent (the lower layer, last the estate's placement.pool); see effectivePool.";
     protect = nullable types.bool "Terraform lifecycle.prevent_destroy (meta-argument, not a provider argument). Effective default false.";
     protection = nullable types.bool "protection (both kinds): the Proxmox protection flag.";
     ignoreChanges = nullable (types.listOf types.str) "Terraform lifecycle.ignore_changes (meta-argument): provider argument names whose drift is ignored after create.";
+    adoption.unrecorded = nullable (types.enum [
+      "ignore"
+      "apply"
+    ]) "What happens to the provider arguments an import of an existing guest does not record. apply (the effective default): nothing is rendered for them, so an adoption carries an update in place for them, which reboots the guest. ignore: they are added to lifecycle.ignore_changes (container: cpu, memory, vm_id, console; vm: cpu, memory, scsi_hardware, agent, operating_system, efi_disk), the adoption is free of a reboot, and changes to them are not applied to the guest until this is apply again, which reboots it once. Listed in fleet.report.unrecordedIgnored.";
     startOnBoot = nullable types.bool "container start_on_boot / vm on_boot.";
     started = nullable types.bool "started (both kinds).";
     startup = {
@@ -142,10 +150,11 @@ let
       "tty"
       "shell"
     ]) "lxc only: console.type. Default from providers.proxmox.defaults.console.";
+    console.omit = nullable types.bool "lxc only: true = render no console block at all (the site default console.type is not rendered either). The provider then records none for a container whose console is its default: enabled, type tty, 2 ttys.";
     environment = nullable (types.attrsOf types.str) "lxc only: environment_variables.";
     defaultDatastore = nullable types.str "Storage id used by every disk whose datastore is null (layering helper; feeds disk datastore_id / mount_point volume).";
     initialization = {
-      hostname = nullable types.str "lxc only: initialization.hostname. Effective default: the guest name.";
+      hostname = nullable types.str "lxc: initialization.hostname; vm: name (the VM name, which Proxmox's cloud-init hands the guest as its hostname). Effective default: the guest name.";
       dns = {
         servers = nullable (types.listOf types.str) "initialization.dns.servers (both kinds).";
         domain = nullable types.str "initialization.dns.domain (both kinds).";
@@ -160,15 +169,14 @@ let
       template = nullable types.str "lxc only: image id (<site>/<image>) -> operating_system.template_file_id = that image's volumeId. null = providers.proxmox.defaults.operatingSystem.templateFileId.";
       clone = nullable (types.submodule {
         options = {
-          vmid = mkOption {
-            type = types.ints.positive;
-            description = "clone.vm_id (both kinds): source VMID (a template, need not be a modelled guest).";
-          };
+          guest = nullable types.str "Guest id (<estate>/<guest>) of a modelled template (vm.template = true) -> clone.vm_id = its vmid, clone.node_name = its node. Exclusive with vmid.";
+          vmid = nullable types.ints.positive "clone.vm_id (both kinds): source VMID of a source that is not a modelled guest. Exclusive with guest.";
           datastore = nullable types.str "clone.datastore_id (both kinds): storage id.";
-          full = nullable types.bool "clone.full (both kinds).";
-          node = nullable types.str "clone.node_name (both kinds): node id holding the source.";
+          full = nullable types.bool "clone.full (both kinds). null = the provider's default, a full clone.";
+          node = nullable types.str "clone.node_name (both kinds): node id holding the source. With guest: the template's node; leave it unset.";
         };
       }) "Clone source instead of a template (lxc: replaces operating_system).";
+      image = nullable types.str "vm only: image id (<site>/<image>, contentType import) -> the root disk's disk.import_from = its volumeId. The guest depends on the image's upload when the image has a source.";
       cdrom = nullable (types.submodule {
         options = {
           image = mkOption {
@@ -187,16 +195,76 @@ let
       ]) "vm only: bios.";
       machine = nullable types.str "vm only: machine (e.g. q35).";
       serialDevices = nullable (types.listOf types.str) "vm only: serial_device[].device (e.g. socket).";
+      scsiHardware = nullable (types.enum scsiHardwareValues) "vm only: scsi_hardware. null = not rendered (the provider default virtio-scsi-pci).";
+      efiDisk = nullable (types.submodule {
+        options = {
+          datastore = nullable types.str "vm only: storage id -> efi_disk.datastore_id. null = defaultDatastore; one of them must be set (the provider would otherwise use local-lvm).";
+          fileFormat = nullable (types.enum [
+            "raw"
+            "qcow2"
+            "vmdk"
+          ]) "vm only: efi_disk.file_format.";
+          type = nullable (types.enum [
+            "2m"
+            "4m"
+          ]) "vm only: efi_disk.type (size and type of the OVMF vars disk). Changing it on an existing VM forces a replacement.";
+          preEnrolledKeys = nullable types.bool "vm only: efi_disk.pre_enrolled_keys.";
+        };
+      }) "vm only: the EFI vars disk (efi_disk). null = no efi_disk block.";
       cloudInit = {
         datastore = nullable types.str "vm only: initialization.datastore_id (storage id of the cloud-init drive).";
         type = nullable (types.enum [
           "nocloud"
           "configdrive2"
         ]) "vm only: initialization.type.";
+        interface = nullable (types.strMatching "ide[0-3]|sata[0-5]|scsi([0-9]|[12][0-9]|30)") "vm only: initialization.interface (the bus slot of the cloud-init drive, e.g. ide2).";
+        upgrade = nullable types.bool "vm only: initialization.upgrade (package upgrade on first boot; Proxmox defaults to true). The provider only lets root@pam change it.";
       };
     };
   };
   knobNames = builtins.attrNames knobOptions;
+
+  # scsi_hardware values the provider accepts (vm/validators.go, SCSIHardwareValidator).
+  scsiHardwareValues = [
+    "lsi"
+    "lsi53c810"
+    "virtio-scsi-pci"
+    "virtio-scsi-single"
+    "megasas"
+    "pvscsi"
+  ];
+
+  # Provider arguments an import of an existing guest does not record, per
+  # kind: what adoption.unrecorded = "ignore" adds to lifecycle.ignore_changes
+  # (docs/guest-model.md, "Adoption without a reboot", has the evidence).
+  #   lxc  seen on a real container (fleetkit#61): the import had no cpu,
+  #        memory or vm_id, and a console only when it is not the provider's
+  #        default.
+  #   vm   from the provider source at v0.115.0, not observed
+  #        (proxmoxtf/resource/vm/vm.go, vmReadCustom): cpu, memory, agent,
+  #        operating_system and efi_disk are set only when a live value
+  #        differs from the provider's default, scsi_hardware only when the
+  #        VM's config has a scsihw line. vm_id is always set there.
+  unrecordedArgs = {
+    lxc = [
+      "cpu"
+      "memory"
+      "vm_id"
+      "console"
+    ];
+    vm = [
+      "cpu"
+      "memory"
+      "scsi_hardware"
+      "agent"
+      "operating_system"
+      "efi_disk"
+    ];
+  };
+  # The arguments of that list a guest has under ignore_changes for it.
+  unrecordedIgnoredOf =
+    estate: g:
+    if ((effective estate g).adoption.unrecorded or null) == "ignore" then unrecordedArgs.${g.kind} else [ ];
 
   # Knob paths that exist for one kind only.
   lxcOnlyKnobs = [
@@ -206,13 +274,13 @@ let
     [ "memory" "swapMiB" ]
     [ "environment" ]
     [ "source" "template" ]
-    [ "initialization" "hostname" ]
   ];
   vmOnlyKnobs = [
     [ "memory" "floatingMiB" ]
     [ "cpu" "type" ]
     [ "vm" ]
     [ "source" "cdrom" ]
+    [ "source" "image" ]
     [ "initialization" "userAccount" "username" ]
   ];
   foreignKnobs = kind: if kind == "lxc" then vmOnlyKnobs else lxcOnlyKnobs;
@@ -306,12 +374,41 @@ let
     };
   };
 
+  idmapType = types.submodule {
+    options = {
+      type = mkOption {
+        type = types.enum [
+          "uid"
+          "gid"
+        ];
+        description = "lxc only: idmap.type (uid = an lxc.idmap \"u\" line, gid = a \"g\" line).";
+      };
+      containerId = mkOption {
+        type = types.ints.unsigned;
+        description = "lxc only: idmap.container_id (first id inside the container).";
+      };
+      hostId = mkOption {
+        type = types.ints.unsigned;
+        description = "lxc only: idmap.host_id (first id on the host).";
+      };
+      size = mkOption {
+        type = types.ints.positive;
+        description = "lxc only: idmap.size (number of ids mapped).";
+      };
+    };
+  };
+
+  # A raw lxc.conf line that sets lxc.idmap: the one raw key the provider
+  # reads back (as idmap) and rewrites.
+  isIdmapLine = l: builtins.match "[[:space:]]*lxc\\.idmap[[:space:]]*[:=].*" l != null;
+  idmapLinesOf = g: filter isIdmapLine (if g.lxcExtraConf == null then [ ] else g.lxcExtraConf);
+
   hostpciType = types.submodule {
     options = {
       device = nullable (types.strMatching "hostpci[0-9]+") "vm only: hostpci.device. Default hostpci<i>.";
       pcie = mkOption {
         type = types.str;
-        description = "pcie device id (<site>/<node>/<dev>) -> hostpci.id = that device's pci address. Must be on the guest's node.";
+        description = "pcie device id (<site>/<node>/<dev>) -> hostpci.mapping = that device's cluster mapping name when it declares one, else hostpci.id = its pci address. Must be on the guest's node.";
       };
       pcieExpress = nullable types.bool "hostpci.pcie.";
       rombar = nullable types.bool "hostpci.rombar.";
@@ -320,12 +417,18 @@ let
   };
 
   # ---------------------------------------------------------- guest type --
+  # The knob set plus what only a guest can say about itself: an estate
+  # default that made every VM of the estate a template would be meaningless.
+  guestKnobOptions = lib.recursiveUpdate knobOptions {
+    vm.template = nullable types.bool "vm only: template. true = the VM is a Proxmox template: rendered template = true, started = false, on_boot = false and no startup; never started. Guests clone it with source.clone.guest. Not in guestDefaults.";
+  };
+
   guestType =
     estate:
     types.submodule (
       { name, config, ... }:
       {
-        options = knobOptions // {
+        options = guestKnobOptions // {
           id = h.mkId (h.qualify estate name);
           vmid = mkOption {
             type = types.ints.between 100 999999999;
@@ -342,6 +445,7 @@ let
             type = types.str;
             description = "Node id (<site>/<node>) -> node_name (the node name). Its site's proxmox provider supplies the defaults.";
           };
+          hostKeys.age = nullable (types.strMatching "age1[02-9ac-hj-np-z]{58}") "Public age recipient (age1...) of the guest. Becomes its sops recipient when it is a reader of a secrets file; use it when adopting an existing .sops.yaml. Takes precedence over hostKeys.ed25519 for the recipient; never feeds a provider argument.";
           hostKeys.ed25519 = nullable (types.strMatching "ssh-ed25519 AAAA[A-Za-z0-9+/]+={0,2}( [^\n]*)?") "Public ssh ed25519 host key (ssh-ed25519 AAAA..., a trailing comment is accepted and dropped). Becomes the guest's sops recipient when it is a reader of a secrets file; never feeds a provider argument.";
           nixos.module = mkOption {
             type = types.nullOr types.path;
@@ -382,7 +486,12 @@ let
             default = [ ];
             description = "vm only: hostpci[] (PCI passthrough of node pcie devices).";
           };
-          lxcExtraConf = nullable (types.listOf types.str) "lxc only: raw lines appended verbatim to /etc/pve/lxc/<vmid>.conf. NOT a provider argument: rendered as the terraform_data.<guest>-lxc-conf companion.";
+          idmap = mkOption {
+            type = types.listOf idmapType;
+            default = [ ];
+            description = "lxc only: idmap[] (the container's lxc.idmap lines, in file order). The provider owns every lxc.idmap line of the guest, so lxcExtraConf must not carry any beside this.";
+          };
+          lxcExtraConf = nullable (types.listOf types.str) "lxc only: raw lines appended verbatim to /etc/pve/lxc/<vmid>.conf. NOT a provider argument: rendered as the terraform_data.<guest>-lxc-conf companion. A guest that has any gets description under lifecycle.ignore_changes.";
 
           ipv4 = mkOption {
             type = types.attrsOf ipv4;
@@ -399,7 +508,7 @@ let
             type = types.nullOr types.str;
             readOnly = true;
             default = (effective estate config).pool;
-            description = "Derived, read-only: pool id after layering (guest pool, guestDefaults pool, else fleet.estates.<estate>.placement.pool) -> pool_id.";
+            description = "Derived, read-only: pool id after layering (guest pool, guestDefaults pool, else fleet.estates.<estate>.placement.pool) -> pool_id. null when that is \"none\" or there is none.";
           };
         };
       }
@@ -474,7 +583,10 @@ let
           source.osType = d.operatingSystem.type;
         }
       );
-      estD = if e == null then { } else nullAt (foreignKnobs g.kind) (knobsOf e.guestDefaults);
+      # A VM's hostname is its name: per guest only, never an estate default
+      # (an estate default would give every VM of the estate one name; it was
+      # dropped for VMs while the option was lxc-only, and still is).
+      estD = if e == null then { } else nullAt (foreignKnobs g.kind ++ optional (g.kind == "vm") [ "initialization" "hostname" ]) (knobsOf e.guestDefaults);
       k = builtins.foldl' over { } [
         schemaD
         provD
@@ -484,8 +596,12 @@ let
       placementPool = if e == null || e.placement == null then null else e.placement.pool;
     in
     k
-    // {
-      pool = if (k.pool or null) != null then k.pool else placementPool;
+    // rec {
+      # "none" is the guest in no pool: nothing is rendered. The grant (vmid
+      # and host ranges) is still the estate pool's.
+      noPool = (k.pool or null) == "none";
+      pool = if noPool then null else if (k.pool or null) != null then k.pool else placementPool;
+      grantPool = if noPool then placementPool else pool;
     };
 
   # ------------------------------------------------- derived interfaces --
@@ -507,6 +623,8 @@ let
       prov = providerOf g;
       d = if prov == null then null else prov.defaults;
       net = (siteNetsOf g).${n.network} or null;
+      bridge = if n.bridge != null then n.bridge else if d != null then d.nic.bridge else null;
+      br = lib.findFirst (b: b.id == bridge) null (attrValues (cfg.sites.${siteOf g.on} or { bridges = { }; }).bridges);
       gwRouter =
         if net == null || net.gateway == null then
           null
@@ -523,7 +641,9 @@ let
           d.nic.name
         else
           "eth${toString i}";
-      bridge = if n.bridge != null then n.bridge else if d != null then d.nic.bridge else null;
+      inherit bridge;
+      # On a VLAN-aware bridge: the tag the bridge carries the network with.
+      vlanId = if n.vlanId != null then n.vlanId else if br != null then br.vlans.${n.network} or null else null;
       prefix =
         if n.prefix != null then
           n.prefix
@@ -582,6 +702,66 @@ let
 
   # --------------------------------------------------------- references --
   imageById = id: lib.findFirst (i: i.id == id) null (concatMap (s: attrValues s.images) (attrValues cfg.sites));
+  # "<estate>/<guest>" -> that guest, or null.
+  guestById =
+    id:
+    let
+      p = lib.splitString "/" id;
+    in
+    if length p != 2 then null else (cfg.guests.${builtins.elemAt p 0} or { }).${builtins.elemAt p 1} or null;
+  isTemplate = g: g.kind == "vm" && g.vm.template == true;
+  # The guest a clone names by reference (source.clone.guest), or null.
+  cloneGuestOf =
+    k:
+    let
+      c = k.source.clone or null;
+    in
+    if c == null || c.guest == null then null else c.guest;
+
+  # The images a guest uses (ids): the vm's source.image and cdrom, the
+  # container's template image, or the site default's image when it names
+  # none (a container that clones uses no template).
+  imagesOf =
+    estate: g:
+    let
+      k = effective estate g;
+      prov = providerOf g;
+      siteImages = attrValues (cfg.sites.${siteOf g.on} or { images = { }; }).images;
+      defaultTmpl =
+        if prov == null then
+          null
+        else
+          lib.findFirst (i: i.volumeId == prov.defaults.operatingSystem.templateFileId) null siteImages;
+      cdrom = k.source.cdrom or null;
+      lxcTmpl =
+        if (k.source.clone or null) != null then
+          null
+        else if (k.source.template or null) != null then
+          k.source.template
+        else if defaultTmpl != null then
+          defaultTmpl.id
+        else
+          null;
+    in
+    filter (x: x != null) (
+      if g.kind == "lxc" then
+        [ lxcTmpl ]
+      else
+        [
+          (k.source.image or null)
+          (if cdrom == null then null else cdrom.image)
+        ]
+    );
+  # Of those, the ones the deploy uploads (an image with a source).
+  uploadsOf =
+    estate: g:
+    filter (
+      id:
+      let
+        i = imageById id;
+      in
+      i != null && i.source != null
+    ) (imagesOf estate g);
   pcieById =
     id:
     let
@@ -638,12 +818,31 @@ let
           d.operatingSystem.templateFileId
         else
           null;
+      # Arguments the kit puts under ignore_changes by itself:
+      #   clone        every member of the provider's clone block is ForceNew
+      #                and no read records one, so a declared clone on a guest
+      #                that exists without it in state plans a replacement;
+      #                the block is used at create and never compared after.
+      #   description  for a container with lxcExtraConf: the companion's
+      #                "# BEGIN/END" marker lines are comment lines of the
+      #                conf file, which Proxmox returns as description text.
+      #   adoption.unrecorded = "ignore": what an import does not record
+      #                (unrecordedArgs), so that adopting the guest carries no
+      #                update for it.
+      autoIgnored =
+        optional (clone != null) "clone"
+        ++ optional (isLxc && g.lxcExtraConf != null && g.lxcExtraConf != [ ]) "description"
+        ++ unrecordedIgnoredOf estate g;
+      # A clone of a modelled template takes its vmid and node from it.
+      cloneSrc = if clone == null || clone.guest == null then null else guestById clone.guest;
       cloneArgs = if clone == null then null else {
-        vm_id = clone.vmid;
+        vm_id = if clone.guest == null then clone.vmid else if cloneSrc == null then null else cloneSrc.vmid;
         datastore_id = lastSeg clone.datastore;
         inherit (clone) full;
-        node_name = lastSeg clone.node;
+        node_name = lastSeg (if clone.guest == null then clone.node else if cloneSrc == null then null else cloneSrc.on);
       };
+      template = isTemplate g;
+      importImg = if (k.source.image or null) == null then null else imageById k.source.image;
       dns = {
         inherit (k.initialization.dns or { servers = null; domain = null; }) servers domain;
       };
@@ -676,7 +875,7 @@ let
       lxcArgs = common // {
         start_on_boot = k.startOnBoot or null;
         unprivileged = k.unprivileged or null;
-        console.type = k.console.type or null;
+        console = if (k.console.omit or null) == true then null else { type = k.console.type or null; };
         cpu = cpuCommon;
         memory = {
           dedicated = k.memory.dedicatedMiB or null;
@@ -730,10 +929,23 @@ let
             deny_write = x.denyWrite;
           }) g.devicePassthrough
         );
+        idmap = nonEmpty (
+          map (x: {
+            inherit (x) type size;
+            container_id = x.containerId;
+            host_id = x.hostId;
+          }) g.idmap
+        );
       };
       vmArgs = common // {
-        inherit name;
-        on_boot = if (k.startOnBoot or null) == false then false else null;
+        # The VM name is also the hostname cloud-init gives the guest.
+        name = if (k.initialization.hostname or null) != null then k.initialization.hostname else name;
+        # A template is never started, at boot or by the deploy, and has no
+        # place in the startup order (whatever the lower layers say).
+        template = if template then true else null;
+        started = if template then false else k.started;
+        startup = if template then null else common.startup;
+        on_boot = if template || (k.startOnBoot or null) == false then false else null;
         cpu = cpuCommon // {
           type = k.cpu.type or null;
         };
@@ -746,6 +958,7 @@ let
           datastore_id = lastSeg (diskDs k x);
           size = sizeGiB x.size;
           file_format = x.fileFormat;
+          import_from = if x.role == "root" && importImg != null then importImg.volumeId else null;
         }) (filter (x: x.role == "root") g.disks ++ filter (x: x.role == "data") g.disks);
         network_device = map (n: {
           inherit (n) firewall mtu model;
@@ -757,6 +970,8 @@ let
         initialization = {
           datastore_id = lastSeg (k.vm.cloudInit.datastore or null);
           type = k.vm.cloudInit.type or null;
+          interface = k.vm.cloudInit.interface or null;
+          upgrade = k.vm.cloudInit.upgrade or null;
           inherit dns;
           ip_config = ipConfigOf ifs;
           user_account = {
@@ -780,6 +995,20 @@ let
         agent.enabled = k.vm.agent or null;
         bios = k.vm.bios or null;
         machine = k.vm.machine or null;
+        scsi_hardware = k.vm.scsiHardware or null;
+        efi_disk =
+          let
+            e = k.vm.efiDisk or null;
+          in
+          if e == null then
+            null
+          else
+            {
+              datastore_id = lastSeg (diskDs k e);
+              file_format = e.fileFormat;
+              inherit (e) type;
+              pre_enrolled_keys = e.preEnrolledKeys;
+            };
         serial_device =
           let
             s = k.vm.serialDevices or null;
@@ -792,7 +1021,12 @@ let
               let
                 p = pcieById x.pcie;
               in
-              if p == null then null else p.pci;
+              if p == null || p.mapping != null then null else p.pci;
+            mapping =
+              let
+                p = pcieById x.pcie;
+              in
+              if p == null then null else p.mapping;
             pcie = x.pcieExpress;
             inherit (x) rombar xvga;
           }) g.hostpci
@@ -804,10 +1038,23 @@ let
       args = prune (if isLxc then lxcArgs else vmArgs);
       lifecycle = prune {
         prevent_destroy = if (k.protect or null) == true then true else null;
-        ignore_changes = k.ignoreChanges or null;
+        ignore_changes =
+          let
+            declared = k.ignoreChanges or null;
+          in
+          if autoIgnored == [ ] then
+            declared
+          else
+            lib.unique ((if declared == null then [ ] else declared) ++ autoIgnored);
       };
       companions = prune {
         lxc_extra_conf = g.lxcExtraConf;
+      };
+      # What has to exist before the guest is created, as model ids: the
+      # uploads of the images it uses, and the template it clones.
+      dependsOn = {
+        images = uploadsOf estate g;
+        guests = optional (cloneGuestOf k != null) (cloneGuestOf k);
       };
     };
 
@@ -865,8 +1112,16 @@ let
     ) (foreignKnobs g.kind)
     ++ optionals isLxc [
       (check "${where}.hostpci" (g.hostpci == [ ]) "is vm-only but kind is \"lxc\"")
+      (check "${where}.vm.efiDisk" (g.vm.efiDisk == null) "is vm-only but kind is \"lxc\"")
+      (check "${where}.console" (
+        !(g.console.omit == true && g.console.type != null)
+      ) "console.omit renders no console block, so console.type beside it is never rendered; set one of them")
+      (check "${where}.lxcExtraConf" (g.idmap == [ ] || idmapLinesOf g == [ ])
+        "carries lxc.idmap line(s) beside idmap (${toString (length (idmapLinesOf g))}); the provider rewrites every lxc.idmap line of the conf file from idmap, so declare the mapping there only"
+      )
     ]
     ++ optionals (!isLxc) [
+      (check "${where}.idmap" (g.idmap == [ ]) "is lxc-only but kind is \"vm\"")
       (check "${where}.lxcExtraConf" (g.lxcExtraConf == null) "is lxc-only but kind is \"vm\"")
       (check "${where}.devicePassthrough" (g.devicePassthrough == [ ]) "is lxc-only but kind is \"vm\"")
     ]
@@ -976,11 +1231,13 @@ let
     ++ sourceAssertions {
       inherit
         where
+        g
         site
         k
         isLxc
         ;
     }
+    ++ templateAssertions { inherit where g; }
     ++ poolAssertions {
       inherit where k prov;
     }
@@ -1040,7 +1297,18 @@ let
             check "${w}.bridge" (br != null) "bridge \"${n.bridge}\" is not a bridge of site \"${site}\""
           )
           ++ optional (br != null && net != null) (
-            check "${w}.bridge" (br.network == net.id) "bridge \"${n.bridge}\" carries network ${br.network}, not ${net.id}"
+            # The bridge's own network (untagged, if the bridge declares tags at
+            # all), or a network the bridge declares a tag for, with that tag.
+            check "${w}.bridge" (
+              if br.network == net.id then br.vlans == { } || n.vlanId == null else (br.vlans.${n.network} or null) == n.vlanId && n.vlanId != null
+            ) (
+              if br.network == net.id then
+                "bridge \"${n.bridge}\" carries network ${net.id} untagged, but vlanId is ${toString n.vlanId}"
+              else if br.vlans ? ${n.network} then
+                "bridge \"${n.bridge}\" carries network ${net.id} with tag ${toString br.vlans.${n.network}}, but vlanId is ${toString n.vlanId}"
+              else
+                "bridge \"${n.bridge}\" carries network ${br.network}${lib.concatStrings (lib.mapAttrsToList (k: v: ", ${k} (tag ${toString v})") br.vlans)}, not ${net.id}"
+            )
           )
           ++ optional (br != null && br.nodes != [ ]) (
             check "${w}.bridge" (elem g.on br.nodes) "bridge \"${n.bridge}\" is not available on node ${g.on}"
@@ -1063,7 +1331,6 @@ let
     }:
     let
       roots = length (filter (x: x.role == "root") g.disks);
-      siteStorage = if cfg.sites ? ${site} then attrValues cfg.sites.${site}.storage else [ ];
       vmIfaces = filter (x: x != null) (map (x: x.interface) g.disks);
       dupIfaces = lib.unique (filter (x: lib.count (y: y == x) vmIfaces > 1) vmIfaces);
       needContent = if isLxc then "rootdir" else "images";
@@ -1078,7 +1345,6 @@ let
         let
           w = "${where}.disks[${toString i}]";
           ds = diskDs k x;
-          st = lib.findFirst (s: s.id == ds) null siteStorage;
         in
         optional isLxc (check "${w}.role" (x.role != "data") "role \"data\" is vm-only; an lxc uses \"mount\"")
         ++ optional (!isLxc) (check "${w}.role" (x.role != "mount") "role \"mount\" is lxc-only; a vm uses \"data\"")
@@ -1101,28 +1367,57 @@ let
         ++ map (f: check "${w}.${f}" (x.${f} == null) "is ${otherKindOf isLxc}-only but kind is \"${g.kind}\"") (
           if isLxc then vmOnlyDiskFields else lxcOnlyDiskFields
         )
-        ++ [
-          (check "${w}.datastore" (ds != null) "no datastore (set it, or guestDefaults.defaultDatastore)")
-        ]
-        ++ optionals (ds != null) (
-          [
-            (h.refAssertion {
-              where = "${w}.datastore";
-              kind = "storage";
-              ids = ids.storage;
-            } ds)
-          ]
-          ++ optional (elem ds ids.storage) (
-            check "${w}.datastore" (st != null) "storage \"${ds}\" is not a storage of site \"${site}\" (the site of node ${g.on})"
-          )
-          ++ optional (st != null && st.nodes != [ ]) (
-            check "${w}.datastore" (elem g.on st.nodes) "storage \"${ds}\" is not available on node ${g.on} (its nodes: ${toString st.nodes})"
-          )
-          ++ optional (st != null) (
-            check "${w}.datastore" (elem needContent st.content) "storage \"${ds}\" does not hold content \"${needContent}\""
-          )
-        )
+        ++ datastoreAssertions {
+          inherit
+            w
+            ds
+            g
+            site
+            needContent
+            ;
+        }
       ) g.disks
+    )
+    ++ optionals (!isLxc && (k.vm.efiDisk or null) != null) (datastoreAssertions {
+      w = "${where}.vm.efiDisk";
+      ds = diskDs k k.vm.efiDisk;
+      inherit g site needContent;
+    });
+
+  # A datastore of a disk: set, a storage of the node's site, available on the
+  # node, holding the content the kind needs.
+  datastoreAssertions =
+    {
+      w,
+      ds,
+      g,
+      site,
+      needContent,
+    }:
+    let
+      siteStorage = if cfg.sites ? ${site} then attrValues cfg.sites.${site}.storage else [ ];
+      st = lib.findFirst (s: s.id == ds) null siteStorage;
+    in
+    [
+      (check "${w}.datastore" (ds != null) "no datastore (set it, or guestDefaults.defaultDatastore)")
+    ]
+    ++ optionals (ds != null) (
+      [
+        (h.refAssertion {
+          where = "${w}.datastore";
+          kind = "storage";
+          ids = ids.storage;
+        } ds)
+      ]
+      ++ optional (elem ds ids.storage) (
+        check "${w}.datastore" (st != null) "storage \"${ds}\" is not a storage of site \"${site}\" (the site of node ${g.on})"
+      )
+      ++ optional (st != null && st.nodes != [ ]) (
+        check "${w}.datastore" (elem g.on st.nodes) "storage \"${ds}\" is not available on node ${g.on} (its nodes: ${toString st.nodes})"
+      )
+      ++ optional (st != null) (
+        check "${w}.datastore" (elem needContent st.content) "storage \"${ds}\" does not hold content \"${needContent}\""
+      )
     );
   otherKindOf = isLxc: if isLxc then "vm" else "lxc";
 
@@ -1130,6 +1425,7 @@ let
   sourceAssertions =
     {
       where,
+      g,
       site,
       k,
       isLxc,
@@ -1139,6 +1435,15 @@ let
       clone = k.source.clone or null;
       tmpl = k.source.template or null;
       cdrom = k.source.cdrom or null;
+      image = k.source.image or null;
+      img = if image == null then null else imageById image;
+      imgStore =
+        if img == null then
+          null
+        else
+          lib.findFirst (s: s.id == img.datastore) null (attrValues (cfg.sites.${siteOf img.id} or { storage = { }; }).storage);
+      ref = cloneGuestOf k;
+      src = if ref == null then null else guestById ref;
       imgCheck =
         field: id: content:
         let
@@ -1159,6 +1464,44 @@ let
     optional (isLxc && clone != null) (check w (tmpl == null) "source.clone and source.template are exclusive")
     ++ optionals (isLxc && tmpl != null) (imgCheck "template" tmpl "vztmpl")
     ++ optionals (!isLxc && cdrom != null) (imgCheck "cdrom.image" cdrom.image "iso")
+    # ---- a root disk imported from an image (disk.import_from) ----
+    ++ optionals (!isLxc && image != null) (
+      [
+        (check w (clone == null) "source.image and source.clone are exclusive (a clone takes its disks from its source)")
+      ]
+      ++ imgCheck "image" image "import"
+      ++ optional (imgStore != null) (
+        check "${w}.image" (elem "import" imgStore.content)
+          "image \"${image}\" is on storage \"${img.datastore}\", which does not list content type \"import\""
+      )
+      ++ optional (img != null && img.node != null) (
+        check "${w}.image" (img.node == g.on) "image \"${image}\" is on node ${img.node}, not the guest's node ${g.on}"
+      )
+    )
+    # ---- a clone: of a modelled template (guest) or of a bare vmid ----
+    ++ optionals (clone != null) [
+      (check "${w}.clone" ((clone.guest == null) != (clone.vmid == null))
+        "set exactly one of guest (a modelled template, <estate>/<guest>) and vmid (a source that is not modelled)")
+      (check "${w}.clone.node" (clone.guest == null || clone.node == null)
+        "the node of a clone of a modelled template is the template's; leave node unset")
+    ]
+    ++ optionals (ref != null) (
+      [
+        (h.refAssertion {
+          where = "${w}.clone.guest";
+          kind = "guest";
+          ids = ids.guest;
+        } ref)
+      ]
+      ++ optionals (src != null) [
+        (check "${w}.clone.guest" (src.id != g.id) "a guest cannot clone itself")
+        (check "${w}.clone.guest" (isTemplate src)
+          "guest \"${ref}\" is not a template (set vm.template = true on it)")
+        (check "${w}.clone.guest" (src.kind == g.kind) "guest \"${ref}\" is a ${src.kind}, this guest a ${g.kind}")
+        (check "${w}.clone.guest" (siteOf src.on == site)
+          "template \"${ref}\" is on site \"${siteOf src.on}\", not \"${site}\" (a clone stays in its cluster)")
+      ]
+    )
     ++ optionals (clone != null) (
       h.optionalRefAssertions {
         where = "${w}.clone.datastore";
@@ -1176,6 +1519,17 @@ let
       kind = "storage";
       ids = ids.storage;
     } (k.vm.cloudInit.datastore or null);
+
+  # ---- a template: a VM that is never started ----
+  # The guest's own definitions only: the render overrides what the lower
+  # layers say (started = false, on_boot = false, no startup).
+  templateAssertions =
+    { where, g }:
+    optionals (isTemplate g) [
+      (check "${where}.started" (g.started != true) "a template is never started; leave started unset")
+      (check "${where}.startOnBoot" (g.startOnBoot != true) "a template is never started; leave startOnBoot unset")
+      (check "${where}.startup" (!anySet g.startup) "a template has no startup ordering; leave startup unset")
+    ];
 
   # ---- pool: an existing pool of the guest's provider ----
   poolAssertions =
@@ -1217,7 +1571,9 @@ let
         ++ optional (p != null) (
           check w (lib.hasPrefix "${g.on}/" id) "pcie device \"${id}\" is not on the guest's node ${g.on}"
         )
-        ++ optional (p != null && needPci) (check w (p.pci != null) "pcie device \"${id}\" has no pci address");
+        ++ optional (p != null && needPci) (
+          check w (p.pci != null || p.mapping != null) "pcie device \"${id}\" has no pci address or mapping"
+        );
     in
     concatLists (imap0 (i: x: one "${where}.hostpci[${toString i}].pcie" x.pcie true) g.hostpci)
     ++ concatLists (
@@ -1278,7 +1634,10 @@ let
       g,
     }:
     let
-      parts = lib.splitString "/" (if g.effectivePool == null then "" else g.effectivePool);
+      # effectivePool, or the estate's placement.pool for a guest that is in
+      # no pool (pool = "none"): leaving the pool does not leave the grant.
+      gp = (effective estate g).grantPool;
+      parts = lib.splitString "/" (if gp == null then "" else gp);
       own = builtins.length parts == 3 && builtins.head parts == estate;
       pool =
         if own then
@@ -1286,13 +1645,13 @@ let
         else
           null;
     in
-    optional (g.effectivePool != null) (
-      check "${where}.pool" own "pool \"${g.effectivePool}\" is not a pool of estate \"${estate}\""
+    optional (gp != null) (
+      check "${where}.pool" own "pool \"${gp}\" is not a pool of estate \"${estate}\""
     )
     ++ optionals (pool != null) (
       [
         (check "${where}.vmid" (inRanges pool.vmid g.vmid)
-          "vmid ${toString g.vmid} is outside the ranges granted to pool ${g.effectivePool} (${showRanges pool.vmid})"
+          "vmid ${toString g.vmid} is outside the ranges granted to pool ${gp} (${showRanges pool.vmid})"
         )
       ]
       ++ lib.concatLists (
@@ -1300,7 +1659,7 @@ let
           net: p:
           optional (g.ipv4 ? ${net}) (
             check "${where}.networkInterfaces" (inRanges p.hosts (lib.toInt (lib.last (lib.splitString "." g.ipv4.${net}))))
-              "address ${g.ipv4.${net}} on \"${net}\" is outside the host ranges granted to pool ${g.effectivePool} (${showRanges p.hosts})"
+              "address ${g.ipv4.${net}} on \"${net}\" is outside the host ranges granted to pool ${gp} (${showRanges p.hosts})"
           )
         ) pool.networks
       )
@@ -1327,7 +1686,7 @@ let
         where = "${w}.pool";
         kind = "pool";
         ids = ids.pool;
-      } gd.pool
+      } (if gd.pool == "none" then null else gd.pool)
       ++ h.optionalRefAssertions {
         where = "${w}.defaultDatastore";
         kind = "storage";
@@ -1338,8 +1697,30 @@ let
         kind = "image";
         ids = ids.image;
       } gd.source.template
+      ++ h.optionalRefAssertions {
+        where = "${w}.source.image";
+        kind = "image";
+        ids = ids.image;
+      } gd.source.image
     ) cfg.estates
   );
+
+  # ---- an uploaded image belongs to one estate's render ----
+  # Each estate's render uploads the images its managed guests use; two
+  # estates would both own the one file on the datastore.
+  uploaders = lib.mapAttrs (_: xs: lib.unique (map (x: x.estate) xs)) (
+    lib.groupBy (x: x.image) (
+      concatMap (
+        { estate, g, ... }:
+        map (image: { inherit estate image; }) (if g.mode == "managed" then uploadsOf estate g else [ ])
+      ) allGuests
+    )
+  );
+  uploadAssertions = mapAttrsToList (
+    image: estates:
+    check "fleet.sites.${siteOf image}.images.${lastSeg image}.source" (length estates == 1)
+      "image \"${image}\" is uploaded by the render of each estate whose managed guests use it, and guests of ${lib.concatStringsSep ", " estates} do; use it from one estate"
+  ) uploaders;
 
   # ---- vmid collisions (per cluster = site of the node) ----
   vmidGroups = lib.groupBy (x: "${siteOf x.g.on}#${toString x.g.vmid}") allGuests;
@@ -1464,12 +1845,60 @@ in
         description = ''
           Derived, read-only: per guest, the effective provider view after
           layering, in bpg/proxmox 0.115.0 argument names:
-            { resource; args; lifecycle; companions; }
+            { resource; args; lifecycle; companions; dependsOn; }
           args: single blocks are objects (cpu, memory, disk for lxc, ...),
           repeatable blocks are lists (network_interface, mount_point,
           ip_config, vm disk, hostpci, ...); null leaves and empty blocks are
           dropped. lifecycle: prevent_destroy / ignore_changes (Terraform
-          meta-arguments). companions.lxc_extra_conf: raw lxc.conf lines.
+          meta-arguments; ignore_changes also holds what the kit ignores by
+          itself: clone on a guest that declares one, description on a
+          container with lxcExtraConf, and what an import does not record on
+          a guest with adoption.unrecorded = "ignore").
+          companions.lxc_extra_conf: raw lxc.conf lines.
+          dependsOn: model ids that must exist before the guest is
+          created: images (the images it uses that have a source: their
+          upload) and guests (the template a source.clone.guest names).
+        '';
+      };
+      unrecordedIgnored = mkOption {
+        type = types.attrsOf (types.listOf types.str);
+        readOnly = true;
+        default = builtins.listToAttrs (
+          concatMap (
+            { estate, g, ... }:
+            optional (unrecordedIgnoredOf estate g != [ ]) {
+              name = g.id;
+              value = unrecordedIgnoredOf estate g;
+            }
+          ) allGuests
+        );
+        description = ''
+          Derived, read-only: per guest id with adoption.unrecorded =
+          "ignore" (its own, or the estate's guestDefaults), the provider
+          arguments that puts under lifecycle.ignore_changes. A change to one
+          of them in the model is NOT applied to that guest while it is
+          listed here; setting adoption.unrecorded = "apply" on the guest
+          applies them again, with one reboot.
+        '';
+      };
+      lxcExtraConfIdmap = mkOption {
+        type = types.attrsOf (types.listOf types.str);
+        readOnly = true;
+        default = builtins.listToAttrs (
+          concatMap (
+            { g, ... }:
+            optional (idmapLinesOf g != [ ]) {
+              name = g.id;
+              value = idmapLinesOf g;
+            }
+          ) allGuests
+        );
+        description = ''
+          Derived, read-only: per guest id, the lxc.idmap lines its
+          lxcExtraConf carries. They are not rendered as the provider's idmap,
+          which reads them from the live guest all the same: such a guest
+          plans an idmap removal (the lines deleted from the conf file over
+          ssh, the container rebooted). Declare them as `idmap` instead.
         '';
       };
       guestOptionPaths = mkOption {
@@ -1490,6 +1919,10 @@ in
     };
 
     assertions =
-      estateKeyAssertions ++ defaultsAssertions ++ concatMap guestAssertions allGuests ++ vmidAssertions;
+      estateKeyAssertions
+      ++ defaultsAssertions
+      ++ concatMap guestAssertions allGuests
+      ++ uploadAssertions
+      ++ vmidAssertions;
   };
 }

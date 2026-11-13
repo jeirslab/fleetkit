@@ -1,0 +1,14 @@
+# The fixture's playbook (estate "addon" of tests/fixtures/tf-mini). Nothing
+# runs it: the tests render it and read its store path. Generic data only.
+- name: Configure the router
+  hosts: all
+  gather_facts: false
+  vars:
+    admin_password: "{{ lookup('ansible.builtin.file', vyos_password_file) }}"
+  tasks:
+    - name: Wait for the guest to answer
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+    - name: Host name
+      vyos.vyos.vyos_system:
+        host_name: "{{ hostname }}"

@@ -1,0 +1,6300 @@
+{
+ "bridge": "1.4.0",
+ "dataSources": {
+  "github_actions_environment_public_key": {
+   "f": {
+    "environment": {
+     "n": "environment"
+    },
+    "id": {
+     "n": "id"
+    },
+    "key": {
+     "n": "key"
+    },
+    "key_id": {
+     "n": "keyId"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/getActionsEnvironmentPublicKey:getActionsEnvironmentPublicKey"
+  },
+  "github_actions_environment_secrets": {
+   "f": {
+    "environment": {
+     "n": "environment"
+    },
+    "full_name": {
+     "n": "fullName"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "secrets": {
+     "arr": true,
+     "f": {
+      "created_at": {
+       "n": "createdAt"
+      },
+      "name": {
+       "n": "name"
+      },
+      "updated_at": {
+       "n": "updatedAt"
+      }
+     },
+     "n": "secrets"
+    }
+   },
+   "token": "github:index/getActionsEnvironmentSecrets:getActionsEnvironmentSecrets"
+  },
+  "github_actions_environment_variables": {
+   "f": {
+    "environment": {
+     "n": "environment"
+    },
+    "full_name": {
+     "n": "fullName"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "variables": {
+     "arr": true,
+     "f": {
+      "created_at": {
+       "n": "createdAt"
+      },
+      "name": {
+       "n": "name"
+      },
+      "updated_at": {
+       "n": "updatedAt"
+      },
+      "value": {
+       "n": "value"
+      }
+     },
+     "n": "variables"
+    }
+   },
+   "token": "github:index/getActionsEnvironmentVariables:getActionsEnvironmentVariables"
+  },
+  "github_actions_organization_oidc_subject_claim_customization_template": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "include_claim_keys": {
+     "arr": true,
+     "n": "includeClaimKeys"
+    }
+   },
+   "token": "github:index/getActionsOrganizationOidcSubjectClaimCustomizationTemplate:getActionsOrganizationOidcSubjectClaimCustomizationTemplate"
+  },
+  "github_actions_organization_public_key": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "key": {
+     "n": "key"
+    },
+    "key_id": {
+     "n": "keyId"
+    }
+   },
+   "token": "github:index/getActionsOrganizationPublicKey:getActionsOrganizationPublicKey"
+  },
+  "github_actions_organization_registration_token": {
+   "f": {
+    "expires_at": {
+     "n": "expiresAt"
+    },
+    "id": {
+     "n": "id"
+    },
+    "token": {
+     "n": "token"
+    }
+   },
+   "token": "github:index/getActionsOrganizationRegistrationToken:getActionsOrganizationRegistrationToken"
+  },
+  "github_actions_organization_secrets": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "secrets": {
+     "arr": true,
+     "f": {
+      "created_at": {
+       "n": "createdAt"
+      },
+      "name": {
+       "n": "name"
+      },
+      "updated_at": {
+       "n": "updatedAt"
+      },
+      "visibility": {
+       "n": "visibility"
+      }
+     },
+     "n": "secrets"
+    }
+   },
+   "token": "github:index/getActionsOrganizationSecrets:getActionsOrganizationSecrets"
+  },
+  "github_actions_organization_variables": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "variables": {
+     "arr": true,
+     "f": {
+      "created_at": {
+       "n": "createdAt"
+      },
+      "name": {
+       "n": "name"
+      },
+      "updated_at": {
+       "n": "updatedAt"
+      },
+      "value": {
+       "n": "value"
+      },
+      "visibility": {
+       "n": "visibility"
+      }
+     },
+     "n": "variables"
+    }
+   },
+   "token": "github:index/getActionsOrganizationVariables:getActionsOrganizationVariables"
+  },
+  "github_actions_public_key": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "key": {
+     "n": "key"
+    },
+    "key_id": {
+     "n": "keyId"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/getActionsPublicKey:getActionsPublicKey"
+  },
+  "github_actions_registration_token": {
+   "f": {
+    "expires_at": {
+     "n": "expiresAt"
+    },
+    "id": {
+     "n": "id"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "token": {
+     "n": "token"
+    }
+   },
+   "token": "github:index/getActionsRegistrationToken:getActionsRegistrationToken"
+  },
+  "github_actions_repository_oidc_subject_claim_customization_template": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "include_claim_keys": {
+     "arr": true,
+     "n": "includeClaimKeys"
+    },
+    "name": {
+     "n": "name"
+    },
+    "use_default": {
+     "n": "useDefault"
+    }
+   },
+   "token": "github:index/getActionsRepositoryOidcSubjectClaimCustomizationTemplate:getActionsRepositoryOidcSubjectClaimCustomizationTemplate"
+  },
+  "github_actions_secrets": {
+   "f": {
+    "full_name": {
+     "n": "fullName"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "secrets": {
+     "arr": true,
+     "f": {
+      "created_at": {
+       "n": "createdAt"
+      },
+      "name": {
+       "n": "name"
+      },
+      "updated_at": {
+       "n": "updatedAt"
+      }
+     },
+     "n": "secrets"
+    }
+   },
+   "token": "github:index/getActionsSecrets:getActionsSecrets"
+  },
+  "github_actions_variables": {
+   "f": {
+    "full_name": {
+     "n": "fullName"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "variables": {
+     "arr": true,
+     "f": {
+      "created_at": {
+       "n": "createdAt"
+      },
+      "name": {
+       "n": "name"
+      },
+      "updated_at": {
+       "n": "updatedAt"
+      },
+      "value": {
+       "n": "value"
+      }
+     },
+     "n": "variables"
+    }
+   },
+   "token": "github:index/getActionsVariables:getActionsVariables"
+  },
+  "github_app": {
+   "f": {
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_id": {
+     "n": "nodeId"
+    },
+    "slug": {
+     "n": "slug"
+    }
+   },
+   "token": "github:index/getApp:getApp"
+  },
+  "github_app_token": {
+   "f": {
+    "app_id": {
+     "n": "appId"
+    },
+    "id": {
+     "n": "id"
+    },
+    "installation_id": {
+     "n": "installationId"
+    },
+    "pem_file": {
+     "n": "pemFile"
+    },
+    "token": {
+     "n": "token"
+    }
+   },
+   "token": "github:index/getAppToken:getAppToken"
+  },
+  "github_branch": {
+   "f": {
+    "branch": {
+     "n": "branch"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ref": {
+     "n": "ref"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "sha": {
+     "n": "sha"
+    }
+   },
+   "token": "github:index/getBranch:getBranch"
+  },
+  "github_branch_protection_rules": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "rules": {
+     "arr": true,
+     "f": {
+      "pattern": {
+       "n": "pattern"
+      }
+     },
+     "n": "rules"
+    }
+   },
+   "token": "github:index/getBranchProtectionRules:getBranchProtectionRules"
+  },
+  "github_codespaces_organization_public_key": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "key": {
+     "n": "key"
+    },
+    "key_id": {
+     "n": "keyId"
+    }
+   },
+   "token": "github:index/getCodespacesOrganizationPublicKey:getCodespacesOrganizationPublicKey"
+  },
+  "github_codespaces_organization_secrets": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "secrets": {
+     "arr": true,
+     "f": {
+      "created_at": {
+       "n": "createdAt"
+      },
+      "name": {
+       "n": "name"
+      },
+      "updated_at": {
+       "n": "updatedAt"
+      },
+      "visibility": {
+       "n": "visibility"
+      }
+     },
+     "n": "secrets"
+    }
+   },
+   "token": "github:index/getCodespacesOrganizationSecrets:getCodespacesOrganizationSecrets"
+  },
+  "github_codespaces_public_key": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "key": {
+     "n": "key"
+    },
+    "key_id": {
+     "n": "keyId"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/getCodespacesPublicKey:getCodespacesPublicKey"
+  },
+  "github_codespaces_secrets": {
+   "f": {
+    "full_name": {
+     "n": "fullName"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "secrets": {
+     "arr": true,
+     "f": {
+      "created_at": {
+       "n": "createdAt"
+      },
+      "name": {
+       "n": "name"
+      },
+      "updated_at": {
+       "n": "updatedAt"
+      }
+     },
+     "n": "secrets"
+    }
+   },
+   "token": "github:index/getCodespacesSecrets:getCodespacesSecrets"
+  },
+  "github_codespaces_user_public_key": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "key": {
+     "n": "key"
+    },
+    "key_id": {
+     "n": "keyId"
+    }
+   },
+   "token": "github:index/getCodespacesUserPublicKey:getCodespacesUserPublicKey"
+  },
+  "github_codespaces_user_secrets": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "secrets": {
+     "arr": true,
+     "f": {
+      "created_at": {
+       "n": "createdAt"
+      },
+      "name": {
+       "n": "name"
+      },
+      "updated_at": {
+       "n": "updatedAt"
+      },
+      "visibility": {
+       "n": "visibility"
+      }
+     },
+     "n": "secrets"
+    }
+   },
+   "token": "github:index/getCodespacesUserSecrets:getCodespacesUserSecrets"
+  },
+  "github_collaborators": {
+   "f": {
+    "affiliation": {
+     "n": "affiliation"
+    },
+    "collaborator": {
+     "arr": true,
+     "f": {
+      "events_url": {
+       "n": "eventsUrl"
+      },
+      "followers_url": {
+       "n": "followersUrl"
+      },
+      "following_url": {
+       "n": "followingUrl"
+      },
+      "gists_url": {
+       "n": "gistsUrl"
+      },
+      "html_url": {
+       "n": "htmlUrl"
+      },
+      "id": {
+       "n": "id"
+      },
+      "login": {
+       "n": "login"
+      },
+      "organizations_url": {
+       "n": "organizationsUrl"
+      },
+      "permission": {
+       "n": "permission"
+      },
+      "received_events_url": {
+       "n": "receivedEventsUrl"
+      },
+      "repos_url": {
+       "n": "reposUrl"
+      },
+      "site_admin": {
+       "n": "siteAdmin"
+      },
+      "starred_url": {
+       "n": "starredUrl"
+      },
+      "subscriptions_url": {
+       "n": "subscriptionsUrl"
+      },
+      "type": {
+       "n": "type"
+      },
+      "url": {
+       "n": "url"
+      }
+     },
+     "n": "collaborators"
+    },
+    "id": {
+     "n": "id"
+    },
+    "owner": {
+     "n": "owner"
+    },
+    "permission": {
+     "n": "permission"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/getCollaborators:getCollaborators"
+  },
+  "github_dependabot_organization_public_key": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "key": {
+     "n": "key"
+    },
+    "key_id": {
+     "n": "keyId"
+    }
+   },
+   "token": "github:index/getDependabotOrganizationPublicKey:getDependabotOrganizationPublicKey"
+  },
+  "github_dependabot_organization_secrets": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "secrets": {
+     "arr": true,
+     "f": {
+      "created_at": {
+       "n": "createdAt"
+      },
+      "name": {
+       "n": "name"
+      },
+      "updated_at": {
+       "n": "updatedAt"
+      },
+      "visibility": {
+       "n": "visibility"
+      }
+     },
+     "n": "secrets"
+    }
+   },
+   "token": "github:index/getDependabotOrganizationSecrets:getDependabotOrganizationSecrets"
+  },
+  "github_dependabot_public_key": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "key": {
+     "n": "key"
+    },
+    "key_id": {
+     "n": "keyId"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/getDependabotPublicKey:getDependabotPublicKey"
+  },
+  "github_dependabot_secrets": {
+   "f": {
+    "full_name": {
+     "n": "fullName"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "secrets": {
+     "arr": true,
+     "f": {
+      "created_at": {
+       "n": "createdAt"
+      },
+      "name": {
+       "n": "name"
+      },
+      "updated_at": {
+       "n": "updatedAt"
+      }
+     },
+     "n": "secrets"
+    }
+   },
+   "token": "github:index/getDependabotSecrets:getDependabotSecrets"
+  },
+  "github_enterprise": {
+   "f": {
+    "created_at": {
+     "n": "createdAt"
+    },
+    "database_id": {
+     "n": "databaseId"
+    },
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "slug": {
+     "n": "slug"
+    },
+    "url": {
+     "n": "url"
+    }
+   },
+   "token": "github:index/getEnterprise:getEnterprise"
+  },
+  "github_external_groups": {
+   "f": {
+    "external_groups": {
+     "arr": true,
+     "f": {
+      "group_id": {
+       "n": "groupId"
+      },
+      "group_name": {
+       "n": "groupName"
+      },
+      "updated_at": {
+       "n": "updatedAt"
+      }
+     },
+     "n": "externalGroups"
+    },
+    "id": {
+     "n": "id"
+    }
+   },
+   "token": "github:index/getExternalGroups:getExternalGroups"
+  },
+  "github_ip_ranges": {
+   "f": {
+    "actions": {
+     "arr": true,
+     "n": "actions"
+    },
+    "actions_ipv4": {
+     "arr": true,
+     "n": "actionsIpv4s"
+    },
+    "actions_ipv6": {
+     "arr": true,
+     "n": "actionsIpv6s"
+    },
+    "actions_macos": {
+     "arr": true,
+     "n": "actionsMacos"
+    },
+    "actions_macos_ipv4": {
+     "arr": true,
+     "n": "actionsMacosIpv4s"
+    },
+    "actions_macos_ipv6": {
+     "arr": true,
+     "n": "actionsMacosIpv6s"
+    },
+    "api": {
+     "arr": true,
+     "n": "apis"
+    },
+    "api_ipv4": {
+     "arr": true,
+     "n": "apiIpv4s"
+    },
+    "api_ipv6": {
+     "arr": true,
+     "n": "apiIpv6s"
+    },
+    "dependabot": {
+     "arr": true,
+     "n": "dependabots"
+    },
+    "dependabot_ipv4": {
+     "arr": true,
+     "n": "dependabotIpv4s"
+    },
+    "dependabot_ipv6": {
+     "arr": true,
+     "n": "dependabotIpv6s"
+    },
+    "git": {
+     "arr": true,
+     "n": "gits"
+    },
+    "git_ipv4": {
+     "arr": true,
+     "n": "gitIpv4s"
+    },
+    "git_ipv6": {
+     "arr": true,
+     "n": "gitIpv6s"
+    },
+    "github_enterprise_importer": {
+     "arr": true,
+     "n": "githubEnterpriseImporters"
+    },
+    "github_enterprise_importer_ipv4": {
+     "arr": true,
+     "n": "githubEnterpriseImporterIpv4s"
+    },
+    "github_enterprise_importer_ipv6": {
+     "arr": true,
+     "n": "githubEnterpriseImporterIpv6s"
+    },
+    "hooks": {
+     "arr": true,
+     "n": "hooks"
+    },
+    "hooks_ipv4": {
+     "arr": true,
+     "n": "hooksIpv4s"
+    },
+    "hooks_ipv6": {
+     "arr": true,
+     "n": "hooksIpv6s"
+    },
+    "id": {
+     "n": "id"
+    },
+    "importer": {
+     "arr": true,
+     "n": "importers"
+    },
+    "importer_ipv4": {
+     "arr": true,
+     "n": "importerIpv4s"
+    },
+    "importer_ipv6": {
+     "arr": true,
+     "n": "importerIpv6s"
+    },
+    "packages": {
+     "arr": true,
+     "n": "packages"
+    },
+    "packages_ipv4": {
+     "arr": true,
+     "n": "packagesIpv4s"
+    },
+    "packages_ipv6": {
+     "arr": true,
+     "n": "packagesIpv6s"
+    },
+    "pages": {
+     "arr": true,
+     "n": "pages"
+    },
+    "pages_ipv4": {
+     "arr": true,
+     "n": "pagesIpv4s"
+    },
+    "pages_ipv6": {
+     "arr": true,
+     "n": "pagesIpv6s"
+    },
+    "web": {
+     "arr": true,
+     "n": "webs"
+    },
+    "web_ipv4": {
+     "arr": true,
+     "n": "webIpv4s"
+    },
+    "web_ipv6": {
+     "arr": true,
+     "n": "webIpv6s"
+    }
+   },
+   "token": "github:index/getIpRanges:getIpRanges"
+  },
+  "github_issue_labels": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "labels": {
+     "arr": true,
+     "f": {
+      "color": {
+       "n": "color"
+      },
+      "description": {
+       "n": "description"
+      },
+      "name": {
+       "n": "name"
+      },
+      "url": {
+       "n": "url"
+      }
+     },
+     "n": "labels"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/getIssueLabels:getIssueLabels"
+  },
+  "github_membership": {
+   "f": {
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "id"
+    },
+    "organization": {
+     "n": "organization"
+    },
+    "role": {
+     "n": "role"
+    },
+    "state": {
+     "n": "state"
+    },
+    "username": {
+     "n": "username"
+    }
+   },
+   "token": "github:index/getMembership:getMembership"
+  },
+  "github_organization": {
+   "f": {
+    "advanced_security_enabled_for_new_repositories": {
+     "n": "advancedSecurityEnabledForNewRepositories"
+    },
+    "default_repository_permission": {
+     "n": "defaultRepositoryPermission"
+    },
+    "dependabot_alerts_enabled_for_new_repositories": {
+     "n": "dependabotAlertsEnabledForNewRepositories"
+    },
+    "dependabot_security_updates_enabled_for_new_repositories": {
+     "n": "dependabotSecurityUpdatesEnabledForNewRepositories"
+    },
+    "dependency_graph_enabled_for_new_repositories": {
+     "n": "dependencyGraphEnabledForNewRepositories"
+    },
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ignore_archived_repos": {
+     "n": "ignoreArchivedRepos"
+    },
+    "login": {
+     "n": "login"
+    },
+    "members": {
+     "arr": true,
+     "n": "members"
+    },
+    "members_allowed_repository_creation_type": {
+     "n": "membersAllowedRepositoryCreationType"
+    },
+    "members_can_create_internal_repositories": {
+     "n": "membersCanCreateInternalRepositories"
+    },
+    "members_can_create_pages": {
+     "n": "membersCanCreatePages"
+    },
+    "members_can_create_private_pages": {
+     "n": "membersCanCreatePrivatePages"
+    },
+    "members_can_create_private_repositories": {
+     "n": "membersCanCreatePrivateRepositories"
+    },
+    "members_can_create_public_pages": {
+     "n": "membersCanCreatePublicPages"
+    },
+    "members_can_create_public_repositories": {
+     "n": "membersCanCreatePublicRepositories"
+    },
+    "members_can_create_repositories": {
+     "n": "membersCanCreateRepositories"
+    },
+    "members_can_fork_private_repositories": {
+     "n": "membersCanForkPrivateRepositories"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_id": {
+     "n": "nodeId"
+    },
+    "orgname": {
+     "n": "orgname"
+    },
+    "plan": {
+     "n": "plan"
+    },
+    "repositories": {
+     "arr": true,
+     "n": "repositories"
+    },
+    "secret_scanning_enabled_for_new_repositories": {
+     "n": "secretScanningEnabledForNewRepositories"
+    },
+    "secret_scanning_push_protection_enabled_for_new_repositories": {
+     "n": "secretScanningPushProtectionEnabledForNewRepositories"
+    },
+    "summary_only": {
+     "n": "summaryOnly"
+    },
+    "two_factor_requirement_enabled": {
+     "n": "twoFactorRequirementEnabled"
+    },
+    "users": {
+     "arr": true,
+     "n": "users"
+    },
+    "web_commit_signoff_required": {
+     "n": "webCommitSignoffRequired"
+    }
+   },
+   "token": "github:index/getOrganization:getOrganization"
+  },
+  "github_organization_app_installations": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "installations": {
+     "arr": true,
+     "f": {
+      "app_id": {
+       "n": "appId"
+      },
+      "app_slug": {
+       "n": "appSlug"
+      },
+      "client_id": {
+       "n": "clientId"
+      },
+      "created_at": {
+       "n": "createdAt"
+      },
+      "events": {
+       "arr": true,
+       "n": "events"
+      },
+      "id": {
+       "n": "id"
+      },
+      "permissions": {
+       "map": true,
+       "n": "permissions"
+      },
+      "repository_selection": {
+       "n": "repositorySelection"
+      },
+      "single_file_paths": {
+       "arr": true,
+       "n": "singleFilePaths"
+      },
+      "suspended": {
+       "n": "suspended"
+      },
+      "target_id": {
+       "n": "targetId"
+      },
+      "target_type": {
+       "n": "targetType"
+      },
+      "updated_at": {
+       "n": "updatedAt"
+      }
+     },
+     "n": "installations"
+    }
+   },
+   "token": "github:index/getOrganizationAppInstallations:getOrganizationAppInstallations"
+  },
+  "github_organization_custom_properties": {
+   "f": {
+    "allowed_values": {
+     "arr": true,
+     "n": "allowedValues"
+    },
+    "default_value": {
+     "n": "defaultValue"
+    },
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "id"
+    },
+    "property_name": {
+     "n": "propertyName"
+    },
+    "required": {
+     "n": "required"
+    },
+    "value_type": {
+     "n": "valueType"
+    },
+    "values_editable_by": {
+     "n": "valuesEditableBy"
+    }
+   },
+   "token": "github:index/getOrganizationCustomProperties:getOrganizationCustomProperties"
+  },
+  "github_organization_custom_role": {
+   "f": {
+    "base_role": {
+     "n": "baseRole"
+    },
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "permissions": {
+     "arr": true,
+     "n": "permissions"
+    }
+   },
+   "token": "github:index/getOrganizationCustomRole:getOrganizationCustomRole"
+  },
+  "github_organization_external_identities": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "identities": {
+     "arr": true,
+     "f": {
+      "login": {
+       "n": "login"
+      },
+      "saml_identity": {
+       "map": true,
+       "n": "samlIdentity"
+      },
+      "scim_identity": {
+       "map": true,
+       "n": "scimIdentity"
+      }
+     },
+     "n": "identities"
+    }
+   },
+   "token": "github:index/getOrganizationExternalIdentities:getOrganizationExternalIdentities"
+  },
+  "github_organization_ip_allow_list": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "ip_allow_list": {
+     "arr": true,
+     "f": {
+      "allow_list_value": {
+       "n": "allowListValue"
+      },
+      "created_at": {
+       "n": "createdAt"
+      },
+      "id": {
+       "n": "id"
+      },
+      "is_active": {
+       "n": "isActive"
+      },
+      "name": {
+       "n": "name"
+      },
+      "updated_at": {
+       "n": "updatedAt"
+      }
+     },
+     "n": "ipAllowLists"
+    }
+   },
+   "token": "github:index/getOrganizationIpAllowList:getOrganizationIpAllowList"
+  },
+  "github_organization_repository_role": {
+   "f": {
+    "base_role": {
+     "n": "baseRole"
+    },
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "permissions": {
+     "arr": true,
+     "n": "permissions"
+    },
+    "role_id": {
+     "n": "roleId"
+    }
+   },
+   "token": "github:index/getOrganizationRepositoryRole:getOrganizationRepositoryRole"
+  },
+  "github_organization_repository_roles": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "roles": {
+     "arr": true,
+     "f": {
+      "base_role": {
+       "n": "baseRole"
+      },
+      "description": {
+       "n": "description"
+      },
+      "name": {
+       "n": "name"
+      },
+      "permissions": {
+       "arr": true,
+       "n": "permissions"
+      },
+      "role_id": {
+       "n": "roleId"
+      }
+     },
+     "n": "roles"
+    }
+   },
+   "token": "github:index/getOrganizationRepositoryRoles:getOrganizationRepositoryRoles"
+  },
+  "github_organization_role": {
+   "f": {
+    "base_role": {
+     "n": "baseRole"
+    },
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "permissions": {
+     "arr": true,
+     "n": "permissions"
+    },
+    "role_id": {
+     "n": "roleId"
+    },
+    "source": {
+     "n": "source"
+    }
+   },
+   "token": "github:index/getOrganizationRole:getOrganizationRole"
+  },
+  "github_organization_role_teams": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "role_id": {
+     "n": "roleId"
+    },
+    "teams": {
+     "arr": true,
+     "f": {
+      "name": {
+       "n": "name"
+      },
+      "permission": {
+       "n": "permission"
+      },
+      "slug": {
+       "n": "slug"
+      },
+      "team_id": {
+       "n": "teamId"
+      }
+     },
+     "n": "teams"
+    }
+   },
+   "token": "github:index/getOrganizationRoleTeams:getOrganizationRoleTeams"
+  },
+  "github_organization_role_users": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "role_id": {
+     "n": "roleId"
+    },
+    "users": {
+     "arr": true,
+     "f": {
+      "login": {
+       "n": "login"
+      },
+      "user_id": {
+       "n": "userId"
+      }
+     },
+     "n": "users"
+    }
+   },
+   "token": "github:index/getOrganizationRoleUsers:getOrganizationRoleUsers"
+  },
+  "github_organization_roles": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "roles": {
+     "arr": true,
+     "f": {
+      "base_role": {
+       "n": "baseRole"
+      },
+      "description": {
+       "n": "description"
+      },
+      "name": {
+       "n": "name"
+      },
+      "permissions": {
+       "arr": true,
+       "n": "permissions"
+      },
+      "role_id": {
+       "n": "roleId"
+      },
+      "source": {
+       "n": "source"
+      }
+     },
+     "n": "roles"
+    }
+   },
+   "token": "github:index/getOrganizationRoles:getOrganizationRoles"
+  },
+  "github_organization_security_managers": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "teams": {
+     "arr": true,
+     "f": {
+      "id": {
+       "n": "id"
+      },
+      "name": {
+       "n": "name"
+      },
+      "permission": {
+       "n": "permission"
+      },
+      "slug": {
+       "n": "slug"
+      }
+     },
+     "n": "teams"
+    }
+   },
+   "token": "github:index/getOrganizationSecurityManagers:getOrganizationSecurityManagers"
+  },
+  "github_organization_team_sync_groups": {
+   "f": {
+    "groups": {
+     "arr": true,
+     "f": {
+      "group_description": {
+       "n": "groupDescription"
+      },
+      "group_id": {
+       "n": "groupId"
+      },
+      "group_name": {
+       "n": "groupName"
+      }
+     },
+     "n": "groups"
+    },
+    "id": {
+     "n": "id"
+    }
+   },
+   "token": "github:index/getOrganizationTeamSyncGroups:getOrganizationTeamSyncGroups"
+  },
+  "github_organization_teams": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "results_per_page": {
+     "n": "resultsPerPage"
+    },
+    "root_teams_only": {
+     "n": "rootTeamsOnly"
+    },
+    "summary_only": {
+     "n": "summaryOnly"
+    },
+    "teams": {
+     "arr": true,
+     "f": {
+      "description": {
+       "n": "description"
+      },
+      "id": {
+       "n": "id"
+      },
+      "members": {
+       "arr": true,
+       "n": "members"
+      },
+      "name": {
+       "n": "name"
+      },
+      "node_id": {
+       "n": "nodeId"
+      },
+      "parent": {
+       "map": true,
+       "n": "parent"
+      },
+      "parent_team_id": {
+       "n": "parentTeamId"
+      },
+      "parent_team_slug": {
+       "n": "parentTeamSlug"
+      },
+      "privacy": {
+       "n": "privacy"
+      },
+      "repositories": {
+       "arr": true,
+       "n": "repositories"
+      },
+      "slug": {
+       "n": "slug"
+      }
+     },
+     "n": "teams"
+    }
+   },
+   "token": "github:index/getOrganizationTeams:getOrganizationTeams"
+  },
+  "github_organization_webhooks": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "webhooks": {
+     "arr": true,
+     "f": {
+      "active": {
+       "n": "active"
+      },
+      "id": {
+       "n": "id"
+      },
+      "name": {
+       "n": "name"
+      },
+      "type": {
+       "n": "type"
+      },
+      "url": {
+       "n": "url"
+      }
+     },
+     "n": "webhooks"
+    }
+   },
+   "token": "github:index/getOrganizationWebhooks:getOrganizationWebhooks"
+  },
+  "github_ref": {
+   "f": {
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "id"
+    },
+    "owner": {
+     "n": "owner"
+    },
+    "ref": {
+     "n": "ref"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "sha": {
+     "n": "sha"
+    }
+   },
+   "token": "github:index/getRef:getRef"
+  },
+  "github_release": {
+   "f": {
+    "asserts_url": {
+     "n": "assertsUrl"
+    },
+    "assets": {
+     "arr": true,
+     "f": {
+      "browser_download_url": {
+       "n": "browserDownloadUrl"
+      },
+      "content_type": {
+       "n": "contentType"
+      },
+      "created_at": {
+       "n": "createdAt"
+      },
+      "id": {
+       "n": "id"
+      },
+      "label": {
+       "n": "label"
+      },
+      "name": {
+       "n": "name"
+      },
+      "node_id": {
+       "n": "nodeId"
+      },
+      "size": {
+       "n": "size"
+      },
+      "updated_at": {
+       "n": "updatedAt"
+      },
+      "url": {
+       "n": "url"
+      }
+     },
+     "n": "assets"
+    },
+    "assets_url": {
+     "n": "assetsUrl"
+    },
+    "body": {
+     "n": "body"
+    },
+    "created_at": {
+     "n": "createdAt"
+    },
+    "draft": {
+     "n": "draft"
+    },
+    "html_url": {
+     "n": "htmlUrl"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "owner": {
+     "n": "owner"
+    },
+    "prerelease": {
+     "n": "prerelease"
+    },
+    "published_at": {
+     "n": "publishedAt"
+    },
+    "release_id": {
+     "n": "releaseId"
+    },
+    "release_tag": {
+     "n": "releaseTag"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "retrieve_by": {
+     "n": "retrieveBy"
+    },
+    "tarball_url": {
+     "n": "tarballUrl"
+    },
+    "target_commitish": {
+     "n": "targetCommitish"
+    },
+    "upload_url": {
+     "n": "uploadUrl"
+    },
+    "url": {
+     "n": "url"
+    },
+    "zipball_url": {
+     "n": "zipballUrl"
+    }
+   },
+   "token": "github:index/getRelease:getRelease"
+  },
+  "github_release_asset": {
+   "f": {
+    "asset_id": {
+     "n": "assetId"
+    },
+    "browser_download_url": {
+     "n": "browserDownloadUrl"
+    },
+    "content_type": {
+     "n": "contentType"
+    },
+    "created_at": {
+     "n": "createdAt"
+    },
+    "download_file_contents": {
+     "n": "downloadFileContents"
+    },
+    "file_contents": {
+     "n": "fileContents"
+    },
+    "id": {
+     "n": "id"
+    },
+    "label": {
+     "n": "label"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_id": {
+     "n": "nodeId"
+    },
+    "owner": {
+     "n": "owner"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "size": {
+     "n": "size"
+    },
+    "updated_at": {
+     "n": "updatedAt"
+    },
+    "url": {
+     "n": "url"
+    }
+   },
+   "token": "github:index/getReleaseAsset:getReleaseAsset"
+  },
+  "github_repositories": {
+   "f": {
+    "full_names": {
+     "arr": true,
+     "n": "fullNames"
+    },
+    "id": {
+     "n": "id"
+    },
+    "include_repo_id": {
+     "n": "includeRepoId"
+    },
+    "names": {
+     "arr": true,
+     "n": "names"
+    },
+    "query": {
+     "n": "query"
+    },
+    "repo_ids": {
+     "arr": true,
+     "n": "repoIds"
+    },
+    "results_per_page": {
+     "n": "resultsPerPage"
+    },
+    "sort": {
+     "n": "sort"
+    }
+   },
+   "token": "github:index/getRepositories:getRepositories"
+  },
+  "github_repository": {
+   "f": {
+    "allow_auto_merge": {
+     "n": "allowAutoMerge"
+    },
+    "allow_forking": {
+     "n": "allowForking"
+    },
+    "allow_merge_commit": {
+     "n": "allowMergeCommit"
+    },
+    "allow_rebase_merge": {
+     "n": "allowRebaseMerge"
+    },
+    "allow_squash_merge": {
+     "n": "allowSquashMerge"
+    },
+    "allow_update_branch": {
+     "n": "allowUpdateBranch"
+    },
+    "archived": {
+     "n": "archived"
+    },
+    "default_branch": {
+     "n": "defaultBranch"
+    },
+    "delete_branch_on_merge": {
+     "n": "deleteBranchOnMerge"
+    },
+    "description": {
+     "n": "description"
+    },
+    "fork": {
+     "n": "fork"
+    },
+    "full_name": {
+     "n": "fullName"
+    },
+    "git_clone_url": {
+     "n": "gitCloneUrl"
+    },
+    "has_discussions": {
+     "n": "hasDiscussions"
+    },
+    "has_downloads": {
+     "n": "hasDownloads"
+    },
+    "has_issues": {
+     "n": "hasIssues"
+    },
+    "has_projects": {
+     "n": "hasProjects"
+    },
+    "has_wiki": {
+     "n": "hasWiki"
+    },
+    "homepage_url": {
+     "n": "homepageUrl"
+    },
+    "html_url": {
+     "n": "htmlUrl"
+    },
+    "http_clone_url": {
+     "n": "httpCloneUrl"
+    },
+    "id": {
+     "n": "id"
+    },
+    "is_template": {
+     "n": "isTemplate"
+    },
+    "merge_commit_message": {
+     "n": "mergeCommitMessage"
+    },
+    "merge_commit_title": {
+     "n": "mergeCommitTitle"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_id": {
+     "n": "nodeId"
+    },
+    "pages": {
+     "arr": true,
+     "f": {
+      "build_type": {
+       "n": "buildType"
+      },
+      "cname": {
+       "n": "cname"
+      },
+      "custom_404": {
+       "n": "custom404"
+      },
+      "html_url": {
+       "n": "htmlUrl"
+      },
+      "source": {
+       "arr": true,
+       "f": {
+        "branch": {
+         "n": "branch"
+        },
+        "path": {
+         "n": "path"
+        }
+       },
+       "n": "sources"
+      },
+      "status": {
+       "n": "status"
+      },
+      "url": {
+       "n": "url"
+      }
+     },
+     "n": "pages"
+    },
+    "primary_language": {
+     "n": "primaryLanguage"
+    },
+    "private": {
+     "n": "private"
+    },
+    "repo_id": {
+     "n": "repoId"
+    },
+    "repository_license": {
+     "arr": true,
+     "f": {
+      "content": {
+       "n": "content"
+      },
+      "download_url": {
+       "n": "downloadUrl"
+      },
+      "encoding": {
+       "n": "encoding"
+      },
+      "git_url": {
+       "n": "gitUrl"
+      },
+      "html_url": {
+       "n": "htmlUrl"
+      },
+      "license": {
+       "arr": true,
+       "f": {
+        "body": {
+         "n": "body"
+        },
+        "conditions": {
+         "arr": true,
+         "n": "conditions"
+        },
+        "description": {
+         "n": "description"
+        },
+        "featured": {
+         "n": "featured"
+        },
+        "html_url": {
+         "n": "htmlUrl"
+        },
+        "implementation": {
+         "n": "implementation"
+        },
+        "key": {
+         "n": "key"
+        },
+        "limitations": {
+         "arr": true,
+         "n": "limitations"
+        },
+        "name": {
+         "n": "name"
+        },
+        "permissions": {
+         "arr": true,
+         "n": "permissions"
+        },
+        "spdx_id": {
+         "n": "spdxId"
+        },
+        "url": {
+         "n": "url"
+        }
+       },
+       "n": "licenses"
+      },
+      "name": {
+       "n": "name"
+      },
+      "path": {
+       "n": "path"
+      },
+      "sha": {
+       "n": "sha"
+      },
+      "size": {
+       "n": "size"
+      },
+      "type": {
+       "n": "type"
+      },
+      "url": {
+       "n": "url"
+      }
+     },
+     "n": "repositoryLicenses"
+    },
+    "squash_merge_commit_message": {
+     "n": "squashMergeCommitMessage"
+    },
+    "squash_merge_commit_title": {
+     "n": "squashMergeCommitTitle"
+    },
+    "ssh_clone_url": {
+     "n": "sshCloneUrl"
+    },
+    "svn_url": {
+     "n": "svnUrl"
+    },
+    "template": {
+     "arr": true,
+     "f": {
+      "owner": {
+       "n": "owner"
+      },
+      "repository": {
+       "n": "repository"
+      }
+     },
+     "n": "templates"
+    },
+    "topics": {
+     "arr": true,
+     "n": "topics"
+    },
+    "visibility": {
+     "n": "visibility"
+    }
+   },
+   "token": "github:index/getRepository:getRepository"
+  },
+  "github_repository_autolink_references": {
+   "f": {
+    "autolink_references": {
+     "arr": true,
+     "f": {
+      "is_alphanumeric": {
+       "n": "isAlphanumeric"
+      },
+      "key_prefix": {
+       "n": "keyPrefix"
+      },
+      "target_url_template": {
+       "n": "targetUrlTemplate"
+      }
+     },
+     "n": "autolinkReferences"
+    },
+    "id": {
+     "n": "id"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/getRepositoryAutolinkReferences:getRepositoryAutolinkReferences"
+  },
+  "github_repository_branches": {
+   "f": {
+    "branches": {
+     "arr": true,
+     "f": {
+      "name": {
+       "n": "name"
+      },
+      "protected": {
+       "n": "protected"
+      }
+     },
+     "n": "branches"
+    },
+    "id": {
+     "n": "id"
+    },
+    "only_non_protected_branches": {
+     "n": "onlyNonProtectedBranches"
+    },
+    "only_protected_branches": {
+     "n": "onlyProtectedBranches"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/getRepositoryBranches:getRepositoryBranches"
+  },
+  "github_repository_custom_properties": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "property": {
+     "arr": true,
+     "f": {
+      "property_name": {
+       "n": "propertyName"
+      },
+      "property_value": {
+       "arr": true,
+       "n": "propertyValues"
+      }
+     },
+     "n": "properties"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/getRepositoryCustomProperties:getRepositoryCustomProperties"
+  },
+  "github_repository_deploy_keys": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "keys": {
+     "arr": true,
+     "f": {
+      "id": {
+       "n": "id"
+      },
+      "key": {
+       "n": "key"
+      },
+      "title": {
+       "n": "title"
+      },
+      "verified": {
+       "n": "verified"
+      }
+     },
+     "n": "keys"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/getRepositoryDeployKeys:getRepositoryDeployKeys"
+  },
+  "github_repository_deployment_branch_policies": {
+   "f": {
+    "deployment_branch_policies": {
+     "arr": true,
+     "f": {
+      "id": {
+       "n": "id"
+      },
+      "name": {
+       "n": "name"
+      }
+     },
+     "n": "deploymentBranchPolicies"
+    },
+    "environment_name": {
+     "n": "environmentName"
+    },
+    "id": {
+     "n": "id"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/getRepositoryDeploymentBranchPolicies:getRepositoryDeploymentBranchPolicies"
+  },
+  "github_repository_environment_deployment_policies": {
+   "f": {
+    "environment": {
+     "n": "environment"
+    },
+    "id": {
+     "n": "id"
+    },
+    "policies": {
+     "arr": true,
+     "f": {
+      "pattern": {
+       "n": "pattern"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "policies"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/getRepositoryEnvironmentDeploymentPolicies:getRepositoryEnvironmentDeploymentPolicies"
+  },
+  "github_repository_environments": {
+   "f": {
+    "environments": {
+     "arr": true,
+     "f": {
+      "name": {
+       "n": "name"
+      },
+      "node_id": {
+       "n": "nodeId"
+      }
+     },
+     "n": "environments"
+    },
+    "id": {
+     "n": "id"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/getRepositoryEnvironments:getRepositoryEnvironments"
+  },
+  "github_repository_file": {
+   "f": {
+    "branch": {
+     "n": "branch"
+    },
+    "commit_author": {
+     "n": "commitAuthor"
+    },
+    "commit_email": {
+     "n": "commitEmail"
+    },
+    "commit_message": {
+     "n": "commitMessage"
+    },
+    "commit_sha": {
+     "n": "commitSha"
+    },
+    "content": {
+     "n": "content"
+    },
+    "file": {
+     "n": "file"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ref": {
+     "n": "ref"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "sha": {
+     "n": "sha"
+    }
+   },
+   "token": "github:index/getRepositoryFile:getRepositoryFile"
+  },
+  "github_repository_milestone": {
+   "f": {
+    "description": {
+     "n": "description"
+    },
+    "due_date": {
+     "n": "dueDate"
+    },
+    "id": {
+     "n": "id"
+    },
+    "number": {
+     "n": "number"
+    },
+    "owner": {
+     "n": "owner"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "state": {
+     "n": "state"
+    },
+    "title": {
+     "n": "title"
+    }
+   },
+   "token": "github:index/getRepositoryMilestone:getRepositoryMilestone"
+  },
+  "github_repository_pages": {
+   "f": {
+    "api_url": {
+     "n": "apiUrl"
+    },
+    "build_status": {
+     "n": "buildStatus"
+    },
+    "build_type": {
+     "n": "buildType"
+    },
+    "cname": {
+     "n": "cname"
+    },
+    "custom_404": {
+     "n": "custom404"
+    },
+    "html_url": {
+     "n": "htmlUrl"
+    },
+    "https_enforced": {
+     "n": "httpsEnforced"
+    },
+    "id": {
+     "n": "id"
+    },
+    "public": {
+     "n": "public"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "source": {
+     "arr": true,
+     "f": {
+      "branch": {
+       "n": "branch"
+      },
+      "path": {
+       "n": "path"
+      }
+     },
+     "n": "sources"
+    }
+   },
+   "token": "github:index/getRepositoryPages:getRepositoryPages"
+  },
+  "github_repository_pull_request": {
+   "f": {
+    "base_ref": {
+     "n": "baseRef"
+    },
+    "base_repository": {
+     "n": "baseRepository"
+    },
+    "base_sha": {
+     "n": "baseSha"
+    },
+    "body": {
+     "n": "body"
+    },
+    "draft": {
+     "n": "draft"
+    },
+    "head_owner": {
+     "n": "headOwner"
+    },
+    "head_ref": {
+     "n": "headRef"
+    },
+    "head_repository": {
+     "n": "headRepository"
+    },
+    "head_sha": {
+     "n": "headSha"
+    },
+    "id": {
+     "n": "id"
+    },
+    "labels": {
+     "arr": true,
+     "n": "labels"
+    },
+    "maintainer_can_modify": {
+     "n": "maintainerCanModify"
+    },
+    "number": {
+     "n": "number"
+    },
+    "opened_at": {
+     "n": "openedAt"
+    },
+    "opened_by": {
+     "n": "openedBy"
+    },
+    "owner": {
+     "n": "owner"
+    },
+    "state": {
+     "n": "state"
+    },
+    "title": {
+     "n": "title"
+    },
+    "updated_at": {
+     "n": "updatedAt"
+    }
+   },
+   "token": "github:index/getRepositoryPullRequest:getRepositoryPullRequest"
+  },
+  "github_repository_pull_requests": {
+   "f": {
+    "base_ref": {
+     "n": "baseRef"
+    },
+    "base_repository": {
+     "n": "baseRepository"
+    },
+    "head_ref": {
+     "n": "headRef"
+    },
+    "id": {
+     "n": "id"
+    },
+    "owner": {
+     "n": "owner"
+    },
+    "results": {
+     "arr": true,
+     "f": {
+      "base_ref": {
+       "n": "baseRef"
+      },
+      "base_sha": {
+       "n": "baseSha"
+      },
+      "body": {
+       "n": "body"
+      },
+      "draft": {
+       "n": "draft"
+      },
+      "head_owner": {
+       "n": "headOwner"
+      },
+      "head_ref": {
+       "n": "headRef"
+      },
+      "head_repository": {
+       "n": "headRepository"
+      },
+      "head_sha": {
+       "n": "headSha"
+      },
+      "labels": {
+       "arr": true,
+       "n": "labels"
+      },
+      "maintainer_can_modify": {
+       "n": "maintainerCanModify"
+      },
+      "number": {
+       "n": "number"
+      },
+      "opened_at": {
+       "n": "openedAt"
+      },
+      "opened_by": {
+       "n": "openedBy"
+      },
+      "state": {
+       "n": "state"
+      },
+      "title": {
+       "n": "title"
+      },
+      "updated_at": {
+       "n": "updatedAt"
+      }
+     },
+     "n": "results"
+    },
+    "sort_by": {
+     "n": "sortBy"
+    },
+    "sort_direction": {
+     "n": "sortDirection"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "github:index/getRepositoryPullRequests:getRepositoryPullRequests"
+  },
+  "github_repository_teams": {
+   "f": {
+    "full_name": {
+     "n": "fullName"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "teams": {
+     "arr": true,
+     "f": {
+      "name": {
+       "n": "name"
+      },
+      "permission": {
+       "n": "permission"
+      },
+      "slug": {
+       "n": "slug"
+      }
+     },
+     "n": "teams"
+    }
+   },
+   "token": "github:index/getRepositoryTeams:getRepositoryTeams"
+  },
+  "github_repository_webhooks": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "webhooks": {
+     "arr": true,
+     "f": {
+      "active": {
+       "n": "active"
+      },
+      "id": {
+       "n": "id"
+      },
+      "name": {
+       "n": "name"
+      },
+      "type": {
+       "n": "type"
+      },
+      "url": {
+       "n": "url"
+      }
+     },
+     "n": "webhooks"
+    }
+   },
+   "token": "github:index/getRepositoryWebhooks:getRepositoryWebhooks"
+  },
+  "github_rest_api": {
+   "f": {
+    "body": {
+     "n": "body"
+    },
+    "code": {
+     "n": "code"
+    },
+    "endpoint": {
+     "n": "endpoint"
+    },
+    "headers": {
+     "n": "headers"
+    },
+    "id": {
+     "n": "id"
+    },
+    "status": {
+     "n": "status"
+    }
+   },
+   "token": "github:index/getRestApi:getRestApi"
+  },
+  "github_ssh_keys": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "keys": {
+     "arr": true,
+     "n": "keys"
+    }
+   },
+   "token": "github:index/getSshKeys:getSshKeys"
+  },
+  "github_team": {
+   "f": {
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "id"
+    },
+    "members": {
+     "arr": true,
+     "n": "members"
+    },
+    "membership_type": {
+     "n": "membershipType"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_id": {
+     "n": "nodeId"
+    },
+    "notification_setting": {
+     "n": "notificationSetting"
+    },
+    "permission": {
+     "n": "permission"
+    },
+    "privacy": {
+     "n": "privacy"
+    },
+    "repositories": {
+     "arr": true,
+     "n": "repositories"
+    },
+    "repositories_detailed": {
+     "arr": true,
+     "f": {
+      "repo_id": {
+       "n": "repoId"
+      },
+      "repo_name": {
+       "n": "repoName"
+      },
+      "role_name": {
+       "n": "roleName"
+      }
+     },
+     "n": "repositoriesDetaileds"
+    },
+    "results_per_page": {
+     "n": "resultsPerPage"
+    },
+    "slug": {
+     "n": "slug"
+    },
+    "summary_only": {
+     "n": "summaryOnly"
+    }
+   },
+   "token": "github:index/getTeam:getTeam"
+  },
+  "github_tree": {
+   "f": {
+    "entries": {
+     "arr": true,
+     "f": {
+      "mode": {
+       "n": "mode"
+      },
+      "path": {
+       "n": "path"
+      },
+      "sha": {
+       "n": "sha"
+      },
+      "size": {
+       "n": "size"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "entries"
+    },
+    "id": {
+     "n": "id"
+    },
+    "recursive": {
+     "n": "recursive"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "tree_sha": {
+     "n": "treeSha"
+    }
+   },
+   "token": "github:index/getTree:getTree"
+  },
+  "github_user": {
+   "f": {
+    "avatar_url": {
+     "n": "avatarUrl"
+    },
+    "bio": {
+     "n": "bio"
+    },
+    "blog": {
+     "n": "blog"
+    },
+    "company": {
+     "n": "company"
+    },
+    "created_at": {
+     "n": "createdAt"
+    },
+    "email": {
+     "n": "email"
+    },
+    "followers": {
+     "n": "followers"
+    },
+    "following": {
+     "n": "following"
+    },
+    "gpg_keys": {
+     "arr": true,
+     "n": "gpgKeys"
+    },
+    "gravatar_id": {
+     "n": "gravatarId"
+    },
+    "id": {
+     "n": "id"
+    },
+    "location": {
+     "n": "location"
+    },
+    "login": {
+     "n": "login"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_id": {
+     "n": "nodeId"
+    },
+    "public_gists": {
+     "n": "publicGists"
+    },
+    "public_repos": {
+     "n": "publicRepos"
+    },
+    "site_admin": {
+     "n": "siteAdmin"
+    },
+    "ssh_keys": {
+     "arr": true,
+     "n": "sshKeys"
+    },
+    "suspended_at": {
+     "n": "suspendedAt"
+    },
+    "updated_at": {
+     "n": "updatedAt"
+    },
+    "username": {
+     "n": "username"
+    }
+   },
+   "token": "github:index/getUser:getUser"
+  },
+  "github_user_external_identity": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "login": {
+     "n": "login"
+    },
+    "saml_identity": {
+     "map": true,
+     "n": "samlIdentity"
+    },
+    "scim_identity": {
+     "map": true,
+     "n": "scimIdentity"
+    },
+    "username": {
+     "n": "username"
+    }
+   },
+   "token": "github:index/getUserExternalIdentity:getUserExternalIdentity"
+  },
+  "github_users": {
+   "f": {
+    "emails": {
+     "arr": true,
+     "n": "emails"
+    },
+    "id": {
+     "n": "id"
+    },
+    "logins": {
+     "arr": true,
+     "n": "logins"
+    },
+    "node_ids": {
+     "arr": true,
+     "n": "nodeIds"
+    },
+    "unknown_logins": {
+     "arr": true,
+     "n": "unknownLogins"
+    },
+    "usernames": {
+     "arr": true,
+     "n": "usernames"
+    }
+   },
+   "token": "github:index/getUsers:getUsers"
+  }
+ },
+ "package": "github",
+ "provider": {
+  "app_auth": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "installation_id": {
+     "n": "installationId"
+    },
+    "pem_file": {
+     "n": "pemFile"
+    }
+   },
+   "n": "appAuth"
+  },
+  "base_url": {
+   "n": "baseUrl"
+  },
+  "cache_path": {
+   "n": "cachePath"
+  },
+  "insecure": {
+   "n": "insecure"
+  },
+  "legacy_client": {
+   "n": "legacyClient"
+  },
+  "max_per_page": {
+   "n": "maxPerPage"
+  },
+  "max_retries": {
+   "n": "maxRetries"
+  },
+  "organization": {
+   "n": "organization"
+  },
+  "owner": {
+   "n": "owner"
+  },
+  "parallel_requests": {
+   "n": "parallelRequests"
+  },
+  "read_delay_ms": {
+   "n": "readDelayMs"
+  },
+  "retry_delay_ms": {
+   "n": "retryDelayMs"
+  },
+  "retryable_errors": {
+   "arr": true,
+   "n": "retryableErrors"
+  },
+  "token": {
+   "n": "token"
+  },
+  "write_delay_ms": {
+   "n": "writeDelayMs"
+  }
+ },
+ "resources": {
+  "github_actions_environment_secret": {
+   "f": {
+    "created_at": {
+     "n": "createdAt"
+    },
+    "encrypted_value": {
+     "n": "encryptedValue"
+    },
+    "environment": {
+     "n": "environment"
+    },
+    "id": {
+     "n": "actionsEnvironmentSecretId"
+    },
+    "key_id": {
+     "n": "keyId"
+    },
+    "plaintext_value": {
+     "n": "plaintextValue"
+    },
+    "remote_updated_at": {
+     "n": "remoteUpdatedAt"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    },
+    "secret_name": {
+     "n": "secretName"
+    },
+    "updated_at": {
+     "n": "updatedAt"
+    },
+    "value": {
+     "n": "value"
+    },
+    "value_encrypted": {
+     "n": "valueEncrypted"
+    }
+   },
+   "token": "github:index/actionsEnvironmentSecret:ActionsEnvironmentSecret"
+  },
+  "github_actions_environment_variable": {
+   "f": {
+    "created_at": {
+     "n": "createdAt"
+    },
+    "environment": {
+     "n": "environment"
+    },
+    "id": {
+     "n": "actionsEnvironmentVariableId"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    },
+    "updated_at": {
+     "n": "updatedAt"
+    },
+    "value": {
+     "n": "value"
+    },
+    "variable_name": {
+     "n": "variableName"
+    }
+   },
+   "token": "github:index/actionsEnvironmentVariable:ActionsEnvironmentVariable"
+  },
+  "github_actions_hosted_runner": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "image": {
+     "f": {
+      "id": {
+       "n": "id"
+      },
+      "size_gb": {
+       "n": "sizeGb"
+      },
+      "source": {
+       "n": "source"
+      }
+     },
+     "n": "image"
+    },
+    "image_gen": {
+     "n": "imageGen"
+    },
+    "image_version": {
+     "n": "imageVersion"
+    },
+    "last_active_on": {
+     "n": "lastActiveOn"
+    },
+    "machine_size_details": {
+     "arr": true,
+     "f": {
+      "cpu_cores": {
+       "n": "cpuCores"
+      },
+      "id": {
+       "n": "id"
+      },
+      "memory_gb": {
+       "n": "memoryGb"
+      },
+      "storage_gb": {
+       "n": "storageGb"
+      }
+     },
+     "n": "machineSizeDetails"
+    },
+    "maximum_runners": {
+     "n": "maximumRunners"
+    },
+    "name": {
+     "n": "name"
+    },
+    "platform": {
+     "n": "platform"
+    },
+    "public_ip_enabled": {
+     "n": "publicIpEnabled"
+    },
+    "public_ips": {
+     "arr": true,
+     "f": {
+      "enabled": {
+       "n": "enabled"
+      },
+      "length": {
+       "n": "length"
+      },
+      "prefix": {
+       "n": "prefix"
+      }
+     },
+     "n": "publicIps"
+    },
+    "runner_group_id": {
+     "n": "runnerGroupId"
+    },
+    "size": {
+     "n": "size"
+    },
+    "status": {
+     "n": "status"
+    },
+    "timeouts": {
+     "f": {
+      "delete": {
+       "n": "delete"
+      }
+     },
+     "n": "timeouts"
+    }
+   },
+   "token": "github:index/actionsHostedRunner:ActionsHostedRunner"
+  },
+  "github_actions_organization_oidc_subject_claim_customization_template": {
+   "f": {
+    "id": {
+     "n": "actionsOrganizationOidcSubjectClaimCustomizationTemplateId"
+    },
+    "include_claim_keys": {
+     "arr": true,
+     "n": "includeClaimKeys"
+    }
+   },
+   "token": "github:index/actionsOrganizationOidcSubjectClaimCustomizationTemplate:ActionsOrganizationOidcSubjectClaimCustomizationTemplate"
+  },
+  "github_actions_organization_permissions": {
+   "f": {
+    "allowed_actions": {
+     "n": "allowedActions"
+    },
+    "allowed_actions_config": {
+     "f": {
+      "github_owned_allowed": {
+       "n": "githubOwnedAllowed"
+      },
+      "patterns_allowed": {
+       "arr": true,
+       "n": "patternsAlloweds"
+      },
+      "verified_allowed": {
+       "n": "verifiedAllowed"
+      }
+     },
+     "n": "allowedActionsConfig"
+    },
+    "enabled_repositories": {
+     "n": "enabledRepositories"
+    },
+    "enabled_repositories_config": {
+     "f": {
+      "repository_ids": {
+       "arr": true,
+       "n": "repositoryIds"
+      }
+     },
+     "n": "enabledRepositoriesConfig"
+    },
+    "id": {
+     "n": "actionsOrganizationPermissionsId"
+    },
+    "sha_pinning_required": {
+     "n": "shaPinningRequired"
+    }
+   },
+   "token": "github:index/actionsOrganizationPermissions:ActionsOrganizationPermissions"
+  },
+  "github_actions_organization_secret": {
+   "f": {
+    "created_at": {
+     "n": "createdAt"
+    },
+    "destroy_on_drift": {
+     "n": "destroyOnDrift"
+    },
+    "encrypted_value": {
+     "n": "encryptedValue"
+    },
+    "id": {
+     "n": "actionsOrganizationSecretId"
+    },
+    "key_id": {
+     "n": "keyId"
+    },
+    "plaintext_value": {
+     "n": "plaintextValue"
+    },
+    "remote_updated_at": {
+     "n": "remoteUpdatedAt"
+    },
+    "secret_name": {
+     "n": "secretName"
+    },
+    "selected_repository_ids": {
+     "arr": true,
+     "n": "selectedRepositoryIds"
+    },
+    "updated_at": {
+     "n": "updatedAt"
+    },
+    "value": {
+     "n": "value"
+    },
+    "value_encrypted": {
+     "n": "valueEncrypted"
+    },
+    "visibility": {
+     "n": "visibility"
+    }
+   },
+   "token": "github:index/actionsOrganizationSecret:ActionsOrganizationSecret"
+  },
+  "github_actions_organization_secret_repositories": {
+   "f": {
+    "id": {
+     "n": "actionsOrganizationSecretRepositoriesId"
+    },
+    "secret_name": {
+     "n": "secretName"
+    },
+    "selected_repository_ids": {
+     "arr": true,
+     "n": "selectedRepositoryIds"
+    }
+   },
+   "token": "github:index/actionsOrganizationSecretRepositories:ActionsOrganizationSecretRepositories"
+  },
+  "github_actions_organization_secret_repository": {
+   "f": {
+    "id": {
+     "n": "actionsOrganizationSecretRepositoryId"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    },
+    "secret_name": {
+     "n": "secretName"
+    }
+   },
+   "token": "github:index/actionsOrganizationSecretRepository:ActionsOrganizationSecretRepository"
+  },
+  "github_actions_organization_variable": {
+   "f": {
+    "created_at": {
+     "n": "createdAt"
+    },
+    "id": {
+     "n": "actionsOrganizationVariableId"
+    },
+    "selected_repository_ids": {
+     "arr": true,
+     "n": "selectedRepositoryIds"
+    },
+    "updated_at": {
+     "n": "updatedAt"
+    },
+    "value": {
+     "n": "value"
+    },
+    "variable_name": {
+     "n": "variableName"
+    },
+    "visibility": {
+     "n": "visibility"
+    }
+   },
+   "token": "github:index/actionsOrganizationVariable:ActionsOrganizationVariable"
+  },
+  "github_actions_organization_variable_repositories": {
+   "f": {
+    "id": {
+     "n": "actionsOrganizationVariableRepositoriesId"
+    },
+    "selected_repository_ids": {
+     "arr": true,
+     "n": "selectedRepositoryIds"
+    },
+    "variable_name": {
+     "n": "variableName"
+    }
+   },
+   "token": "github:index/actionsOrganizationVariableRepositories:ActionsOrganizationVariableRepositories"
+  },
+  "github_actions_organization_variable_repository": {
+   "f": {
+    "id": {
+     "n": "actionsOrganizationVariableRepositoryId"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    },
+    "variable_name": {
+     "n": "variableName"
+    }
+   },
+   "token": "github:index/actionsOrganizationVariableRepository:ActionsOrganizationVariableRepository"
+  },
+  "github_actions_organization_workflow_permissions": {
+   "f": {
+    "can_approve_pull_request_reviews": {
+     "n": "canApprovePullRequestReviews"
+    },
+    "default_workflow_permissions": {
+     "n": "defaultWorkflowPermissions"
+    },
+    "id": {
+     "n": "actionsOrganizationWorkflowPermissionsId"
+    },
+    "organization_slug": {
+     "n": "organizationSlug"
+    }
+   },
+   "token": "github:index/actionsOrganizationWorkflowPermissions:ActionsOrganizationWorkflowPermissions"
+  },
+  "github_actions_repository_access_level": {
+   "f": {
+    "access_level": {
+     "n": "accessLevel"
+    },
+    "id": {
+     "n": "actionsRepositoryAccessLevelId"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/actionsRepositoryAccessLevel:ActionsRepositoryAccessLevel"
+  },
+  "github_actions_repository_oidc_subject_claim_customization_template": {
+   "f": {
+    "id": {
+     "n": "actionsRepositoryOidcSubjectClaimCustomizationTemplateId"
+    },
+    "include_claim_keys": {
+     "arr": true,
+     "n": "includeClaimKeys"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "use_default": {
+     "n": "useDefault"
+    }
+   },
+   "token": "github:index/actionsRepositoryOidcSubjectClaimCustomizationTemplate:ActionsRepositoryOidcSubjectClaimCustomizationTemplate"
+  },
+  "github_actions_repository_permissions": {
+   "f": {
+    "allowed_actions": {
+     "n": "allowedActions"
+    },
+    "allowed_actions_config": {
+     "f": {
+      "github_owned_allowed": {
+       "n": "githubOwnedAllowed"
+      },
+      "patterns_allowed": {
+       "arr": true,
+       "n": "patternsAlloweds"
+      },
+      "verified_allowed": {
+       "n": "verifiedAllowed"
+      }
+     },
+     "n": "allowedActionsConfig"
+    },
+    "enabled": {
+     "n": "enabled"
+    },
+    "id": {
+     "n": "actionsRepositoryPermissionsId"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "sha_pinning_required": {
+     "n": "shaPinningRequired"
+    }
+   },
+   "token": "github:index/actionsRepositoryPermissions:ActionsRepositoryPermissions"
+  },
+  "github_actions_runner_group": {
+   "f": {
+    "allows_public_repositories": {
+     "n": "allowsPublicRepositories"
+    },
+    "default": {
+     "n": "default"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "id"
+    },
+    "inherited": {
+     "n": "inherited"
+    },
+    "name": {
+     "n": "name"
+    },
+    "restricted_to_workflows": {
+     "n": "restrictedToWorkflows"
+    },
+    "runners_url": {
+     "n": "runnersUrl"
+    },
+    "selected_repositories_url": {
+     "n": "selectedRepositoriesUrl"
+    },
+    "selected_repository_ids": {
+     "arr": true,
+     "n": "selectedRepositoryIds"
+    },
+    "selected_workflows": {
+     "arr": true,
+     "n": "selectedWorkflows"
+    },
+    "visibility": {
+     "n": "visibility"
+    }
+   },
+   "token": "github:index/actionsRunnerGroup:ActionsRunnerGroup"
+  },
+  "github_actions_secret": {
+   "f": {
+    "created_at": {
+     "n": "createdAt"
+    },
+    "destroy_on_drift": {
+     "n": "destroyOnDrift"
+    },
+    "encrypted_value": {
+     "n": "encryptedValue"
+    },
+    "id": {
+     "n": "actionsSecretId"
+    },
+    "key_id": {
+     "n": "keyId"
+    },
+    "plaintext_value": {
+     "n": "plaintextValue"
+    },
+    "remote_updated_at": {
+     "n": "remoteUpdatedAt"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    },
+    "secret_name": {
+     "n": "secretName"
+    },
+    "updated_at": {
+     "n": "updatedAt"
+    },
+    "value": {
+     "n": "value"
+    },
+    "value_encrypted": {
+     "n": "valueEncrypted"
+    }
+   },
+   "token": "github:index/actionsSecret:ActionsSecret"
+  },
+  "github_actions_variable": {
+   "f": {
+    "created_at": {
+     "n": "createdAt"
+    },
+    "id": {
+     "n": "actionsVariableId"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    },
+    "updated_at": {
+     "n": "updatedAt"
+    },
+    "value": {
+     "n": "value"
+    },
+    "variable_name": {
+     "n": "variableName"
+    }
+   },
+   "token": "github:index/actionsVariable:ActionsVariable"
+  },
+  "github_app_installation_repositories": {
+   "f": {
+    "id": {
+     "n": "appInstallationRepositoriesId"
+    },
+    "installation_id": {
+     "n": "installationId"
+    },
+    "selected_repositories": {
+     "arr": true,
+     "n": "selectedRepositories"
+    }
+   },
+   "token": "github:index/appInstallationRepositories:AppInstallationRepositories"
+  },
+  "github_app_installation_repository": {
+   "f": {
+    "id": {
+     "n": "appInstallationRepositoryId"
+    },
+    "installation_id": {
+     "n": "installationId"
+    },
+    "repo_id": {
+     "n": "repoId"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/appInstallationRepository:AppInstallationRepository"
+  },
+  "github_branch": {
+   "f": {
+    "branch": {
+     "n": "branch"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "branchId"
+    },
+    "ref": {
+     "n": "ref"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "sha": {
+     "n": "sha"
+    },
+    "source_branch": {
+     "n": "sourceBranch"
+    },
+    "source_sha": {
+     "n": "sourceSha"
+    }
+   },
+   "token": "github:index/branch:Branch"
+  },
+  "github_branch_default": {
+   "f": {
+    "branch": {
+     "n": "branch"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "branchDefaultId"
+    },
+    "rename": {
+     "n": "rename"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    },
+    "wait_for_rename": {
+     "n": "waitForRename"
+    }
+   },
+   "token": "github:index/branchDefault:BranchDefault"
+  },
+  "github_branch_protection": {
+   "f": {
+    "allows_deletions": {
+     "n": "allowsDeletions"
+    },
+    "allows_force_pushes": {
+     "n": "allowsForcePushes"
+    },
+    "enforce_admins": {
+     "n": "enforceAdmins"
+    },
+    "force_push_bypassers": {
+     "arr": true,
+     "n": "forcePushBypassers"
+    },
+    "id": {
+     "n": "branchProtectionId"
+    },
+    "lock_branch": {
+     "n": "lockBranch"
+    },
+    "pattern": {
+     "n": "pattern"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    },
+    "require_conversation_resolution": {
+     "n": "requireConversationResolution"
+    },
+    "require_signed_commits": {
+     "n": "requireSignedCommits"
+    },
+    "required_linear_history": {
+     "n": "requiredLinearHistory"
+    },
+    "required_pull_request_reviews": {
+     "arr": true,
+     "f": {
+      "dismiss_stale_reviews": {
+       "n": "dismissStaleReviews"
+      },
+      "dismissal_restrictions": {
+       "arr": true,
+       "n": "dismissalRestrictions"
+      },
+      "pull_request_bypassers": {
+       "arr": true,
+       "n": "pullRequestBypassers"
+      },
+      "require_code_owner_reviews": {
+       "n": "requireCodeOwnerReviews"
+      },
+      "require_last_push_approval": {
+       "n": "requireLastPushApproval"
+      },
+      "required_approving_review_count": {
+       "n": "requiredApprovingReviewCount"
+      },
+      "restrict_dismissals": {
+       "n": "restrictDismissals"
+      }
+     },
+     "n": "requiredPullRequestReviews"
+    },
+    "required_status_checks": {
+     "arr": true,
+     "f": {
+      "contexts": {
+       "arr": true,
+       "n": "contexts"
+      },
+      "strict": {
+       "n": "strict"
+      }
+     },
+     "n": "requiredStatusChecks"
+    },
+    "restrict_pushes": {
+     "arr": true,
+     "f": {
+      "blocks_creations": {
+       "n": "blocksCreations"
+      },
+      "push_allowances": {
+       "arr": true,
+       "n": "pushAllowances"
+      }
+     },
+     "n": "restrictPushes"
+    }
+   },
+   "token": "github:index/branchProtection:BranchProtection"
+  },
+  "github_branch_protection_v3": {
+   "f": {
+    "branch": {
+     "n": "branch"
+    },
+    "enforce_admins": {
+     "n": "enforceAdmins"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "branchProtectionV3Id"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "require_conversation_resolution": {
+     "n": "requireConversationResolution"
+    },
+    "require_signed_commits": {
+     "n": "requireSignedCommits"
+    },
+    "required_pull_request_reviews": {
+     "f": {
+      "bypass_pull_request_allowances": {
+       "f": {
+        "apps": {
+         "arr": true,
+         "n": "apps"
+        },
+        "teams": {
+         "arr": true,
+         "n": "teams"
+        },
+        "users": {
+         "arr": true,
+         "n": "users"
+        }
+       },
+       "n": "bypassPullRequestAllowances"
+      },
+      "dismiss_stale_reviews": {
+       "n": "dismissStaleReviews"
+      },
+      "dismissal_apps": {
+       "arr": true,
+       "n": "dismissalApps"
+      },
+      "dismissal_teams": {
+       "arr": true,
+       "n": "dismissalTeams"
+      },
+      "dismissal_users": {
+       "arr": true,
+       "n": "dismissalUsers"
+      },
+      "include_admins": {
+       "n": "includeAdmins"
+      },
+      "require_code_owner_reviews": {
+       "n": "requireCodeOwnerReviews"
+      },
+      "require_last_push_approval": {
+       "n": "requireLastPushApproval"
+      },
+      "required_approving_review_count": {
+       "n": "requiredApprovingReviewCount"
+      }
+     },
+     "n": "requiredPullRequestReviews"
+    },
+    "required_status_checks": {
+     "f": {
+      "checks": {
+       "arr": true,
+       "n": "checks"
+      },
+      "contexts": {
+       "arr": true,
+       "n": "contexts"
+      },
+      "include_admins": {
+       "n": "includeAdmins"
+      },
+      "strict": {
+       "n": "strict"
+      }
+     },
+     "n": "requiredStatusChecks"
+    },
+    "restrictions": {
+     "f": {
+      "apps": {
+       "arr": true,
+       "n": "apps"
+      },
+      "teams": {
+       "arr": true,
+       "n": "teams"
+      },
+      "users": {
+       "arr": true,
+       "n": "users"
+      }
+     },
+     "n": "restrictions"
+    }
+   },
+   "token": "github:index/branchProtectionV3:BranchProtectionV3"
+  },
+  "github_codespaces_organization_secret": {
+   "f": {
+    "created_at": {
+     "n": "createdAt"
+    },
+    "encrypted_value": {
+     "n": "encryptedValue"
+    },
+    "id": {
+     "n": "codespacesOrganizationSecretId"
+    },
+    "plaintext_value": {
+     "n": "plaintextValue"
+    },
+    "secret_name": {
+     "n": "secretName"
+    },
+    "selected_repository_ids": {
+     "arr": true,
+     "n": "selectedRepositoryIds"
+    },
+    "updated_at": {
+     "n": "updatedAt"
+    },
+    "visibility": {
+     "n": "visibility"
+    }
+   },
+   "token": "github:index/codespacesOrganizationSecret:CodespacesOrganizationSecret"
+  },
+  "github_codespaces_organization_secret_repositories": {
+   "f": {
+    "id": {
+     "n": "codespacesOrganizationSecretRepositoriesId"
+    },
+    "secret_name": {
+     "n": "secretName"
+    },
+    "selected_repository_ids": {
+     "arr": true,
+     "n": "selectedRepositoryIds"
+    }
+   },
+   "token": "github:index/codespacesOrganizationSecretRepositories:CodespacesOrganizationSecretRepositories"
+  },
+  "github_codespaces_secret": {
+   "f": {
+    "created_at": {
+     "n": "createdAt"
+    },
+    "encrypted_value": {
+     "n": "encryptedValue"
+    },
+    "id": {
+     "n": "codespacesSecretId"
+    },
+    "plaintext_value": {
+     "n": "plaintextValue"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "secret_name": {
+     "n": "secretName"
+    },
+    "updated_at": {
+     "n": "updatedAt"
+    }
+   },
+   "token": "github:index/codespacesSecret:CodespacesSecret"
+  },
+  "github_codespaces_user_secret": {
+   "f": {
+    "created_at": {
+     "n": "createdAt"
+    },
+    "encrypted_value": {
+     "n": "encryptedValue"
+    },
+    "id": {
+     "n": "codespacesUserSecretId"
+    },
+    "plaintext_value": {
+     "n": "plaintextValue"
+    },
+    "secret_name": {
+     "n": "secretName"
+    },
+    "selected_repository_ids": {
+     "arr": true,
+     "n": "selectedRepositoryIds"
+    },
+    "updated_at": {
+     "n": "updatedAt"
+    }
+   },
+   "token": "github:index/codespacesUserSecret:CodespacesUserSecret"
+  },
+  "github_dependabot_organization_secret": {
+   "f": {
+    "created_at": {
+     "n": "createdAt"
+    },
+    "encrypted_value": {
+     "n": "encryptedValue"
+    },
+    "id": {
+     "n": "dependabotOrganizationSecretId"
+    },
+    "key_id": {
+     "n": "keyId"
+    },
+    "plaintext_value": {
+     "n": "plaintextValue"
+    },
+    "remote_updated_at": {
+     "n": "remoteUpdatedAt"
+    },
+    "secret_name": {
+     "n": "secretName"
+    },
+    "selected_repository_ids": {
+     "arr": true,
+     "n": "selectedRepositoryIds"
+    },
+    "updated_at": {
+     "n": "updatedAt"
+    },
+    "value": {
+     "n": "value"
+    },
+    "value_encrypted": {
+     "n": "valueEncrypted"
+    },
+    "visibility": {
+     "n": "visibility"
+    }
+   },
+   "token": "github:index/dependabotOrganizationSecret:DependabotOrganizationSecret"
+  },
+  "github_dependabot_organization_secret_repositories": {
+   "f": {
+    "id": {
+     "n": "dependabotOrganizationSecretRepositoriesId"
+    },
+    "secret_name": {
+     "n": "secretName"
+    },
+    "selected_repository_ids": {
+     "arr": true,
+     "n": "selectedRepositoryIds"
+    }
+   },
+   "token": "github:index/dependabotOrganizationSecretRepositories:DependabotOrganizationSecretRepositories"
+  },
+  "github_dependabot_organization_secret_repository": {
+   "f": {
+    "id": {
+     "n": "dependabotOrganizationSecretRepositoryId"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    },
+    "secret_name": {
+     "n": "secretName"
+    }
+   },
+   "token": "github:index/dependabotOrganizationSecretRepository:DependabotOrganizationSecretRepository"
+  },
+  "github_dependabot_secret": {
+   "f": {
+    "created_at": {
+     "n": "createdAt"
+    },
+    "encrypted_value": {
+     "n": "encryptedValue"
+    },
+    "id": {
+     "n": "dependabotSecretId"
+    },
+    "key_id": {
+     "n": "keyId"
+    },
+    "plaintext_value": {
+     "n": "plaintextValue"
+    },
+    "remote_updated_at": {
+     "n": "remoteUpdatedAt"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    },
+    "secret_name": {
+     "n": "secretName"
+    },
+    "updated_at": {
+     "n": "updatedAt"
+    },
+    "value": {
+     "n": "value"
+    },
+    "value_encrypted": {
+     "n": "valueEncrypted"
+    }
+   },
+   "token": "github:index/dependabotSecret:DependabotSecret"
+  },
+  "github_emu_group_mapping": {
+   "f": {
+    "etag": {
+     "n": "etag"
+    },
+    "group_id": {
+     "n": "groupId"
+    },
+    "group_name": {
+     "n": "groupName"
+    },
+    "id": {
+     "n": "emuGroupMappingId"
+    },
+    "team_id": {
+     "n": "teamId"
+    },
+    "team_slug": {
+     "n": "teamSlug"
+    }
+   },
+   "token": "github:index/emuGroupMapping:EmuGroupMapping"
+  },
+  "github_enterprise_actions_permissions": {
+   "f": {
+    "allowed_actions": {
+     "n": "allowedActions"
+    },
+    "allowed_actions_config": {
+     "f": {
+      "github_owned_allowed": {
+       "n": "githubOwnedAllowed"
+      },
+      "patterns_allowed": {
+       "arr": true,
+       "n": "patternsAlloweds"
+      },
+      "verified_allowed": {
+       "n": "verifiedAllowed"
+      }
+     },
+     "n": "allowedActionsConfig"
+    },
+    "enabled_organizations": {
+     "n": "enabledOrganizations"
+    },
+    "enabled_organizations_config": {
+     "f": {
+      "organization_ids": {
+       "arr": true,
+       "n": "organizationIds"
+      }
+     },
+     "n": "enabledOrganizationsConfig"
+    },
+    "enterprise_slug": {
+     "n": "enterpriseSlug"
+    },
+    "id": {
+     "n": "enterpriseActionsPermissionsId"
+    }
+   },
+   "token": "github:index/enterpriseActionsPermissions:EnterpriseActionsPermissions"
+  },
+  "github_enterprise_actions_runner_group": {
+   "f": {
+    "allows_public_repositories": {
+     "n": "allowsPublicRepositories"
+    },
+    "default": {
+     "n": "default"
+    },
+    "enterprise_slug": {
+     "n": "enterpriseSlug"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "enterpriseActionsRunnerGroupId"
+    },
+    "name": {
+     "n": "name"
+    },
+    "restricted_to_workflows": {
+     "n": "restrictedToWorkflows"
+    },
+    "runners_url": {
+     "n": "runnersUrl"
+    },
+    "selected_organization_ids": {
+     "arr": true,
+     "n": "selectedOrganizationIds"
+    },
+    "selected_organizations_url": {
+     "n": "selectedOrganizationsUrl"
+    },
+    "selected_workflows": {
+     "arr": true,
+     "n": "selectedWorkflows"
+    },
+    "visibility": {
+     "n": "visibility"
+    }
+   },
+   "token": "github:index/enterpriseActionsRunnerGroup:EnterpriseActionsRunnerGroup"
+  },
+  "github_enterprise_actions_workflow_permissions": {
+   "f": {
+    "can_approve_pull_request_reviews": {
+     "n": "canApprovePullRequestReviews"
+    },
+    "default_workflow_permissions": {
+     "n": "defaultWorkflowPermissions"
+    },
+    "enterprise_slug": {
+     "n": "enterpriseSlug"
+    },
+    "id": {
+     "n": "enterpriseActionsWorkflowPermissionsId"
+    }
+   },
+   "token": "github:index/enterpriseActionsWorkflowPermissions:EnterpriseActionsWorkflowPermissions"
+  },
+  "github_enterprise_ip_allow_list_entry": {
+   "f": {
+    "created_at": {
+     "n": "createdAt"
+    },
+    "enterprise_slug": {
+     "n": "enterpriseSlug"
+    },
+    "id": {
+     "n": "enterpriseIpAllowListEntryId"
+    },
+    "ip": {
+     "n": "ip"
+    },
+    "is_active": {
+     "n": "isActive"
+    },
+    "name": {
+     "n": "name"
+    },
+    "updated_at": {
+     "n": "updatedAt"
+    }
+   },
+   "token": "github:index/enterpriseIpAllowListEntry:EnterpriseIpAllowListEntry"
+  },
+  "github_enterprise_organization": {
+   "f": {
+    "admin_logins": {
+     "arr": true,
+     "n": "adminLogins"
+    },
+    "billing_email": {
+     "n": "billingEmail"
+    },
+    "database_id": {
+     "n": "databaseId"
+    },
+    "description": {
+     "n": "description"
+    },
+    "display_name": {
+     "n": "displayName"
+    },
+    "enterprise_id": {
+     "n": "enterpriseId"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    }
+   },
+   "token": "github:index/enterpriseOrganization:EnterpriseOrganization"
+  },
+  "github_enterprise_security_analysis_settings": {
+   "f": {
+    "advanced_security_enabled_for_new_repositories": {
+     "n": "advancedSecurityEnabledForNewRepositories"
+    },
+    "enterprise_slug": {
+     "n": "enterpriseSlug"
+    },
+    "id": {
+     "n": "enterpriseSecurityAnalysisSettingsId"
+    },
+    "secret_scanning_enabled_for_new_repositories": {
+     "n": "secretScanningEnabledForNewRepositories"
+    },
+    "secret_scanning_push_protection_custom_link": {
+     "n": "secretScanningPushProtectionCustomLink"
+    },
+    "secret_scanning_push_protection_enabled_for_new_repositories": {
+     "n": "secretScanningPushProtectionEnabledForNewRepositories"
+    },
+    "secret_scanning_validity_checks_enabled": {
+     "n": "secretScanningValidityChecksEnabled"
+    }
+   },
+   "token": "github:index/enterpriseSecurityAnalysisSettings:EnterpriseSecurityAnalysisSettings"
+  },
+  "github_issue": {
+   "f": {
+    "assignees": {
+     "arr": true,
+     "n": "assignees"
+    },
+    "body": {
+     "n": "body"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "githubIssueId"
+    },
+    "issue_id": {
+     "n": "issueId"
+    },
+    "labels": {
+     "arr": true,
+     "n": "labels"
+    },
+    "milestone_number": {
+     "n": "milestoneNumber"
+    },
+    "number": {
+     "n": "number"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "title": {
+     "n": "title"
+    }
+   },
+   "token": "github:index/issue:Issue"
+  },
+  "github_issue_label": {
+   "f": {
+    "color": {
+     "n": "color"
+    },
+    "description": {
+     "n": "description"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "issueLabelId"
+    },
+    "name": {
+     "n": "name"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "url": {
+     "n": "url"
+    }
+   },
+   "token": "github:index/issueLabel:IssueLabel"
+  },
+  "github_issue_labels": {
+   "f": {
+    "id": {
+     "n": "issueLabelsId"
+    },
+    "label": {
+     "arr": true,
+     "f": {
+      "color": {
+       "n": "color"
+      },
+      "description": {
+       "n": "description"
+      },
+      "name": {
+       "n": "name"
+      },
+      "url": {
+       "n": "url"
+      }
+     },
+     "n": "labels"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/issueLabels:IssueLabels"
+  },
+  "github_membership": {
+   "f": {
+    "downgrade_on_destroy": {
+     "n": "downgradeOnDestroy"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "membershipId"
+    },
+    "role": {
+     "n": "role"
+    },
+    "username": {
+     "n": "username"
+    }
+   },
+   "token": "github:index/membership:Membership"
+  },
+  "github_organization_block": {
+   "f": {
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "organizationBlockId"
+    },
+    "username": {
+     "n": "username"
+    }
+   },
+   "token": "github:index/organizationBlock:OrganizationBlock"
+  },
+  "github_organization_custom_properties": {
+   "f": {
+    "allowed_values": {
+     "arr": true,
+     "n": "allowedValues"
+    },
+    "default_value": {
+     "n": "defaultValue"
+    },
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "organizationCustomPropertiesId"
+    },
+    "property_name": {
+     "n": "propertyName"
+    },
+    "required": {
+     "n": "required"
+    },
+    "value_type": {
+     "n": "valueType"
+    },
+    "values_editable_by": {
+     "n": "valuesEditableBy"
+    }
+   },
+   "token": "github:index/organizationCustomProperties:OrganizationCustomProperties"
+  },
+  "github_organization_custom_role": {
+   "f": {
+    "base_role": {
+     "n": "baseRole"
+    },
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "organizationCustomRoleId"
+    },
+    "name": {
+     "n": "name"
+    },
+    "permissions": {
+     "arr": true,
+     "n": "permissions"
+    }
+   },
+   "token": "github:index/organizationCustomRole:OrganizationCustomRole"
+  },
+  "github_organization_project": {
+   "f": {
+    "body": {
+     "n": "body"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "organizationProjectId"
+    },
+    "name": {
+     "n": "name"
+    },
+    "url": {
+     "n": "url"
+    }
+   },
+   "token": "github:index/organizationProject:OrganizationProject"
+  },
+  "github_organization_repository_role": {
+   "f": {
+    "base_role": {
+     "n": "baseRole"
+    },
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "organizationRepositoryRoleId"
+    },
+    "name": {
+     "n": "name"
+    },
+    "permissions": {
+     "arr": true,
+     "n": "permissions"
+    },
+    "role_id": {
+     "n": "roleId"
+    }
+   },
+   "token": "github:index/organizationRepositoryRole:OrganizationRepositoryRole"
+  },
+  "github_organization_role": {
+   "f": {
+    "base_role": {
+     "n": "baseRole"
+    },
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "organizationRoleId"
+    },
+    "name": {
+     "n": "name"
+    },
+    "permissions": {
+     "arr": true,
+     "n": "permissions"
+    },
+    "role_id": {
+     "n": "roleId"
+    }
+   },
+   "token": "github:index/organizationRole:OrganizationRole"
+  },
+  "github_organization_role_team": {
+   "f": {
+    "id": {
+     "n": "organizationRoleTeamId"
+    },
+    "role_id": {
+     "n": "roleId"
+    },
+    "team_slug": {
+     "n": "teamSlug"
+    }
+   },
+   "token": "github:index/organizationRoleTeam:OrganizationRoleTeam"
+  },
+  "github_organization_role_team_assignment": {
+   "f": {
+    "id": {
+     "n": "organizationRoleTeamAssignmentId"
+    },
+    "role_id": {
+     "n": "roleId"
+    },
+    "team_slug": {
+     "n": "teamSlug"
+    }
+   },
+   "token": "github:index/organizationRoleTeamAssignment:OrganizationRoleTeamAssignment"
+  },
+  "github_organization_role_user": {
+   "f": {
+    "id": {
+     "n": "organizationRoleUserId"
+    },
+    "login": {
+     "n": "login"
+    },
+    "role_id": {
+     "n": "roleId"
+    }
+   },
+   "token": "github:index/organizationRoleUser:OrganizationRoleUser"
+  },
+  "github_organization_ruleset": {
+   "f": {
+    "bypass_actors": {
+     "arr": true,
+     "f": {
+      "actor_id": {
+       "n": "actorId"
+      },
+      "actor_type": {
+       "n": "actorType"
+      },
+      "bypass_mode": {
+       "n": "bypassMode"
+      }
+     },
+     "n": "bypassActors"
+    },
+    "conditions": {
+     "f": {
+      "ref_name": {
+       "f": {
+        "exclude": {
+         "arr": true,
+         "n": "excludes"
+        },
+        "include": {
+         "arr": true,
+         "n": "includes"
+        }
+       },
+       "n": "refName"
+      },
+      "repository_id": {
+       "arr": true,
+       "n": "repositoryIds"
+      },
+      "repository_name": {
+       "f": {
+        "exclude": {
+         "arr": true,
+         "n": "excludes"
+        },
+        "include": {
+         "arr": true,
+         "n": "includes"
+        },
+        "protected": {
+         "n": "protected"
+        }
+       },
+       "n": "repositoryName"
+      },
+      "repository_property": {
+       "f": {
+        "exclude": {
+         "arr": true,
+         "f": {
+          "name": {
+           "n": "name"
+          },
+          "property_values": {
+           "arr": true,
+           "n": "propertyValues"
+          },
+          "source": {
+           "n": "source"
+          }
+         },
+         "n": "excludes"
+        },
+        "include": {
+         "arr": true,
+         "f": {
+          "name": {
+           "n": "name"
+          },
+          "property_values": {
+           "arr": true,
+           "n": "propertyValues"
+          },
+          "source": {
+           "n": "source"
+          }
+         },
+         "n": "includes"
+        }
+       },
+       "n": "repositoryProperty"
+      }
+     },
+     "n": "conditions"
+    },
+    "enforcement": {
+     "n": "enforcement"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "organizationRulesetId"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_id": {
+     "n": "nodeId"
+    },
+    "rules": {
+     "f": {
+      "branch_name_pattern": {
+       "f": {
+        "name": {
+         "n": "name"
+        },
+        "negate": {
+         "n": "negate"
+        },
+        "operator": {
+         "n": "operator"
+        },
+        "pattern": {
+         "n": "pattern"
+        }
+       },
+       "n": "branchNamePattern"
+      },
+      "commit_author_email_pattern": {
+       "f": {
+        "name": {
+         "n": "name"
+        },
+        "negate": {
+         "n": "negate"
+        },
+        "operator": {
+         "n": "operator"
+        },
+        "pattern": {
+         "n": "pattern"
+        }
+       },
+       "n": "commitAuthorEmailPattern"
+      },
+      "commit_message_pattern": {
+       "f": {
+        "name": {
+         "n": "name"
+        },
+        "negate": {
+         "n": "negate"
+        },
+        "operator": {
+         "n": "operator"
+        },
+        "pattern": {
+         "n": "pattern"
+        }
+       },
+       "n": "commitMessagePattern"
+      },
+      "committer_email_pattern": {
+       "f": {
+        "name": {
+         "n": "name"
+        },
+        "negate": {
+         "n": "negate"
+        },
+        "operator": {
+         "n": "operator"
+        },
+        "pattern": {
+         "n": "pattern"
+        }
+       },
+       "n": "committerEmailPattern"
+      },
+      "copilot_code_review": {
+       "f": {
+        "review_draft_pull_requests": {
+         "n": "reviewDraftPullRequests"
+        },
+        "review_on_push": {
+         "n": "reviewOnPush"
+        }
+       },
+       "n": "copilotCodeReview"
+      },
+      "creation": {
+       "n": "creation"
+      },
+      "deletion": {
+       "n": "deletion"
+      },
+      "file_extension_restriction": {
+       "f": {
+        "restricted_file_extensions": {
+         "arr": true,
+         "n": "restrictedFileExtensions"
+        }
+       },
+       "n": "fileExtensionRestriction"
+      },
+      "file_path_restriction": {
+       "f": {
+        "restricted_file_paths": {
+         "arr": true,
+         "n": "restrictedFilePaths"
+        }
+       },
+       "n": "filePathRestriction"
+      },
+      "max_file_path_length": {
+       "f": {
+        "max_file_path_length": {
+         "n": "maxFilePathLength"
+        }
+       },
+       "n": "maxFilePathLength"
+      },
+      "max_file_size": {
+       "f": {
+        "max_file_size": {
+         "n": "maxFileSize"
+        }
+       },
+       "n": "maxFileSize"
+      },
+      "non_fast_forward": {
+       "n": "nonFastForward"
+      },
+      "pull_request": {
+       "f": {
+        "allowed_merge_methods": {
+         "arr": true,
+         "n": "allowedMergeMethods"
+        },
+        "dismiss_stale_reviews_on_push": {
+         "n": "dismissStaleReviewsOnPush"
+        },
+        "require_code_owner_review": {
+         "n": "requireCodeOwnerReview"
+        },
+        "require_last_push_approval": {
+         "n": "requireLastPushApproval"
+        },
+        "required_approving_review_count": {
+         "n": "requiredApprovingReviewCount"
+        },
+        "required_review_thread_resolution": {
+         "n": "requiredReviewThreadResolution"
+        },
+        "required_reviewers": {
+         "arr": true,
+         "f": {
+          "file_patterns": {
+           "arr": true,
+           "n": "filePatterns"
+          },
+          "minimum_approvals": {
+           "n": "minimumApprovals"
+          },
+          "reviewer": {
+           "f": {
+            "id": {
+             "n": "id"
+            },
+            "type": {
+             "n": "type"
+            }
+           },
+           "n": "reviewer"
+          }
+         },
+         "n": "requiredReviewers"
+        }
+       },
+       "n": "pullRequest"
+      },
+      "required_code_scanning": {
+       "f": {
+        "required_code_scanning_tool": {
+         "arr": true,
+         "f": {
+          "alerts_threshold": {
+           "n": "alertsThreshold"
+          },
+          "security_alerts_threshold": {
+           "n": "securityAlertsThreshold"
+          },
+          "tool": {
+           "n": "tool"
+          }
+         },
+         "n": "requiredCodeScanningTools"
+        }
+       },
+       "n": "requiredCodeScanning"
+      },
+      "required_linear_history": {
+       "n": "requiredLinearHistory"
+      },
+      "required_signatures": {
+       "n": "requiredSignatures"
+      },
+      "required_status_checks": {
+       "f": {
+        "do_not_enforce_on_create": {
+         "n": "doNotEnforceOnCreate"
+        },
+        "required_check": {
+         "arr": true,
+         "f": {
+          "context": {
+           "n": "context"
+          },
+          "integration_id": {
+           "n": "integrationId"
+          }
+         },
+         "n": "requiredChecks"
+        },
+        "strict_required_status_checks_policy": {
+         "n": "strictRequiredStatusChecksPolicy"
+        }
+       },
+       "n": "requiredStatusChecks"
+      },
+      "required_workflows": {
+       "f": {
+        "do_not_enforce_on_create": {
+         "n": "doNotEnforceOnCreate"
+        },
+        "required_workflow": {
+         "arr": true,
+         "f": {
+          "path": {
+           "n": "path"
+          },
+          "ref": {
+           "n": "ref"
+          },
+          "repository_id": {
+           "n": "repositoryId"
+          }
+         },
+         "n": "requiredWorkflows"
+        }
+       },
+       "n": "requiredWorkflows"
+      },
+      "tag_name_pattern": {
+       "f": {
+        "name": {
+         "n": "name"
+        },
+        "negate": {
+         "n": "negate"
+        },
+        "operator": {
+         "n": "operator"
+        },
+        "pattern": {
+         "n": "pattern"
+        }
+       },
+       "n": "tagNamePattern"
+      },
+      "update": {
+       "n": "update"
+      }
+     },
+     "n": "rules"
+    },
+    "ruleset_id": {
+     "n": "rulesetId"
+    },
+    "target": {
+     "n": "target"
+    }
+   },
+   "token": "github:index/organizationRuleset:OrganizationRuleset"
+  },
+  "github_organization_security_manager": {
+   "f": {
+    "id": {
+     "n": "organizationSecurityManagerId"
+    },
+    "team_slug": {
+     "n": "teamSlug"
+    }
+   },
+   "token": "github:index/organizationSecurityManager:OrganizationSecurityManager"
+  },
+  "github_organization_settings": {
+   "f": {
+    "advanced_security_enabled_for_new_repositories": {
+     "n": "advancedSecurityEnabledForNewRepositories"
+    },
+    "billing_email": {
+     "n": "billingEmail"
+    },
+    "blog": {
+     "n": "blog"
+    },
+    "company": {
+     "n": "company"
+    },
+    "default_repository_permission": {
+     "n": "defaultRepositoryPermission"
+    },
+    "dependabot_alerts_enabled_for_new_repositories": {
+     "n": "dependabotAlertsEnabledForNewRepositories"
+    },
+    "dependabot_security_updates_enabled_for_new_repositories": {
+     "n": "dependabotSecurityUpdatesEnabledForNewRepositories"
+    },
+    "dependency_graph_enabled_for_new_repositories": {
+     "n": "dependencyGraphEnabledForNewRepositories"
+    },
+    "description": {
+     "n": "description"
+    },
+    "email": {
+     "n": "email"
+    },
+    "has_organization_projects": {
+     "n": "hasOrganizationProjects"
+    },
+    "has_repository_projects": {
+     "n": "hasRepositoryProjects"
+    },
+    "id": {
+     "n": "organizationSettingsId"
+    },
+    "location": {
+     "n": "location"
+    },
+    "members_can_create_internal_repositories": {
+     "n": "membersCanCreateInternalRepositories"
+    },
+    "members_can_create_pages": {
+     "n": "membersCanCreatePages"
+    },
+    "members_can_create_private_pages": {
+     "n": "membersCanCreatePrivatePages"
+    },
+    "members_can_create_private_repositories": {
+     "n": "membersCanCreatePrivateRepositories"
+    },
+    "members_can_create_public_pages": {
+     "n": "membersCanCreatePublicPages"
+    },
+    "members_can_create_public_repositories": {
+     "n": "membersCanCreatePublicRepositories"
+    },
+    "members_can_create_repositories": {
+     "n": "membersCanCreateRepositories"
+    },
+    "members_can_fork_private_repositories": {
+     "n": "membersCanForkPrivateRepositories"
+    },
+    "name": {
+     "n": "name"
+    },
+    "secret_scanning_enabled_for_new_repositories": {
+     "n": "secretScanningEnabledForNewRepositories"
+    },
+    "secret_scanning_push_protection_enabled_for_new_repositories": {
+     "n": "secretScanningPushProtectionEnabledForNewRepositories"
+    },
+    "twitter_username": {
+     "n": "twitterUsername"
+    },
+    "web_commit_signoff_required": {
+     "n": "webCommitSignoffRequired"
+    }
+   },
+   "token": "github:index/organizationSettings:OrganizationSettings"
+  },
+  "github_organization_webhook": {
+   "f": {
+    "active": {
+     "n": "active"
+    },
+    "configuration": {
+     "f": {
+      "content_type": {
+       "n": "contentType"
+      },
+      "insecure_ssl": {
+       "n": "insecureSsl"
+      },
+      "secret": {
+       "n": "secret"
+      },
+      "url": {
+       "n": "url"
+      }
+     },
+     "n": "configuration"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "events": {
+     "arr": true,
+     "n": "events"
+    },
+    "id": {
+     "n": "organizationWebhookId"
+    },
+    "url": {
+     "n": "url"
+    }
+   },
+   "token": "github:index/organizationWebhook:OrganizationWebhook"
+  },
+  "github_project_card": {
+   "f": {
+    "card_id": {
+     "n": "cardId"
+    },
+    "column_id": {
+     "n": "columnId"
+    },
+    "content_id": {
+     "n": "contentId"
+    },
+    "content_type": {
+     "n": "contentType"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "projectCardId"
+    },
+    "note": {
+     "n": "note"
+    }
+   },
+   "token": "github:index/projectCard:ProjectCard"
+  },
+  "github_project_column": {
+   "f": {
+    "column_id": {
+     "n": "columnId"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "projectColumnId"
+    },
+    "name": {
+     "n": "name"
+    },
+    "project_id": {
+     "n": "projectId"
+    }
+   },
+   "token": "github:index/projectColumn:ProjectColumn"
+  },
+  "github_release": {
+   "f": {
+    "assets_url": {
+     "n": "assetsUrl"
+    },
+    "body": {
+     "n": "body"
+    },
+    "created_at": {
+     "n": "createdAt"
+    },
+    "discussion_category_name": {
+     "n": "discussionCategoryName"
+    },
+    "draft": {
+     "n": "draft"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "generate_release_notes": {
+     "n": "generateReleaseNotes"
+    },
+    "html_url": {
+     "n": "htmlUrl"
+    },
+    "id": {
+     "n": "githubReleaseId"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_id": {
+     "n": "nodeId"
+    },
+    "prerelease": {
+     "n": "prerelease"
+    },
+    "published_at": {
+     "n": "publishedAt"
+    },
+    "release_id": {
+     "n": "releaseId"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "tag_name": {
+     "n": "tagName"
+    },
+    "tarball_url": {
+     "n": "tarballUrl"
+    },
+    "target_commitish": {
+     "n": "targetCommitish"
+    },
+    "upload_url": {
+     "n": "uploadUrl"
+    },
+    "url": {
+     "n": "url"
+    },
+    "zipball_url": {
+     "n": "zipballUrl"
+    }
+   },
+   "token": "github:index/release:Release"
+  },
+  "github_repository": {
+   "f": {
+    "allow_auto_merge": {
+     "n": "allowAutoMerge"
+    },
+    "allow_forking": {
+     "n": "allowForking"
+    },
+    "allow_merge_commit": {
+     "n": "allowMergeCommit"
+    },
+    "allow_rebase_merge": {
+     "n": "allowRebaseMerge"
+    },
+    "allow_squash_merge": {
+     "n": "allowSquashMerge"
+    },
+    "allow_update_branch": {
+     "n": "allowUpdateBranch"
+    },
+    "archive_on_destroy": {
+     "n": "archiveOnDestroy"
+    },
+    "archived": {
+     "n": "archived"
+    },
+    "auto_init": {
+     "n": "autoInit"
+    },
+    "default_branch": {
+     "n": "defaultBranch"
+    },
+    "delete_branch_on_merge": {
+     "n": "deleteBranchOnMerge"
+    },
+    "description": {
+     "n": "description"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "fork": {
+     "n": "fork"
+    },
+    "full_name": {
+     "n": "fullName"
+    },
+    "git_clone_url": {
+     "n": "gitCloneUrl"
+    },
+    "gitignore_template": {
+     "n": "gitignoreTemplate"
+    },
+    "has_discussions": {
+     "n": "hasDiscussions"
+    },
+    "has_downloads": {
+     "n": "hasDownloads"
+    },
+    "has_issues": {
+     "n": "hasIssues"
+    },
+    "has_projects": {
+     "n": "hasProjects"
+    },
+    "has_wiki": {
+     "n": "hasWiki"
+    },
+    "homepage_url": {
+     "n": "homepageUrl"
+    },
+    "html_url": {
+     "n": "htmlUrl"
+    },
+    "http_clone_url": {
+     "n": "httpCloneUrl"
+    },
+    "id": {
+     "n": "repositoryId"
+    },
+    "ignore_vulnerability_alerts_during_read": {
+     "n": "ignoreVulnerabilityAlertsDuringRead"
+    },
+    "is_template": {
+     "n": "isTemplate"
+    },
+    "license_template": {
+     "n": "licenseTemplate"
+    },
+    "merge_commit_message": {
+     "n": "mergeCommitMessage"
+    },
+    "merge_commit_title": {
+     "n": "mergeCommitTitle"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_id": {
+     "n": "nodeId"
+    },
+    "pages": {
+     "f": {
+      "build_type": {
+       "n": "buildType"
+      },
+      "cname": {
+       "n": "cname"
+      },
+      "custom_404": {
+       "n": "custom404"
+      },
+      "html_url": {
+       "n": "htmlUrl"
+      },
+      "source": {
+       "f": {
+        "branch": {
+         "n": "branch"
+        },
+        "path": {
+         "n": "path"
+        }
+       },
+       "n": "source"
+      },
+      "status": {
+       "n": "status"
+      },
+      "url": {
+       "n": "url"
+      }
+     },
+     "n": "pages"
+    },
+    "primary_language": {
+     "n": "primaryLanguage"
+    },
+    "private": {
+     "n": "private"
+    },
+    "repo_id": {
+     "n": "repoId"
+    },
+    "security_and_analysis": {
+     "f": {
+      "advanced_security": {
+       "f": {
+        "status": {
+         "n": "status"
+        }
+       },
+       "n": "advancedSecurity"
+      },
+      "code_security": {
+       "f": {
+        "status": {
+         "n": "status"
+        }
+       },
+       "n": "codeSecurity"
+      },
+      "secret_scanning": {
+       "f": {
+        "status": {
+         "n": "status"
+        }
+       },
+       "n": "secretScanning"
+      },
+      "secret_scanning_ai_detection": {
+       "f": {
+        "status": {
+         "n": "status"
+        }
+       },
+       "n": "secretScanningAiDetection"
+      },
+      "secret_scanning_non_provider_patterns": {
+       "f": {
+        "status": {
+         "n": "status"
+        }
+       },
+       "n": "secretScanningNonProviderPatterns"
+      },
+      "secret_scanning_push_protection": {
+       "f": {
+        "status": {
+         "n": "status"
+        }
+       },
+       "n": "secretScanningPushProtection"
+      }
+     },
+     "n": "securityAndAnalysis"
+    },
+    "source_owner": {
+     "n": "sourceOwner"
+    },
+    "source_repo": {
+     "n": "sourceRepo"
+    },
+    "squash_merge_commit_message": {
+     "n": "squashMergeCommitMessage"
+    },
+    "squash_merge_commit_title": {
+     "n": "squashMergeCommitTitle"
+    },
+    "ssh_clone_url": {
+     "n": "sshCloneUrl"
+    },
+    "svn_url": {
+     "n": "svnUrl"
+    },
+    "template": {
+     "f": {
+      "include_all_branches": {
+       "n": "includeAllBranches"
+      },
+      "owner": {
+       "n": "owner"
+      },
+      "repository": {
+       "n": "repository"
+      }
+     },
+     "n": "template"
+    },
+    "topics": {
+     "arr": true,
+     "n": "topics"
+    },
+    "visibility": {
+     "n": "visibility"
+    },
+    "vulnerability_alerts": {
+     "n": "vulnerabilityAlerts"
+    },
+    "web_commit_signoff_required": {
+     "n": "webCommitSignoffRequired"
+    }
+   },
+   "token": "github:index/repository:Repository"
+  },
+  "github_repository_autolink_reference": {
+   "f": {
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "repositoryAutolinkReferenceId"
+    },
+    "is_alphanumeric": {
+     "n": "isAlphanumeric"
+    },
+    "key_prefix": {
+     "n": "keyPrefix"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "target_url_template": {
+     "n": "targetUrlTemplate"
+    }
+   },
+   "token": "github:index/repositoryAutolinkReference:RepositoryAutolinkReference"
+  },
+  "github_repository_collaborator": {
+   "f": {
+    "id": {
+     "n": "repositoryCollaboratorId"
+    },
+    "invitation_id": {
+     "n": "invitationId"
+    },
+    "permission": {
+     "n": "permission"
+    },
+    "permission_diff_suppression": {
+     "n": "permissionDiffSuppression"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "username": {
+     "n": "username"
+    }
+   },
+   "token": "github:index/repositoryCollaborator:RepositoryCollaborator"
+  },
+  "github_repository_collaborators": {
+   "f": {
+    "id": {
+     "n": "repositoryCollaboratorsId"
+    },
+    "ignore_team": {
+     "arr": true,
+     "f": {
+      "team_id": {
+       "n": "teamId"
+      }
+     },
+     "n": "ignoreTeams"
+    },
+    "invitation_ids": {
+     "map": true,
+     "n": "invitationIds"
+    },
+    "owner_configured": {
+     "n": "ownerConfigured"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    },
+    "team": {
+     "arr": true,
+     "f": {
+      "permission": {
+       "n": "permission"
+      },
+      "team_id": {
+       "n": "teamId"
+      }
+     },
+     "n": "teams"
+    },
+    "user": {
+     "arr": true,
+     "f": {
+      "permission": {
+       "n": "permission"
+      },
+      "username": {
+       "n": "username"
+      }
+     },
+     "n": "users"
+    }
+   },
+   "token": "github:index/repositoryCollaborators:RepositoryCollaborators"
+  },
+  "github_repository_custom_property": {
+   "f": {
+    "id": {
+     "n": "repositoryCustomPropertyId"
+    },
+    "property_name": {
+     "n": "propertyName"
+    },
+    "property_type": {
+     "n": "propertyType"
+    },
+    "property_value": {
+     "arr": true,
+     "n": "propertyValues"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    }
+   },
+   "token": "github:index/repositoryCustomProperty:RepositoryCustomProperty"
+  },
+  "github_repository_dependabot_security_updates": {
+   "f": {
+    "enabled": {
+     "n": "enabled"
+    },
+    "id": {
+     "n": "repositoryDependabotSecurityUpdatesId"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/repositoryDependabotSecurityUpdates:RepositoryDependabotSecurityUpdates"
+  },
+  "github_repository_deploy_key": {
+   "f": {
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "repositoryDeployKeyId"
+    },
+    "key": {
+     "n": "key"
+    },
+    "read_only": {
+     "n": "readOnly"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "title": {
+     "n": "title"
+    }
+   },
+   "token": "github:index/repositoryDeployKey:RepositoryDeployKey"
+  },
+  "github_repository_deployment_branch_policy": {
+   "f": {
+    "environment_name": {
+     "n": "environmentName"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "repositoryDeploymentBranchPolicyId"
+    },
+    "name": {
+     "n": "name"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/repositoryDeploymentBranchPolicy:RepositoryDeploymentBranchPolicy"
+  },
+  "github_repository_environment": {
+   "f": {
+    "can_admins_bypass": {
+     "n": "canAdminsBypass"
+    },
+    "deployment_branch_policy": {
+     "f": {
+      "custom_branch_policies": {
+       "n": "customBranchPolicies"
+      },
+      "protected_branches": {
+       "n": "protectedBranches"
+      }
+     },
+     "n": "deploymentBranchPolicy"
+    },
+    "environment": {
+     "n": "environment"
+    },
+    "id": {
+     "n": "repositoryEnvironmentId"
+    },
+    "prevent_self_review": {
+     "n": "preventSelfReview"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    },
+    "reviewers": {
+     "f": {
+      "teams": {
+       "arr": true,
+       "n": "teams"
+      },
+      "users": {
+       "arr": true,
+       "n": "users"
+      }
+     },
+     "n": "reviewers"
+    },
+    "wait_timer": {
+     "n": "waitTimer"
+    }
+   },
+   "token": "github:index/repositoryEnvironment:RepositoryEnvironment"
+  },
+  "github_repository_environment_deployment_policy": {
+   "f": {
+    "branch_pattern": {
+     "n": "branchPattern"
+    },
+    "environment": {
+     "n": "environment"
+    },
+    "id": {
+     "n": "repositoryEnvironmentDeploymentPolicyId"
+    },
+    "policy_id": {
+     "n": "policyId"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    },
+    "tag_pattern": {
+     "n": "tagPattern"
+    }
+   },
+   "token": "github:index/repositoryEnvironmentDeploymentPolicy:RepositoryEnvironmentDeploymentPolicy"
+  },
+  "github_repository_file": {
+   "f": {
+    "autocreate_branch": {
+     "n": "autocreateBranch"
+    },
+    "autocreate_branch_source_branch": {
+     "n": "autocreateBranchSourceBranch"
+    },
+    "autocreate_branch_source_sha": {
+     "n": "autocreateBranchSourceSha"
+    },
+    "branch": {
+     "n": "branch"
+    },
+    "commit_author": {
+     "n": "commitAuthor"
+    },
+    "commit_email": {
+     "n": "commitEmail"
+    },
+    "commit_message": {
+     "n": "commitMessage"
+    },
+    "commit_sha": {
+     "n": "commitSha"
+    },
+    "content": {
+     "n": "content"
+    },
+    "file": {
+     "n": "file"
+    },
+    "id": {
+     "n": "repositoryFileId"
+    },
+    "overwrite_on_create": {
+     "n": "overwriteOnCreate"
+    },
+    "ref": {
+     "n": "ref"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    },
+    "sha": {
+     "n": "sha"
+    }
+   },
+   "token": "github:index/repositoryFile:RepositoryFile"
+  },
+  "github_repository_milestone": {
+   "f": {
+    "description": {
+     "n": "description"
+    },
+    "due_date": {
+     "n": "dueDate"
+    },
+    "id": {
+     "n": "repositoryMilestoneId"
+    },
+    "number": {
+     "n": "number"
+    },
+    "owner": {
+     "n": "owner"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "state": {
+     "n": "state"
+    },
+    "title": {
+     "n": "title"
+    }
+   },
+   "token": "github:index/repositoryMilestone:RepositoryMilestone"
+  },
+  "github_repository_pages": {
+   "f": {
+    "api_url": {
+     "n": "apiUrl"
+    },
+    "build_status": {
+     "n": "buildStatus"
+    },
+    "build_type": {
+     "n": "buildType"
+    },
+    "cname": {
+     "n": "cname"
+    },
+    "custom_404": {
+     "n": "custom404"
+    },
+    "html_url": {
+     "n": "htmlUrl"
+    },
+    "https_enforced": {
+     "n": "httpsEnforced"
+    },
+    "id": {
+     "n": "repositoryPagesId"
+    },
+    "public": {
+     "n": "public"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    },
+    "source": {
+     "f": {
+      "branch": {
+       "n": "branch"
+      },
+      "path": {
+       "n": "path"
+      }
+     },
+     "n": "source"
+    }
+   },
+   "token": "github:index/repositoryPages:RepositoryPages"
+  },
+  "github_repository_project": {
+   "f": {
+    "body": {
+     "n": "body"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "repositoryProjectId"
+    },
+    "name": {
+     "n": "name"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "url": {
+     "n": "url"
+    }
+   },
+   "token": "github:index/repositoryProject:RepositoryProject"
+  },
+  "github_repository_pull_request": {
+   "f": {
+    "base_ref": {
+     "n": "baseRef"
+    },
+    "base_repository": {
+     "n": "baseRepository"
+    },
+    "base_sha": {
+     "n": "baseSha"
+    },
+    "body": {
+     "n": "body"
+    },
+    "draft": {
+     "n": "draft"
+    },
+    "head_ref": {
+     "n": "headRef"
+    },
+    "head_sha": {
+     "n": "headSha"
+    },
+    "id": {
+     "n": "repositoryPullRequestId"
+    },
+    "labels": {
+     "arr": true,
+     "n": "labels"
+    },
+    "maintainer_can_modify": {
+     "n": "maintainerCanModify"
+    },
+    "number": {
+     "n": "number"
+    },
+    "opened_at": {
+     "n": "openedAt"
+    },
+    "opened_by": {
+     "n": "openedBy"
+    },
+    "owner": {
+     "n": "owner"
+    },
+    "state": {
+     "n": "state"
+    },
+    "title": {
+     "n": "title"
+    },
+    "updated_at": {
+     "n": "updatedAt"
+    }
+   },
+   "token": "github:index/repositoryPullRequest:RepositoryPullRequest"
+  },
+  "github_repository_ruleset": {
+   "f": {
+    "bypass_actors": {
+     "arr": true,
+     "f": {
+      "actor_id": {
+       "n": "actorId"
+      },
+      "actor_type": {
+       "n": "actorType"
+      },
+      "bypass_mode": {
+       "n": "bypassMode"
+      }
+     },
+     "n": "bypassActors"
+    },
+    "conditions": {
+     "f": {
+      "ref_name": {
+       "f": {
+        "exclude": {
+         "arr": true,
+         "n": "excludes"
+        },
+        "include": {
+         "arr": true,
+         "n": "includes"
+        }
+       },
+       "n": "refName"
+      }
+     },
+     "n": "conditions"
+    },
+    "enforcement": {
+     "n": "enforcement"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "repositoryRulesetId"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_id": {
+     "n": "nodeId"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "rules": {
+     "f": {
+      "branch_name_pattern": {
+       "f": {
+        "name": {
+         "n": "name"
+        },
+        "negate": {
+         "n": "negate"
+        },
+        "operator": {
+         "n": "operator"
+        },
+        "pattern": {
+         "n": "pattern"
+        }
+       },
+       "n": "branchNamePattern"
+      },
+      "commit_author_email_pattern": {
+       "f": {
+        "name": {
+         "n": "name"
+        },
+        "negate": {
+         "n": "negate"
+        },
+        "operator": {
+         "n": "operator"
+        },
+        "pattern": {
+         "n": "pattern"
+        }
+       },
+       "n": "commitAuthorEmailPattern"
+      },
+      "commit_message_pattern": {
+       "f": {
+        "name": {
+         "n": "name"
+        },
+        "negate": {
+         "n": "negate"
+        },
+        "operator": {
+         "n": "operator"
+        },
+        "pattern": {
+         "n": "pattern"
+        }
+       },
+       "n": "commitMessagePattern"
+      },
+      "committer_email_pattern": {
+       "f": {
+        "name": {
+         "n": "name"
+        },
+        "negate": {
+         "n": "negate"
+        },
+        "operator": {
+         "n": "operator"
+        },
+        "pattern": {
+         "n": "pattern"
+        }
+       },
+       "n": "committerEmailPattern"
+      },
+      "copilot_code_review": {
+       "f": {
+        "review_draft_pull_requests": {
+         "n": "reviewDraftPullRequests"
+        },
+        "review_on_push": {
+         "n": "reviewOnPush"
+        }
+       },
+       "n": "copilotCodeReview"
+      },
+      "creation": {
+       "n": "creation"
+      },
+      "deletion": {
+       "n": "deletion"
+      },
+      "file_extension_restriction": {
+       "f": {
+        "restricted_file_extensions": {
+         "arr": true,
+         "n": "restrictedFileExtensions"
+        }
+       },
+       "n": "fileExtensionRestriction"
+      },
+      "file_path_restriction": {
+       "f": {
+        "restricted_file_paths": {
+         "arr": true,
+         "n": "restrictedFilePaths"
+        }
+       },
+       "n": "filePathRestriction"
+      },
+      "max_file_path_length": {
+       "f": {
+        "max_file_path_length": {
+         "n": "maxFilePathLength"
+        }
+       },
+       "n": "maxFilePathLength"
+      },
+      "max_file_size": {
+       "f": {
+        "max_file_size": {
+         "n": "maxFileSize"
+        }
+       },
+       "n": "maxFileSize"
+      },
+      "merge_queue": {
+       "f": {
+        "check_response_timeout_minutes": {
+         "n": "checkResponseTimeoutMinutes"
+        },
+        "grouping_strategy": {
+         "n": "groupingStrategy"
+        },
+        "max_entries_to_build": {
+         "n": "maxEntriesToBuild"
+        },
+        "max_entries_to_merge": {
+         "n": "maxEntriesToMerge"
+        },
+        "merge_method": {
+         "n": "mergeMethod"
+        },
+        "min_entries_to_merge": {
+         "n": "minEntriesToMerge"
+        },
+        "min_entries_to_merge_wait_minutes": {
+         "n": "minEntriesToMergeWaitMinutes"
+        }
+       },
+       "n": "mergeQueue"
+      },
+      "non_fast_forward": {
+       "n": "nonFastForward"
+      },
+      "pull_request": {
+       "f": {
+        "allowed_merge_methods": {
+         "arr": true,
+         "n": "allowedMergeMethods"
+        },
+        "dismiss_stale_reviews_on_push": {
+         "n": "dismissStaleReviewsOnPush"
+        },
+        "require_code_owner_review": {
+         "n": "requireCodeOwnerReview"
+        },
+        "require_last_push_approval": {
+         "n": "requireLastPushApproval"
+        },
+        "required_approving_review_count": {
+         "n": "requiredApprovingReviewCount"
+        },
+        "required_review_thread_resolution": {
+         "n": "requiredReviewThreadResolution"
+        },
+        "required_reviewers": {
+         "arr": true,
+         "f": {
+          "file_patterns": {
+           "arr": true,
+           "n": "filePatterns"
+          },
+          "minimum_approvals": {
+           "n": "minimumApprovals"
+          },
+          "reviewer": {
+           "f": {
+            "id": {
+             "n": "id"
+            },
+            "type": {
+             "n": "type"
+            }
+           },
+           "n": "reviewer"
+          }
+         },
+         "n": "requiredReviewers"
+        }
+       },
+       "n": "pullRequest"
+      },
+      "required_code_scanning": {
+       "f": {
+        "required_code_scanning_tool": {
+         "arr": true,
+         "f": {
+          "alerts_threshold": {
+           "n": "alertsThreshold"
+          },
+          "security_alerts_threshold": {
+           "n": "securityAlertsThreshold"
+          },
+          "tool": {
+           "n": "tool"
+          }
+         },
+         "n": "requiredCodeScanningTools"
+        }
+       },
+       "n": "requiredCodeScanning"
+      },
+      "required_deployments": {
+       "f": {
+        "required_deployment_environments": {
+         "arr": true,
+         "n": "requiredDeploymentEnvironments"
+        }
+       },
+       "n": "requiredDeployments"
+      },
+      "required_linear_history": {
+       "n": "requiredLinearHistory"
+      },
+      "required_signatures": {
+       "n": "requiredSignatures"
+      },
+      "required_status_checks": {
+       "f": {
+        "do_not_enforce_on_create": {
+         "n": "doNotEnforceOnCreate"
+        },
+        "required_check": {
+         "arr": true,
+         "f": {
+          "context": {
+           "n": "context"
+          },
+          "integration_id": {
+           "n": "integrationId"
+          }
+         },
+         "n": "requiredChecks"
+        },
+        "strict_required_status_checks_policy": {
+         "n": "strictRequiredStatusChecksPolicy"
+        }
+       },
+       "n": "requiredStatusChecks"
+      },
+      "tag_name_pattern": {
+       "f": {
+        "name": {
+         "n": "name"
+        },
+        "negate": {
+         "n": "negate"
+        },
+        "operator": {
+         "n": "operator"
+        },
+        "pattern": {
+         "n": "pattern"
+        }
+       },
+       "n": "tagNamePattern"
+      },
+      "update": {
+       "n": "update"
+      },
+      "update_allows_fetch_and_merge": {
+       "n": "updateAllowsFetchAndMerge"
+      }
+     },
+     "n": "rules"
+    },
+    "ruleset_id": {
+     "n": "rulesetId"
+    },
+    "target": {
+     "n": "target"
+    }
+   },
+   "token": "github:index/repositoryRuleset:RepositoryRuleset"
+  },
+  "github_repository_topics": {
+   "f": {
+    "id": {
+     "n": "repositoryTopicsId"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "topics": {
+     "arr": true,
+     "n": "topics"
+    }
+   },
+   "token": "github:index/repositoryTopics:RepositoryTopics"
+  },
+  "github_repository_vulnerability_alerts": {
+   "f": {
+    "enabled": {
+     "n": "enabled"
+    },
+    "id": {
+     "n": "repositoryVulnerabilityAlertsId"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    }
+   },
+   "token": "github:index/repositoryVulnerabilityAlerts:RepositoryVulnerabilityAlerts"
+  },
+  "github_repository_webhook": {
+   "f": {
+    "active": {
+     "n": "active"
+    },
+    "configuration": {
+     "f": {
+      "content_type": {
+       "n": "contentType"
+      },
+      "insecure_ssl": {
+       "n": "insecureSsl"
+      },
+      "secret": {
+       "n": "secret"
+      },
+      "url": {
+       "n": "url"
+      }
+     },
+     "n": "configuration"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "events": {
+     "arr": true,
+     "n": "events"
+    },
+    "id": {
+     "n": "repositoryWebhookId"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "url": {
+     "n": "url"
+    }
+   },
+   "token": "github:index/repositoryWebhook:RepositoryWebhook"
+  },
+  "github_team": {
+   "f": {
+    "create_default_maintainer": {
+     "n": "createDefaultMaintainer"
+    },
+    "description": {
+     "n": "description"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "teamId"
+    },
+    "ldap_dn": {
+     "n": "ldapDn"
+    },
+    "members_count": {
+     "n": "membersCount"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_id": {
+     "n": "nodeId"
+    },
+    "notification_setting": {
+     "n": "notificationSetting"
+    },
+    "parent_team_id": {
+     "n": "parentTeamId"
+    },
+    "parent_team_read_id": {
+     "n": "parentTeamReadId"
+    },
+    "parent_team_read_slug": {
+     "n": "parentTeamReadSlug"
+    },
+    "privacy": {
+     "n": "privacy"
+    },
+    "slug": {
+     "n": "slug"
+    }
+   },
+   "token": "github:index/team:Team"
+  },
+  "github_team_members": {
+   "f": {
+    "id": {
+     "n": "teamMembersId"
+    },
+    "members": {
+     "arr": true,
+     "f": {
+      "role": {
+       "n": "role"
+      },
+      "username": {
+       "n": "username"
+      }
+     },
+     "n": "members"
+    },
+    "team_id": {
+     "n": "teamId"
+    },
+    "team_slug": {
+     "n": "teamSlug"
+    }
+   },
+   "token": "github:index/teamMembers:TeamMembers"
+  },
+  "github_team_membership": {
+   "f": {
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "teamMembershipId"
+    },
+    "role": {
+     "n": "role"
+    },
+    "team_id": {
+     "n": "teamId"
+    },
+    "username": {
+     "n": "username"
+    }
+   },
+   "token": "github:index/teamMembership:TeamMembership"
+  },
+  "github_team_repository": {
+   "f": {
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "teamRepositoryId"
+    },
+    "permission": {
+     "n": "permission"
+    },
+    "repository": {
+     "n": "repository"
+    },
+    "team_id": {
+     "n": "teamId"
+    }
+   },
+   "token": "github:index/teamRepository:TeamRepository"
+  },
+  "github_team_settings": {
+   "f": {
+    "id": {
+     "n": "teamSettingsId"
+    },
+    "notify": {
+     "n": "notify"
+    },
+    "review_request_delegation": {
+     "f": {
+      "algorithm": {
+       "n": "algorithm"
+      },
+      "member_count": {
+       "n": "memberCount"
+      },
+      "notify": {
+       "n": "notify"
+      }
+     },
+     "n": "reviewRequestDelegation"
+    },
+    "team_id": {
+     "n": "teamId"
+    },
+    "team_slug": {
+     "n": "teamSlug"
+    },
+    "team_uid": {
+     "n": "teamUid"
+    }
+   },
+   "token": "github:index/teamSettings:TeamSettings"
+  },
+  "github_team_sync_group_mapping": {
+   "f": {
+    "etag": {
+     "n": "etag"
+    },
+    "group": {
+     "arr": true,
+     "f": {
+      "group_description": {
+       "n": "groupDescription"
+      },
+      "group_id": {
+       "n": "groupId"
+      },
+      "group_name": {
+       "n": "groupName"
+      }
+     },
+     "n": "groups"
+    },
+    "id": {
+     "n": "teamSyncGroupMappingId"
+    },
+    "team_slug": {
+     "n": "teamSlug"
+    }
+   },
+   "token": "github:index/teamSyncGroupMapping:TeamSyncGroupMapping"
+  },
+  "github_user_gpg_key": {
+   "f": {
+    "armored_public_key": {
+     "n": "armoredPublicKey"
+    },
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "userGpgKeyId"
+    },
+    "key_id": {
+     "n": "keyId"
+    }
+   },
+   "token": "github:index/userGpgKey:UserGpgKey"
+  },
+  "github_user_invitation_accepter": {
+   "f": {
+    "allow_empty_id": {
+     "n": "allowEmptyId"
+    },
+    "id": {
+     "n": "userInvitationAccepterId"
+    },
+    "invitation_id": {
+     "n": "invitationId"
+    }
+   },
+   "token": "github:index/userInvitationAccepter:UserInvitationAccepter"
+  },
+  "github_user_ssh_key": {
+   "f": {
+    "etag": {
+     "n": "etag"
+    },
+    "id": {
+     "n": "userSshKeyId"
+    },
+    "key": {
+     "n": "key"
+    },
+    "title": {
+     "n": "title"
+    },
+    "url": {
+     "n": "url"
+    }
+   },
+   "token": "github:index/userSshKey:UserSshKey"
+  },
+  "github_workflow_repository_permissions": {
+   "f": {
+    "can_approve_pull_request_reviews": {
+     "n": "canApprovePullRequestReviews"
+    },
+    "default_workflow_permissions": {
+     "n": "defaultWorkflowPermissions"
+    },
+    "id": {
+     "n": "workflowRepositoryPermissionsId"
+    },
+    "repository": {
+     "n": "repository"
+    }
+   },
+   "token": "github:index/workflowRepositoryPermissions:WorkflowRepositoryPermissions"
+  }
+ },
+ "source": "integrations/github",
+ "version": "6.13.0"
+}

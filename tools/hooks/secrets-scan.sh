@@ -46,7 +46,8 @@ while IFS= read -r -d "" f; do
     fail "provider token in $f"
   fi
   # Nix signing secret key: <name>:<86 base64 chars>== (public keys are 43+=).
-  if printf '%s\n' "$blob" | rg -q -e '[A-Za-z0-9.-]+:[A-Za-z0-9+/]{86}=='; then
+  # sops ciphertext (ENC[...,data:<base64>==,...]) has the same shape; drop it first.
+  if printf '%s\n' "$blob" | sed -E 's/ENC\[[^]]*\]//g' | rg -q -e '[A-Za-z0-9.-]+:[A-Za-z0-9+/]{86}=='; then
     fail "nix signing secret key in $f"
   fi
   # libpq keyword connection strings: password=... / sslpassword=... with a
@@ -100,6 +101,8 @@ print(n)')"
       /^[[:space:]]*#/ || /^---/ || /^[[:space:]]*$/ { next }
       /^[[:space:]]*(- )?[A-Za-z0-9_."-]+:[[:space:]]*$/ { next }
       /ENC\[/ { next }
+      # sops leaves an empty string unencrypted.
+      /^[[:space:]]*(- )?[A-Za-z0-9_."-]+:[[:space:]]+(""|'"''"')[[:space:]]*$/ { next }
       /^[[:space:]]*(- )?[A-Za-z0-9_."-]+:[[:space:]]+[^[:space:]]/ { n++ }
       END { print n+0 }')"
     if [ "$leaked" != "0" ]; then

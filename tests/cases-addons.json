@@ -1,0 +1,147 @@
+{
+  "negative": [
+    {
+      "name": "playbooks-while-off",
+      "description": "playbooks declared while the add-on is off",
+      "expect": "fleet\\.estates\\.addon\\.addons\\.ansible\\.playbooks: tune, vyos declared, but addons\\.ansible\\.enable is false",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.estates.addon.addons.ansible.enable = lib.mkForce false;",
+        "}"
+      ]
+    },
+    {
+      "name": "unknown-addon",
+      "description": "an add-on the kit does not have",
+      "expect": "The option `fleet\\.estates\\.addon\\.addons\\.terraform' does not exist",
+      "module": [
+        "_:",
+        "{",
+        "  fleet.estates.addon.addons.terraform.enable = true;",
+        "}"
+      ]
+    },
+    {
+      "name": "enable-not-bool",
+      "description": "enable as a string",
+      "expect": "A definition for option `fleet\\.estates\\.addon\\.addons\\.ansible\\.enable' is not of type `boolean'",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.estates.addon.addons.ansible.enable = lib.mkForce \"yes\";",
+        "}"
+      ]
+    },
+    {
+      "name": "guest-elsewhere",
+      "description": "a playbook against a guest of another estate",
+      "expect": "fleet\\.estates\\.addon\\.addons\\.ansible\\.playbooks\\.vyos\\.guest: \"tbox\" is not a guest of estate addon \\(its guests: kept, router\\)",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.estates.addon.addons.ansible.playbooks.vyos.guest = lib.mkForce \"tbox\";",
+        "}"
+      ]
+    },
+    {
+      "name": "no-address",
+      "description": "a network on which the guest has no static address",
+      "expect": "fleet\\.estates\\.addon\\.addons\\.ansible\\.playbooks\\.vyos\\.network: guest router has no static IPv4 address on network \"tagged\" \\(it has one on: lan\\)",
+      "module": [
+        "_:",
+        "{",
+        "  fleet.estates.addon.addons.ansible.playbooks.vyos.network = \"tagged\";",
+        "}"
+      ]
+    },
+    {
+      "name": "playbook-outside-store",
+      "description": "a playbook given as a path string on some host",
+      "expect": "fleet\\.estates\\.addon\\.addons\\.ansible\\.playbooks\\.vyos\\.playbook: \"/srv/playbooks/vyos\" is not a Nix path or derivation",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.estates.addon.addons.ansible.playbooks.vyos.playbook = lib.mkForce \"/srv/playbooks/vyos\";",
+        "}"
+      ]
+    },
+    {
+      "name": "entry-escapes",
+      "description": "an entry outside the playbook directory",
+      "expect": "fleet\\.estates\\.addon\\.addons\\.ansible\\.playbooks\\.vyos\\.entry: \"\\.\\./site\\.yml\" must be a relative path inside the playbook directory",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.estates.addon.addons.ansible.playbooks.vyos.entry = lib.mkForce \"../site.yml\";",
+        "}"
+      ]
+    },
+    {
+      "name": "unknown-collection",
+      "description": "a collection the runner's Ansible does not have",
+      "expect": "fleet\\.estates\\.addon\\.addons\\.ansible\\.playbooks\\.vyos\\.collections: not in the runner's Ansible \\(ansible 14\\.0\\.0, providers/ansible/collections\\.json\\): acme\\.router",
+      "module": [
+        "_:",
+        "{",
+        "  fleet.estates.addon.addons.ansible.playbooks.vyos.collections = [ \"acme.router\" ];",
+        "}"
+      ]
+    },
+    {
+      "name": "secret-as-value",
+      "description": "a secret given as its value instead of a file path",
+      "expect": "fleet\\.estates\\.addon\\.addons\\.ansible\\.playbooks\\.vyos\\.secretFiles: vyos_password_file: not an absolute path outside the Nix store",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.estates.addon.addons.ansible.playbooks.vyos.secretFiles.vyos_password_file = lib.mkForce \"hunter2\";",
+        "}"
+      ]
+    },
+    {
+      "name": "secret-in-store",
+      "description": "a secret file in the Nix store, readable by anyone",
+      "expect": "fleet\\.estates\\.addon\\.addons\\.ansible\\.playbooks\\.tune\\.secretFiles: token_file: not an absolute path outside the Nix store",
+      "module": [
+        "_:",
+        "{",
+        "  fleet.estates.addon.addons.ansible.playbooks.tune.secretFiles.token_file = \"/nix/store/00000000000000000000000000000000-token\";",
+        "}"
+      ]
+    },
+    {
+      "name": "fleetkits-variable",
+      "description": "an extra variable fleetkit sets from the guest",
+      "expect": "fleet\\.estates\\.addon\\.addons\\.ansible\\.playbooks\\.vyos\\.extraVars: ansible_host is set by fleetkit",
+      "module": [
+        "_:",
+        "{",
+        "  fleet.estates.addon.addons.ansible.playbooks.vyos.extraVars.ansible_host = \"192.0.2.200\";",
+        "}"
+      ]
+    },
+    {
+      "name": "secret-and-var",
+      "description": "the same variable as a secret file and an extra variable",
+      "expect": "fleet\\.estates\\.addon\\.addons\\.ansible\\.playbooks\\.vyos\\.secretFiles: vyos_password_file also set in extraVars",
+      "module": [
+        "_:",
+        "{",
+        "  fleet.estates.addon.addons.ansible.playbooks.vyos.extraVars.vyos_password_file = \"/tmp/x\";",
+        "}"
+      ]
+    },
+    {
+      "name": "name-of-a-guest",
+      "description": "a playbook named like a guest of the estate (the guest's program key would change)",
+      "expect": "mkPulumi: fleet\\.estates\\.addon\\.addons\\.ansible\\.playbooks: router: also the name of a guest, pool or upload of the estate",
+      "module": [
+        "_:",
+        "{",
+        "  fleet.estates.addon.addons.ansible.playbooks.router = { guest = \"router\"; playbook = builtins.toFile \"tune.yml\" \"- hosts: all\"; };",
+        "}"
+      ]
+    }
+  ]
+}

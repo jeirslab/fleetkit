@@ -42,6 +42,12 @@ if ! bash tests/hive.sh >&2; then
   eval_=fail
   log "eval: tests/hive.sh FAIL"
 fi
+# nixosModules.fleetkit-server: every option described, the API tokens rendered
+# to the file the server reads, no token value through the store.
+if ! bash tests/fleetkit_server.sh >&2; then
+  eval_=fail
+  log "eval: tests/fleetkit_server.sh FAIL"
+fi
 log "eval: $eval_"
 
 lint=pass
@@ -53,7 +59,7 @@ if ! nix shell "$NIXPKGS#statix" "$NIXPKGS#deadnix" -c bash -c '
 ' lint "${NIXFILES[@]}"; then
   lint=fail
 fi
-for t in tests/loose_blocks.sh tests/sops_config.sh "tools/hooks/secrets-scan.sh --all" tests/secrets_scan_selftest.sh; do
+for t in tests/loose_blocks.sh tests/sops_config.sh tests/sops_config_multi.sh "tools/hooks/secrets-scan.sh --all" tests/secrets_scan_selftest.sh; do
   # shellcheck disable=SC2086
   if ! bash $t >&2; then
     lint=fail
@@ -65,11 +71,42 @@ log "lint: $lint"
 # Every guest option path is mapped to a provider argument that exists in the
 # pinned bpg/proxmox schema (docs/guest-provider-map.md), and so is the
 # terraform rendered from the fixture (tests/terraform.sh), and the GitHub
-# terraform against the pinned integrations/github schema (tests/github.sh).
+# terraform against the pinned integrations/github schema (tests/github.sh);
+# the GitHub App manifest renders for every tier selection (tests/github_app.sh);
+# the workflow caller renders, parses and refuses a non-SHA ref (tests/workflow_caller.sh);
+# the GitHub App bootstrap tool runs against a fake API and sops.
 fidelity=pass
 python3 tests/guest_fidelity.py --gate >&2 || fidelity=fail
 bash tests/terraform.sh >&2 || fidelity=fail
 bash tests/github.sh >&2 || fidelity=fail
+bash tests/github_app.sh >&2 || fidelity=fail
+bash tests/workflow_caller.sh >&2 || fidelity=fail
+python3 tests/github_app_bootstrap.py >&2 || fidelity=fail
+python3 tests/deploy_key.py >&2 || fidelity=fail
+# Experimental: the same renders as Pulumi programs, against the pinned
+# Pulumi schemas (tests/pulumi.sh; offline). tests/pulumi_preview.sh is the
+# networked end-to-end check and is not a gate.
+bash tests/pulumi.sh >&2 || fidelity=fail
+bash tests/pulumi_nix.sh >&2 || fidelity=fail
+# Estate add-ons: an estate that switches none on renders nothing of them; the
+# Ansible add-on's playbooks against the pinned ansible/ansible schema and
+# after their guests, and each bad declaration of tests/cases-addons.json
+# refused (tests/addons.sh).
+bash tests/addons.sh >&2 || fidelity=fail
+# NixOS-module add-ons (addons/nix, nixosModules.addons): off changes nothing,
+# on renders services.tailscale, the cert unit and timer, the Headscale settings.
+bash tests/nix-addons.sh >&2 || fidelity=fail
+# The secret roots an estate's flake declares, read the runner's way from
+# checkouts of two commits (a flake input each; path inputs, evaluation only).
+bash tests/pulumi_secret_roots.sh >&2 || fidelity=fail
+# The runner's guest list (what its guard gates) covers every VM and container
+# type of the pinned provider: a provider bump cannot fail open.
+python3 tests/guest_types.py >&2 || fidelity=fail
+# ADR-0009, ADR-0017: the secrets utility: the registry schema and every
+# assertion message, the data template, nixosModules.secrets, and a data
+# repository end to end with keys generated and thrown away (tests/secrets.sh).
+nix shell "$NIXPKGS#sops" "$NIXPKGS#age" "$NIXPKGS#ssh-to-age" "$NIXPKGS#ripgrep" \
+  "$NIXPKGS#openssh" "$NIXPKGS#git" "$NIXPKGS#python3" -c bash tests/secrets.sh >&2 || fidelity=fail
 log "fidelity: $fidelity"
 
 ok=false

@@ -1,0 +1,9806 @@
+{
+ "bridge": "1.4.0",
+ "dataSources": {
+  "proxmox_acme_account": {
+   "f": {
+    "account": {
+     "f": {
+      "contact": {
+       "arr": true,
+       "n": "contacts"
+      },
+      "created_at": {
+       "n": "createdAt"
+      },
+      "status": {
+       "n": "status"
+      }
+     },
+     "n": "account"
+    },
+    "directory": {
+     "n": "directory"
+    },
+    "location": {
+     "n": "location"
+    },
+    "name": {
+     "n": "name"
+    },
+    "tos": {
+     "n": "tos"
+    }
+   },
+   "token": "proxmox:index/getAcmeAccount:getAcmeAccount"
+  },
+  "proxmox_acme_accounts": {
+   "f": {
+    "accounts": {
+     "arr": true,
+     "n": "accounts"
+    }
+   },
+   "token": "proxmox:index/getAcmeAccounts:getAcmeAccounts"
+  },
+  "proxmox_acme_plugin": {
+   "f": {
+    "api": {
+     "n": "api"
+    },
+    "data": {
+     "map": true,
+     "n": "data"
+    },
+    "digest": {
+     "n": "digest"
+    },
+    "plugin": {
+     "n": "plugin"
+    },
+    "type": {
+     "n": "type"
+    },
+    "validation_delay": {
+     "n": "validationDelay"
+    }
+   },
+   "token": "proxmox:index/getAcmePlugin:getAcmePlugin"
+  },
+  "proxmox_acme_plugins": {
+   "f": {
+    "plugins": {
+     "arr": true,
+     "f": {
+      "api": {
+       "n": "api"
+      },
+      "data": {
+       "map": true,
+       "n": "data"
+      },
+      "digest": {
+       "n": "digest"
+      },
+      "plugin": {
+       "n": "plugin"
+      },
+      "type": {
+       "n": "type"
+      },
+      "validation_delay": {
+       "n": "validationDelay"
+      }
+     },
+     "n": "plugins"
+    }
+   },
+   "token": "proxmox:index/getAcmePlugins:getAcmePlugins"
+  },
+  "proxmox_apt_repository": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "components": {
+     "arr": true,
+     "n": "components"
+    },
+    "enabled": {
+     "n": "enabled"
+    },
+    "file_path": {
+     "n": "filePath"
+    },
+    "file_type": {
+     "n": "fileType"
+    },
+    "id": {
+     "n": "id"
+    },
+    "index": {
+     "n": "index"
+    },
+    "node": {
+     "n": "node"
+    },
+    "package_types": {
+     "arr": true,
+     "n": "packageTypes"
+    },
+    "suites": {
+     "arr": true,
+     "n": "suites"
+    },
+    "uris": {
+     "arr": true,
+     "n": "uris"
+    }
+   },
+   "token": "proxmox:index/getAptRepository:getAptRepository"
+  },
+  "proxmox_apt_standard_repository": {
+   "f": {
+    "description": {
+     "n": "description"
+    },
+    "file_path": {
+     "n": "filePath"
+    },
+    "handle": {
+     "n": "handle"
+    },
+    "id": {
+     "n": "id"
+    },
+    "index": {
+     "n": "index"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node": {
+     "n": "node"
+    },
+    "status": {
+     "n": "status"
+    }
+   },
+   "token": "proxmox:index/getAptStandardRepository:getAptStandardRepository"
+  },
+  "proxmox_backup_jobs": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "jobs": {
+     "arr": true,
+     "f": {
+      "all": {
+       "n": "all"
+      },
+      "comment": {
+       "n": "comment"
+      },
+      "compress": {
+       "n": "compress"
+      },
+      "enabled": {
+       "n": "enabled"
+      },
+      "exclude": {
+       "arr": true,
+       "n": "excludes"
+      },
+      "id": {
+       "n": "id"
+      },
+      "mailnotification": {
+       "n": "mailnotification"
+      },
+      "mailto": {
+       "arr": true,
+       "n": "mailtos"
+      },
+      "mode": {
+       "n": "mode"
+      },
+      "node": {
+       "n": "node"
+      },
+      "notes_template": {
+       "n": "notesTemplate"
+      },
+      "pool": {
+       "n": "pool"
+      },
+      "protected": {
+       "n": "protected"
+      },
+      "prune_backups": {
+       "map": true,
+       "n": "pruneBackups"
+      },
+      "schedule": {
+       "n": "schedule"
+      },
+      "storage": {
+       "n": "storage"
+      },
+      "vmid": {
+       "arr": true,
+       "n": "vmids"
+      }
+     },
+     "n": "jobs"
+    }
+   },
+   "token": "proxmox:index/getBackupJobs:getBackupJobs"
+  },
+  "proxmox_ceph_status": {
+   "f": {
+    "fsid": {
+     "n": "fsid"
+    },
+    "health_status": {
+     "n": "healthStatus"
+    },
+    "id": {
+     "n": "id"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "quorum_names": {
+     "arr": true,
+     "n": "quorumNames"
+    }
+   },
+   "token": "proxmox:index/getCephStatus:getCephStatus"
+  },
+  "proxmox_datastores": {
+   "f": {
+    "datastores": {
+     "arr": true,
+     "f": {
+      "active": {
+       "n": "active"
+      },
+      "content_types": {
+       "arr": true,
+       "n": "contentTypes"
+      },
+      "enabled": {
+       "n": "enabled"
+      },
+      "id": {
+       "n": "id"
+      },
+      "node_name": {
+       "n": "nodeName"
+      },
+      "shared": {
+       "n": "shared"
+      },
+      "space_available": {
+       "n": "spaceAvailable"
+      },
+      "space_total": {
+       "n": "spaceTotal"
+      },
+      "space_used": {
+       "n": "spaceUsed"
+      },
+      "space_used_fraction": {
+       "n": "spaceUsedFraction"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "datastores"
+    },
+    "filters": {
+     "f": {
+      "content_types": {
+       "arr": true,
+       "n": "contentTypes"
+      },
+      "id": {
+       "n": "id"
+      },
+      "target": {
+       "n": "target"
+      }
+     },
+     "n": "filters"
+    },
+    "node_name": {
+     "n": "nodeName"
+    }
+   },
+   "token": "proxmox:index/getDatastores:getDatastores"
+  },
+  "proxmox_file": {
+   "f": {
+    "content_type": {
+     "n": "contentType"
+    },
+    "datastore_id": {
+     "n": "datastoreId"
+    },
+    "file_format": {
+     "n": "fileFormat"
+    },
+    "file_name": {
+     "n": "fileName"
+    },
+    "file_size": {
+     "n": "fileSize"
+    },
+    "id": {
+     "n": "id"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "vmid": {
+     "n": "vmid"
+    }
+   },
+   "token": "proxmox:index/getFile:getFile"
+  },
+  "proxmox_files": {
+   "f": {
+    "content_type": {
+     "n": "contentType"
+    },
+    "datastore_id": {
+     "n": "datastoreId"
+    },
+    "file_name_regex": {
+     "n": "fileNameRegex"
+    },
+    "files": {
+     "arr": true,
+     "f": {
+      "content_type": {
+       "n": "contentType"
+      },
+      "file_format": {
+       "n": "fileFormat"
+      },
+      "file_name": {
+       "n": "fileName"
+      },
+      "file_size": {
+       "n": "fileSize"
+      },
+      "id": {
+       "n": "id"
+      },
+      "vmid": {
+       "n": "vmid"
+      }
+     },
+     "n": "files"
+    },
+    "node_name": {
+     "n": "nodeName"
+    }
+   },
+   "token": "proxmox:index/getFiles:getFiles"
+  },
+  "proxmox_hagroup": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "group": {
+     "n": "group"
+    },
+    "id": {
+     "n": "id"
+    },
+    "no_failback": {
+     "n": "noFailback"
+    },
+    "nodes": {
+     "map": true,
+     "n": "nodes"
+    },
+    "restricted": {
+     "n": "restricted"
+    }
+   },
+   "token": "proxmox:index/getHagroup:getHagroup"
+  },
+  "proxmox_hagroups": {
+   "f": {
+    "group_ids": {
+     "arr": true,
+     "n": "groupIds"
+    },
+    "id": {
+     "n": "id"
+    }
+   },
+   "token": "proxmox:index/getHagroups:getHagroups"
+  },
+  "proxmox_hardware_mapping_dir": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "id": {
+     "n": "id"
+    },
+    "map": {
+     "arr": true,
+     "f": {
+      "node": {
+       "n": "node"
+      },
+      "path": {
+       "n": "path"
+      }
+     },
+     "n": "maps"
+    },
+    "name": {
+     "n": "name"
+    }
+   },
+   "token": "proxmox:index/getHardwareMappingDir:getHardwareMappingDir"
+  },
+  "proxmox_hardware_mapping_pci": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "id": {
+     "n": "id"
+    },
+    "map": {
+     "arr": true,
+     "f": {
+      "comment": {
+       "n": "comment"
+      },
+      "id": {
+       "n": "id"
+      },
+      "iommu_group": {
+       "n": "iommuGroup"
+      },
+      "node": {
+       "n": "node"
+      },
+      "path": {
+       "n": "path"
+      },
+      "subsystem_id": {
+       "n": "subsystemId"
+      }
+     },
+     "n": "maps"
+    },
+    "mediated_devices": {
+     "n": "mediatedDevices"
+    },
+    "name": {
+     "n": "name"
+    }
+   },
+   "token": "proxmox:index/getHardwareMappingPci:getHardwareMappingPci"
+  },
+  "proxmox_hardware_mapping_usb": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "id": {
+     "n": "id"
+    },
+    "map": {
+     "arr": true,
+     "f": {
+      "comment": {
+       "n": "comment"
+      },
+      "id": {
+       "n": "id"
+      },
+      "node": {
+       "n": "node"
+      },
+      "path": {
+       "n": "path"
+      }
+     },
+     "n": "maps"
+    },
+    "name": {
+     "n": "name"
+    }
+   },
+   "token": "proxmox:index/getHardwareMappingUsb:getHardwareMappingUsb"
+  },
+  "proxmox_hardware_mappings": {
+   "f": {
+    "check_node": {
+     "n": "checkNode"
+    },
+    "checks": {
+     "arr": true,
+     "f": {
+      "mapping_id": {
+       "n": "mappingId"
+      },
+      "message": {
+       "n": "message"
+      },
+      "severity": {
+       "n": "severity"
+      }
+     },
+     "n": "checks"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ids": {
+     "arr": true,
+     "n": "ids"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/getHardwareMappings:getHardwareMappings"
+  },
+  "proxmox_hardware_pci": {
+   "f": {
+    "devices": {
+     "arr": true,
+     "f": {
+      "class": {
+       "n": "class"
+      },
+      "device": {
+       "n": "device"
+      },
+      "device_name": {
+       "n": "deviceName"
+      },
+      "id": {
+       "n": "id"
+      },
+      "iommu_group": {
+       "n": "iommuGroup"
+      },
+      "mdev": {
+       "n": "mdev"
+      },
+      "subsystem_device": {
+       "n": "subsystemDevice"
+      },
+      "subsystem_device_name": {
+       "n": "subsystemDeviceName"
+      },
+      "subsystem_vendor": {
+       "n": "subsystemVendor"
+      },
+      "subsystem_vendor_name": {
+       "n": "subsystemVendorName"
+      },
+      "vendor": {
+       "n": "vendor"
+      },
+      "vendor_name": {
+       "n": "vendorName"
+      }
+     },
+     "n": "devices"
+    },
+    "filters": {
+     "f": {
+      "class": {
+       "n": "class"
+      },
+      "device_id": {
+       "n": "deviceId"
+      },
+      "id": {
+       "n": "id"
+      },
+      "vendor_id": {
+       "n": "vendorId"
+      }
+     },
+     "n": "filters"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "pci_class_blacklist": {
+     "arr": true,
+     "n": "pciClassBlacklists"
+    }
+   },
+   "token": "proxmox:index/getHardwarePci:getHardwarePci"
+  },
+  "proxmox_haresource": {
+   "f": {
+    "auto_rebalance": {
+     "n": "autoRebalance"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "failback": {
+     "n": "failback"
+    },
+    "group": {
+     "n": "group"
+    },
+    "id": {
+     "n": "id"
+    },
+    "max_relocate": {
+     "n": "maxRelocate"
+    },
+    "max_restart": {
+     "n": "maxRestart"
+    },
+    "resource_id": {
+     "n": "resourceId"
+    },
+    "state": {
+     "n": "state"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/getHaresource:getHaresource"
+  },
+  "proxmox_haresources": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "resource_ids": {
+     "arr": true,
+     "n": "resourceIds"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/getHaresources:getHaresources"
+  },
+  "proxmox_metrics_server": {
+   "f": {
+    "disable": {
+     "n": "disable"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "opentelemetry_compression": {
+     "n": "opentelemetryCompression"
+    },
+    "opentelemetry_headers": {
+     "n": "opentelemetryHeaders"
+    },
+    "opentelemetry_max_body_size": {
+     "n": "opentelemetryMaxBodySize"
+    },
+    "opentelemetry_path": {
+     "n": "opentelemetryPath"
+    },
+    "opentelemetry_proto": {
+     "n": "opentelemetryProto"
+    },
+    "opentelemetry_resource_attributes": {
+     "n": "opentelemetryResourceAttributes"
+    },
+    "opentelemetry_timeout": {
+     "n": "opentelemetryTimeout"
+    },
+    "opentelemetry_verify_ssl": {
+     "n": "opentelemetryVerifySsl"
+    },
+    "port": {
+     "n": "port"
+    },
+    "server": {
+     "n": "server"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/getMetricsServer:getMetricsServer"
+  },
+  "proxmox_node_config": {
+   "f": {
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "id"
+    },
+    "node_name": {
+     "n": "nodeName"
+    }
+   },
+   "token": "proxmox:index/getNodeConfig:getNodeConfig"
+  },
+  "proxmox_replication": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "guest": {
+     "n": "guest"
+    },
+    "id": {
+     "n": "id"
+    },
+    "jobnum": {
+     "n": "jobnum"
+    },
+    "rate": {
+     "n": "rate"
+    },
+    "schedule": {
+     "n": "schedule"
+    },
+    "source": {
+     "n": "source"
+    },
+    "target": {
+     "n": "target"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/getReplication:getReplication"
+  },
+  "proxmox_replications": {
+   "f": {
+    "replications": {
+     "arr": true,
+     "f": {
+      "comment": {
+       "n": "comment"
+      },
+      "disable": {
+       "n": "disable"
+      },
+      "guest": {
+       "n": "guest"
+      },
+      "id": {
+       "n": "id"
+      },
+      "jobnum": {
+       "n": "jobnum"
+      },
+      "rate": {
+       "n": "rate"
+      },
+      "remove_job": {
+       "n": "removeJob"
+      },
+      "schedule": {
+       "n": "schedule"
+      },
+      "source": {
+       "n": "source"
+      },
+      "target": {
+       "n": "target"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "replications"
+    }
+   },
+   "token": "proxmox:index/getReplications:getReplications"
+  },
+  "proxmox_sdn_controller_evpn": {
+   "f": {
+    "asn": {
+     "n": "asn"
+    },
+    "digest": {
+     "n": "digest"
+    },
+    "fabric": {
+     "n": "fabric"
+    },
+    "id": {
+     "n": "id"
+    },
+    "peers": {
+     "arr": true,
+     "n": "peers"
+    }
+   },
+   "token": "proxmox:index/getSdnControllerEvpn:getSdnControllerEvpn"
+  },
+  "proxmox_sdn_fabric_node_openfabric": {
+   "f": {
+    "fabric_id": {
+     "n": "fabricId"
+    },
+    "id": {
+     "n": "id"
+    },
+    "interface_names": {
+     "arr": true,
+     "n": "interfaceNames"
+    },
+    "ip": {
+     "n": "ip"
+    },
+    "ip6": {
+     "n": "ip6"
+    },
+    "node_id": {
+     "n": "nodeId"
+    }
+   },
+   "token": "proxmox:index/getSdnFabricNodeOpenfabric:getSdnFabricNodeOpenfabric"
+  },
+  "proxmox_sdn_fabric_node_ospf": {
+   "f": {
+    "fabric_id": {
+     "n": "fabricId"
+    },
+    "id": {
+     "n": "id"
+    },
+    "interface_names": {
+     "arr": true,
+     "n": "interfaceNames"
+    },
+    "ip": {
+     "n": "ip"
+    },
+    "node_id": {
+     "n": "nodeId"
+    }
+   },
+   "token": "proxmox:index/getSdnFabricNodeOspf:getSdnFabricNodeOspf"
+  },
+  "proxmox_sdn_fabric_openfabric": {
+   "f": {
+    "csnp_interval": {
+     "n": "csnpInterval"
+    },
+    "hello_interval": {
+     "n": "helloInterval"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ip6_prefix": {
+     "n": "ip6Prefix"
+    },
+    "ip_prefix": {
+     "n": "ipPrefix"
+    }
+   },
+   "token": "proxmox:index/getSdnFabricOpenfabric:getSdnFabricOpenfabric"
+  },
+  "proxmox_sdn_fabric_ospf": {
+   "f": {
+    "area": {
+     "n": "area"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ip_prefix": {
+     "n": "ipPrefix"
+    }
+   },
+   "token": "proxmox:index/getSdnFabricOspf:getSdnFabricOspf"
+  },
+  "proxmox_sdn_subnet": {
+   "f": {
+    "cidr": {
+     "n": "cidr"
+    },
+    "dhcp_dns_server": {
+     "n": "dhcpDnsServer"
+    },
+    "dhcp_range": {
+     "f": {
+      "end_address": {
+       "n": "endAddress"
+      },
+      "start_address": {
+       "n": "startAddress"
+      }
+     },
+     "n": "dhcpRange"
+    },
+    "dns_zone_prefix": {
+     "n": "dnsZonePrefix"
+    },
+    "gateway": {
+     "n": "gateway"
+    },
+    "id": {
+     "n": "id"
+    },
+    "snat": {
+     "n": "snat"
+    },
+    "vnet": {
+     "n": "vnet"
+    }
+   },
+   "token": "proxmox:index/getSdnSubnet:getSdnSubnet"
+  },
+  "proxmox_sdn_vnet": {
+   "f": {
+    "alias": {
+     "n": "alias"
+    },
+    "id": {
+     "n": "id"
+    },
+    "isolate_ports": {
+     "n": "isolatePorts"
+    },
+    "tag": {
+     "n": "tag"
+    },
+    "vlan_aware": {
+     "n": "vlanAware"
+    },
+    "zone": {
+     "n": "zone"
+    }
+   },
+   "token": "proxmox:index/getSdnVnet:getSdnVnet"
+  },
+  "proxmox_sdn_vnets": {
+   "f": {
+    "vnets": {
+     "arr": true,
+     "f": {
+      "alias": {
+       "n": "alias"
+      },
+      "id": {
+       "n": "id"
+      },
+      "isolate_ports": {
+       "n": "isolatePorts"
+      },
+      "tag": {
+       "n": "tag"
+      },
+      "vlan_aware": {
+       "n": "vlanAware"
+      },
+      "zone": {
+       "n": "zone"
+      }
+     },
+     "n": "vnets"
+    }
+   },
+   "token": "proxmox:index/getSdnVnets:getSdnVnets"
+  },
+  "proxmox_sdn_zone_evpn": {
+   "f": {
+    "advertise_subnets": {
+     "n": "advertiseSubnets"
+    },
+    "controller": {
+     "n": "controller"
+    },
+    "disable_arp_nd_suppression": {
+     "n": "disableArpNdSuppression"
+    },
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "exit_nodes": {
+     "arr": true,
+     "n": "exitNodes"
+    },
+    "exit_nodes_local_routing": {
+     "n": "exitNodesLocalRouting"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "primary_exit_node": {
+     "n": "primaryExitNode"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "rt_import": {
+     "n": "rtImport"
+    },
+    "state": {
+     "n": "state"
+    },
+    "vrf_vxlan": {
+     "n": "vrfVxlan"
+    }
+   },
+   "token": "proxmox:index/getSdnZoneEvpn:getSdnZoneEvpn"
+  },
+  "proxmox_sdn_zone_qinq": {
+   "f": {
+    "bridge": {
+     "n": "bridge"
+    },
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "service_vlan": {
+     "n": "serviceVlan"
+    },
+    "service_vlan_protocol": {
+     "n": "serviceVlanProtocol"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "proxmox:index/getSdnZoneQinq:getSdnZoneQinq"
+  },
+  "proxmox_sdn_zone_simple": {
+   "f": {
+    "dhcp": {
+     "n": "dhcp"
+    },
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "proxmox:index/getSdnZoneSimple:getSdnZoneSimple"
+  },
+  "proxmox_sdn_zone_vlan": {
+   "f": {
+    "bridge": {
+     "n": "bridge"
+    },
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "proxmox:index/getSdnZoneVlan:getSdnZoneVlan"
+  },
+  "proxmox_sdn_zone_vxlan": {
+   "f": {
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "peers": {
+     "arr": true,
+     "n": "peers"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "proxmox:index/getSdnZoneVxlan:getSdnZoneVxlan"
+  },
+  "proxmox_sdn_zones": {
+   "f": {
+    "type": {
+     "n": "type"
+    },
+    "zones": {
+     "arr": true,
+     "f": {
+      "advertise_subnets": {
+       "n": "advertiseSubnets"
+      },
+      "bridge": {
+       "n": "bridge"
+      },
+      "controller": {
+       "n": "controller"
+      },
+      "dhcp": {
+       "n": "dhcp"
+      },
+      "disable_arp_nd_suppression": {
+       "n": "disableArpNdSuppression"
+      },
+      "dns": {
+       "n": "dns"
+      },
+      "dns_zone": {
+       "n": "dnsZone"
+      },
+      "exit_nodes": {
+       "arr": true,
+       "n": "exitNodes"
+      },
+      "exit_nodes_local_routing": {
+       "n": "exitNodesLocalRouting"
+      },
+      "id": {
+       "n": "id"
+      },
+      "ipam": {
+       "n": "ipam"
+      },
+      "mtu": {
+       "n": "mtu"
+      },
+      "nodes": {
+       "arr": true,
+       "n": "nodes"
+      },
+      "peers": {
+       "arr": true,
+       "n": "peers"
+      },
+      "pending": {
+       "n": "pending"
+      },
+      "primary_exit_node": {
+       "n": "primaryExitNode"
+      },
+      "reverse_dns": {
+       "n": "reverseDns"
+      },
+      "rt_import": {
+       "n": "rtImport"
+      },
+      "service_vlan": {
+       "n": "serviceVlan"
+      },
+      "service_vlan_protocol": {
+       "n": "serviceVlanProtocol"
+      },
+      "state": {
+       "n": "state"
+      },
+      "type": {
+       "n": "type"
+      },
+      "vrf_vxlan": {
+       "n": "vrfVxlan"
+      }
+     },
+     "n": "zones"
+    }
+   },
+   "token": "proxmox:index/getSdnZones:getSdnZones"
+  },
+  "proxmox_version": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "release": {
+     "n": "release"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    },
+    "version": {
+     "n": "version"
+    }
+   },
+   "token": "proxmox:index/getVersion:getVersion"
+  },
+  "proxmox_virtual_environment_acme_account": {
+   "f": {
+    "account": {
+     "f": {
+      "contact": {
+       "arr": true,
+       "n": "contacts"
+      },
+      "created_at": {
+       "n": "createdAt"
+      },
+      "status": {
+       "n": "status"
+      }
+     },
+     "n": "account"
+    },
+    "directory": {
+     "n": "directory"
+    },
+    "location": {
+     "n": "location"
+    },
+    "name": {
+     "n": "name"
+    },
+    "tos": {
+     "n": "tos"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentAcmeAccount:getVirtualEnvironmentAcmeAccount"
+  },
+  "proxmox_virtual_environment_acme_accounts": {
+   "f": {
+    "accounts": {
+     "arr": true,
+     "n": "accounts"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentAcmeAccounts:getVirtualEnvironmentAcmeAccounts"
+  },
+  "proxmox_virtual_environment_acme_plugin": {
+   "f": {
+    "api": {
+     "n": "api"
+    },
+    "data": {
+     "map": true,
+     "n": "data"
+    },
+    "digest": {
+     "n": "digest"
+    },
+    "plugin": {
+     "n": "plugin"
+    },
+    "type": {
+     "n": "type"
+    },
+    "validation_delay": {
+     "n": "validationDelay"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentAcmePlugin:getVirtualEnvironmentAcmePlugin"
+  },
+  "proxmox_virtual_environment_acme_plugins": {
+   "f": {
+    "plugins": {
+     "arr": true,
+     "f": {
+      "api": {
+       "n": "api"
+      },
+      "data": {
+       "map": true,
+       "n": "data"
+      },
+      "digest": {
+       "n": "digest"
+      },
+      "plugin": {
+       "n": "plugin"
+      },
+      "type": {
+       "n": "type"
+      },
+      "validation_delay": {
+       "n": "validationDelay"
+      }
+     },
+     "n": "plugins"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentAcmePlugins:getVirtualEnvironmentAcmePlugins"
+  },
+  "proxmox_virtual_environment_apt_repository": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "components": {
+     "arr": true,
+     "n": "components"
+    },
+    "enabled": {
+     "n": "enabled"
+    },
+    "file_path": {
+     "n": "filePath"
+    },
+    "file_type": {
+     "n": "fileType"
+    },
+    "id": {
+     "n": "id"
+    },
+    "index": {
+     "n": "index"
+    },
+    "node": {
+     "n": "node"
+    },
+    "package_types": {
+     "arr": true,
+     "n": "packageTypes"
+    },
+    "suites": {
+     "arr": true,
+     "n": "suites"
+    },
+    "uris": {
+     "arr": true,
+     "n": "uris"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentAptRepository:getVirtualEnvironmentAptRepository"
+  },
+  "proxmox_virtual_environment_apt_standard_repository": {
+   "f": {
+    "description": {
+     "n": "description"
+    },
+    "file_path": {
+     "n": "filePath"
+    },
+    "handle": {
+     "n": "handle"
+    },
+    "id": {
+     "n": "id"
+    },
+    "index": {
+     "n": "index"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node": {
+     "n": "node"
+    },
+    "status": {
+     "n": "status"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentAptStandardRepository:getVirtualEnvironmentAptStandardRepository"
+  },
+  "proxmox_virtual_environment_container": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "status": {
+     "n": "status"
+    },
+    "tags": {
+     "arr": true,
+     "n": "tags"
+    },
+    "template": {
+     "n": "template"
+    },
+    "vm_id": {
+     "n": "vmId"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentContainer:getVirtualEnvironmentContainer"
+  },
+  "proxmox_virtual_environment_containers": {
+   "f": {
+    "containers": {
+     "arr": true,
+     "f": {
+      "name": {
+       "n": "name"
+      },
+      "node_name": {
+       "n": "nodeName"
+      },
+      "status": {
+       "n": "status"
+      },
+      "tags": {
+       "arr": true,
+       "n": "tags"
+      },
+      "template": {
+       "n": "template"
+      },
+      "vm_id": {
+       "n": "vmId"
+      }
+     },
+     "n": "containers"
+    },
+    "filter": {
+     "arr": true,
+     "f": {
+      "name": {
+       "n": "name"
+      },
+      "regex": {
+       "n": "regex"
+      },
+      "values": {
+       "arr": true,
+       "n": "values"
+      }
+     },
+     "n": "filters"
+    },
+    "id": {
+     "n": "id"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "tags": {
+     "arr": true,
+     "n": "tags"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentContainers:getVirtualEnvironmentContainers"
+  },
+  "proxmox_virtual_environment_datastores": {
+   "f": {
+    "datastores": {
+     "arr": true,
+     "f": {
+      "active": {
+       "n": "active"
+      },
+      "content_types": {
+       "arr": true,
+       "n": "contentTypes"
+      },
+      "enabled": {
+       "n": "enabled"
+      },
+      "id": {
+       "n": "id"
+      },
+      "node_name": {
+       "n": "nodeName"
+      },
+      "shared": {
+       "n": "shared"
+      },
+      "space_available": {
+       "n": "spaceAvailable"
+      },
+      "space_total": {
+       "n": "spaceTotal"
+      },
+      "space_used": {
+       "n": "spaceUsed"
+      },
+      "space_used_fraction": {
+       "n": "spaceUsedFraction"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "datastores"
+    },
+    "filters": {
+     "f": {
+      "content_types": {
+       "arr": true,
+       "n": "contentTypes"
+      },
+      "id": {
+       "n": "id"
+      },
+      "target": {
+       "n": "target"
+      }
+     },
+     "n": "filters"
+    },
+    "node_name": {
+     "n": "nodeName"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentDatastores:getVirtualEnvironmentDatastores"
+  },
+  "proxmox_virtual_environment_dns": {
+   "f": {
+    "domain": {
+     "n": "domain"
+    },
+    "id": {
+     "n": "id"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "servers": {
+     "arr": true,
+     "n": "servers"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentDns:getVirtualEnvironmentDns"
+  },
+  "proxmox_virtual_environment_file": {
+   "f": {
+    "content_type": {
+     "n": "contentType"
+    },
+    "datastore_id": {
+     "n": "datastoreId"
+    },
+    "file_format": {
+     "n": "fileFormat"
+    },
+    "file_name": {
+     "n": "fileName"
+    },
+    "file_size": {
+     "n": "fileSize"
+    },
+    "id": {
+     "n": "id"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "vmid": {
+     "n": "vmid"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentFile:getVirtualEnvironmentFile"
+  },
+  "proxmox_virtual_environment_group": {
+   "f": {
+    "acl": {
+     "arr": true,
+     "f": {
+      "path": {
+       "n": "path"
+      },
+      "propagate": {
+       "n": "propagate"
+      },
+      "role_id": {
+       "n": "roleId"
+      }
+     },
+     "n": "acls"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "group_id": {
+     "n": "groupId"
+    },
+    "id": {
+     "n": "id"
+    },
+    "members": {
+     "arr": true,
+     "n": "members"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentGroup:getVirtualEnvironmentGroup"
+  },
+  "proxmox_virtual_environment_groups": {
+   "f": {
+    "comments": {
+     "arr": true,
+     "n": "comments"
+    },
+    "group_ids": {
+     "arr": true,
+     "n": "groupIds"
+    },
+    "id": {
+     "n": "id"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentGroups:getVirtualEnvironmentGroups"
+  },
+  "proxmox_virtual_environment_hagroup": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "group": {
+     "n": "group"
+    },
+    "id": {
+     "n": "id"
+    },
+    "no_failback": {
+     "n": "noFailback"
+    },
+    "nodes": {
+     "map": true,
+     "n": "nodes"
+    },
+    "restricted": {
+     "n": "restricted"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentHagroup:getVirtualEnvironmentHagroup"
+  },
+  "proxmox_virtual_environment_hagroups": {
+   "f": {
+    "group_ids": {
+     "arr": true,
+     "n": "groupIds"
+    },
+    "id": {
+     "n": "id"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentHagroups:getVirtualEnvironmentHagroups"
+  },
+  "proxmox_virtual_environment_hardware_mapping_dir": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "id": {
+     "n": "id"
+    },
+    "map": {
+     "arr": true,
+     "f": {
+      "node": {
+       "n": "node"
+      },
+      "path": {
+       "n": "path"
+      }
+     },
+     "n": "maps"
+    },
+    "name": {
+     "n": "name"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentHardwareMappingDir:getVirtualEnvironmentHardwareMappingDir"
+  },
+  "proxmox_virtual_environment_hardware_mapping_pci": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "id": {
+     "n": "id"
+    },
+    "map": {
+     "arr": true,
+     "f": {
+      "comment": {
+       "n": "comment"
+      },
+      "id": {
+       "n": "id"
+      },
+      "iommu_group": {
+       "n": "iommuGroup"
+      },
+      "node": {
+       "n": "node"
+      },
+      "path": {
+       "n": "path"
+      },
+      "subsystem_id": {
+       "n": "subsystemId"
+      }
+     },
+     "n": "maps"
+    },
+    "mediated_devices": {
+     "n": "mediatedDevices"
+    },
+    "name": {
+     "n": "name"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentHardwareMappingPci:getVirtualEnvironmentHardwareMappingPci"
+  },
+  "proxmox_virtual_environment_hardware_mapping_usb": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "id": {
+     "n": "id"
+    },
+    "map": {
+     "arr": true,
+     "f": {
+      "comment": {
+       "n": "comment"
+      },
+      "id": {
+       "n": "id"
+      },
+      "node": {
+       "n": "node"
+      },
+      "path": {
+       "n": "path"
+      }
+     },
+     "n": "maps"
+    },
+    "name": {
+     "n": "name"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentHardwareMappingUsb:getVirtualEnvironmentHardwareMappingUsb"
+  },
+  "proxmox_virtual_environment_hardware_mappings": {
+   "f": {
+    "check_node": {
+     "n": "checkNode"
+    },
+    "checks": {
+     "arr": true,
+     "f": {
+      "mapping_id": {
+       "n": "mappingId"
+      },
+      "message": {
+       "n": "message"
+      },
+      "severity": {
+       "n": "severity"
+      }
+     },
+     "n": "checks"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ids": {
+     "arr": true,
+     "n": "ids"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentHardwareMappings:getVirtualEnvironmentHardwareMappings"
+  },
+  "proxmox_virtual_environment_haresource": {
+   "f": {
+    "auto_rebalance": {
+     "n": "autoRebalance"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "failback": {
+     "n": "failback"
+    },
+    "group": {
+     "n": "group"
+    },
+    "id": {
+     "n": "id"
+    },
+    "max_relocate": {
+     "n": "maxRelocate"
+    },
+    "max_restart": {
+     "n": "maxRestart"
+    },
+    "resource_id": {
+     "n": "resourceId"
+    },
+    "state": {
+     "n": "state"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentHaresource:getVirtualEnvironmentHaresource"
+  },
+  "proxmox_virtual_environment_haresources": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "resource_ids": {
+     "arr": true,
+     "n": "resourceIds"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentHaresources:getVirtualEnvironmentHaresources"
+  },
+  "proxmox_virtual_environment_hosts": {
+   "f": {
+    "addresses": {
+     "arr": true,
+     "n": "addresses"
+    },
+    "digest": {
+     "n": "digest"
+    },
+    "entries": {
+     "arr": true,
+     "f": {
+      "address": {
+       "n": "address"
+      },
+      "hostnames": {
+       "arr": true,
+       "n": "hostnames"
+      }
+     },
+     "n": "entries"
+    },
+    "hostnames": {
+     "arr": true,
+     "n": "hostnames"
+    },
+    "id": {
+     "n": "id"
+    },
+    "node_name": {
+     "n": "nodeName"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentHosts:getVirtualEnvironmentHosts"
+  },
+  "proxmox_virtual_environment_metrics_server": {
+   "f": {
+    "disable": {
+     "n": "disable"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "opentelemetry_compression": {
+     "n": "opentelemetryCompression"
+    },
+    "opentelemetry_headers": {
+     "n": "opentelemetryHeaders"
+    },
+    "opentelemetry_max_body_size": {
+     "n": "opentelemetryMaxBodySize"
+    },
+    "opentelemetry_path": {
+     "n": "opentelemetryPath"
+    },
+    "opentelemetry_proto": {
+     "n": "opentelemetryProto"
+    },
+    "opentelemetry_resource_attributes": {
+     "n": "opentelemetryResourceAttributes"
+    },
+    "opentelemetry_timeout": {
+     "n": "opentelemetryTimeout"
+    },
+    "opentelemetry_verify_ssl": {
+     "n": "opentelemetryVerifySsl"
+    },
+    "port": {
+     "n": "port"
+    },
+    "server": {
+     "n": "server"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentMetricsServer:getVirtualEnvironmentMetricsServer"
+  },
+  "proxmox_virtual_environment_node": {
+   "f": {
+    "cpu_cores": {
+     "n": "cpuCores"
+    },
+    "cpu_count": {
+     "n": "cpuCount"
+    },
+    "cpu_model": {
+     "n": "cpuModel"
+    },
+    "cpu_sockets": {
+     "n": "cpuSockets"
+    },
+    "cpu_utilization": {
+     "n": "cpuUtilization"
+    },
+    "id": {
+     "n": "id"
+    },
+    "memory_available": {
+     "n": "memoryAvailable"
+    },
+    "memory_total": {
+     "n": "memoryTotal"
+    },
+    "memory_used": {
+     "n": "memoryUsed"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "uptime": {
+     "n": "uptime"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentNode:getVirtualEnvironmentNode"
+  },
+  "proxmox_virtual_environment_nodes": {
+   "f": {
+    "cpu_count": {
+     "arr": true,
+     "n": "cpuCounts"
+    },
+    "cpu_utilization": {
+     "arr": true,
+     "n": "cpuUtilizations"
+    },
+    "id": {
+     "n": "id"
+    },
+    "memory_available": {
+     "arr": true,
+     "n": "memoryAvailables"
+    },
+    "memory_used": {
+     "arr": true,
+     "n": "memoryUseds"
+    },
+    "names": {
+     "arr": true,
+     "n": "names"
+    },
+    "online": {
+     "arr": true,
+     "n": "onlines"
+    },
+    "ssl_fingerprints": {
+     "arr": true,
+     "n": "sslFingerprints"
+    },
+    "support_levels": {
+     "arr": true,
+     "n": "supportLevels"
+    },
+    "uptime": {
+     "arr": true,
+     "n": "uptimes"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentNodes:getVirtualEnvironmentNodes"
+  },
+  "proxmox_virtual_environment_pool": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "id": {
+     "n": "id"
+    },
+    "members": {
+     "arr": true,
+     "f": {
+      "datastore_id": {
+       "n": "datastoreId"
+      },
+      "id": {
+       "n": "id"
+      },
+      "node_name": {
+       "n": "nodeName"
+      },
+      "type": {
+       "n": "type"
+      },
+      "vm_id": {
+       "n": "vmId"
+      }
+     },
+     "n": "members"
+    },
+    "pool_id": {
+     "n": "poolId"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentPool:getVirtualEnvironmentPool"
+  },
+  "proxmox_virtual_environment_pools": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "pool_ids": {
+     "arr": true,
+     "n": "poolIds"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentPools:getVirtualEnvironmentPools"
+  },
+  "proxmox_virtual_environment_replication": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "guest": {
+     "n": "guest"
+    },
+    "id": {
+     "n": "id"
+    },
+    "jobnum": {
+     "n": "jobnum"
+    },
+    "rate": {
+     "n": "rate"
+    },
+    "schedule": {
+     "n": "schedule"
+    },
+    "source": {
+     "n": "source"
+    },
+    "target": {
+     "n": "target"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentReplication:getVirtualEnvironmentReplication"
+  },
+  "proxmox_virtual_environment_replications": {
+   "f": {
+    "replications": {
+     "arr": true,
+     "f": {
+      "comment": {
+       "n": "comment"
+      },
+      "disable": {
+       "n": "disable"
+      },
+      "guest": {
+       "n": "guest"
+      },
+      "id": {
+       "n": "id"
+      },
+      "jobnum": {
+       "n": "jobnum"
+      },
+      "rate": {
+       "n": "rate"
+      },
+      "remove_job": {
+       "n": "removeJob"
+      },
+      "schedule": {
+       "n": "schedule"
+      },
+      "source": {
+       "n": "source"
+      },
+      "target": {
+       "n": "target"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "replications"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentReplications:getVirtualEnvironmentReplications"
+  },
+  "proxmox_virtual_environment_role": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "privileges": {
+     "arr": true,
+     "n": "privileges"
+    },
+    "role_id": {
+     "n": "roleId"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentRole:getVirtualEnvironmentRole"
+  },
+  "proxmox_virtual_environment_roles": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "privileges": {
+     "arr": true,
+     "n": "privileges"
+    },
+    "role_ids": {
+     "arr": true,
+     "n": "roleIds"
+    },
+    "special": {
+     "arr": true,
+     "n": "specials"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentRoles:getVirtualEnvironmentRoles"
+  },
+  "proxmox_virtual_environment_sdn_fabric_node_openfabric": {
+   "f": {
+    "fabric_id": {
+     "n": "fabricId"
+    },
+    "id": {
+     "n": "id"
+    },
+    "interface_names": {
+     "arr": true,
+     "n": "interfaceNames"
+    },
+    "ip": {
+     "n": "ip"
+    },
+    "ip6": {
+     "n": "ip6"
+    },
+    "node_id": {
+     "n": "nodeId"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentSdnFabricNodeOpenfabric:getVirtualEnvironmentSdnFabricNodeOpenfabric"
+  },
+  "proxmox_virtual_environment_sdn_fabric_node_ospf": {
+   "f": {
+    "fabric_id": {
+     "n": "fabricId"
+    },
+    "id": {
+     "n": "id"
+    },
+    "interface_names": {
+     "arr": true,
+     "n": "interfaceNames"
+    },
+    "ip": {
+     "n": "ip"
+    },
+    "node_id": {
+     "n": "nodeId"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentSdnFabricNodeOspf:getVirtualEnvironmentSdnFabricNodeOspf"
+  },
+  "proxmox_virtual_environment_sdn_fabric_openfabric": {
+   "f": {
+    "csnp_interval": {
+     "n": "csnpInterval"
+    },
+    "hello_interval": {
+     "n": "helloInterval"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ip6_prefix": {
+     "n": "ip6Prefix"
+    },
+    "ip_prefix": {
+     "n": "ipPrefix"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentSdnFabricOpenfabric:getVirtualEnvironmentSdnFabricOpenfabric"
+  },
+  "proxmox_virtual_environment_sdn_fabric_ospf": {
+   "f": {
+    "area": {
+     "n": "area"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ip_prefix": {
+     "n": "ipPrefix"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentSdnFabricOspf:getVirtualEnvironmentSdnFabricOspf"
+  },
+  "proxmox_virtual_environment_sdn_subnet": {
+   "f": {
+    "cidr": {
+     "n": "cidr"
+    },
+    "dhcp_dns_server": {
+     "n": "dhcpDnsServer"
+    },
+    "dhcp_range": {
+     "f": {
+      "end_address": {
+       "n": "endAddress"
+      },
+      "start_address": {
+       "n": "startAddress"
+      }
+     },
+     "n": "dhcpRange"
+    },
+    "dns_zone_prefix": {
+     "n": "dnsZonePrefix"
+    },
+    "gateway": {
+     "n": "gateway"
+    },
+    "id": {
+     "n": "id"
+    },
+    "snat": {
+     "n": "snat"
+    },
+    "vnet": {
+     "n": "vnet"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentSdnSubnet:getVirtualEnvironmentSdnSubnet"
+  },
+  "proxmox_virtual_environment_sdn_vnet": {
+   "f": {
+    "alias": {
+     "n": "alias"
+    },
+    "id": {
+     "n": "id"
+    },
+    "isolate_ports": {
+     "n": "isolatePorts"
+    },
+    "tag": {
+     "n": "tag"
+    },
+    "vlan_aware": {
+     "n": "vlanAware"
+    },
+    "zone": {
+     "n": "zone"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentSdnVnet:getVirtualEnvironmentSdnVnet"
+  },
+  "proxmox_virtual_environment_sdn_vnets": {
+   "f": {
+    "vnets": {
+     "arr": true,
+     "f": {
+      "alias": {
+       "n": "alias"
+      },
+      "id": {
+       "n": "id"
+      },
+      "isolate_ports": {
+       "n": "isolatePorts"
+      },
+      "tag": {
+       "n": "tag"
+      },
+      "vlan_aware": {
+       "n": "vlanAware"
+      },
+      "zone": {
+       "n": "zone"
+      }
+     },
+     "n": "vnets"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentSdnVnets:getVirtualEnvironmentSdnVnets"
+  },
+  "proxmox_virtual_environment_sdn_zone_evpn": {
+   "f": {
+    "advertise_subnets": {
+     "n": "advertiseSubnets"
+    },
+    "controller": {
+     "n": "controller"
+    },
+    "disable_arp_nd_suppression": {
+     "n": "disableArpNdSuppression"
+    },
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "exit_nodes": {
+     "arr": true,
+     "n": "exitNodes"
+    },
+    "exit_nodes_local_routing": {
+     "n": "exitNodesLocalRouting"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "primary_exit_node": {
+     "n": "primaryExitNode"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "rt_import": {
+     "n": "rtImport"
+    },
+    "state": {
+     "n": "state"
+    },
+    "vrf_vxlan": {
+     "n": "vrfVxlan"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentSdnZoneEvpn:getVirtualEnvironmentSdnZoneEvpn"
+  },
+  "proxmox_virtual_environment_sdn_zone_qinq": {
+   "f": {
+    "bridge": {
+     "n": "bridge"
+    },
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "service_vlan": {
+     "n": "serviceVlan"
+    },
+    "service_vlan_protocol": {
+     "n": "serviceVlanProtocol"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentSdnZoneQinq:getVirtualEnvironmentSdnZoneQinq"
+  },
+  "proxmox_virtual_environment_sdn_zone_simple": {
+   "f": {
+    "dhcp": {
+     "n": "dhcp"
+    },
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentSdnZoneSimple:getVirtualEnvironmentSdnZoneSimple"
+  },
+  "proxmox_virtual_environment_sdn_zone_vlan": {
+   "f": {
+    "bridge": {
+     "n": "bridge"
+    },
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentSdnZoneVlan:getVirtualEnvironmentSdnZoneVlan"
+  },
+  "proxmox_virtual_environment_sdn_zone_vxlan": {
+   "f": {
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "id": {
+     "n": "id"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "peers": {
+     "arr": true,
+     "n": "peers"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentSdnZoneVxlan:getVirtualEnvironmentSdnZoneVxlan"
+  },
+  "proxmox_virtual_environment_sdn_zones": {
+   "f": {
+    "type": {
+     "n": "type"
+    },
+    "zones": {
+     "arr": true,
+     "f": {
+      "advertise_subnets": {
+       "n": "advertiseSubnets"
+      },
+      "bridge": {
+       "n": "bridge"
+      },
+      "controller": {
+       "n": "controller"
+      },
+      "dhcp": {
+       "n": "dhcp"
+      },
+      "disable_arp_nd_suppression": {
+       "n": "disableArpNdSuppression"
+      },
+      "dns": {
+       "n": "dns"
+      },
+      "dns_zone": {
+       "n": "dnsZone"
+      },
+      "exit_nodes": {
+       "arr": true,
+       "n": "exitNodes"
+      },
+      "exit_nodes_local_routing": {
+       "n": "exitNodesLocalRouting"
+      },
+      "id": {
+       "n": "id"
+      },
+      "ipam": {
+       "n": "ipam"
+      },
+      "mtu": {
+       "n": "mtu"
+      },
+      "nodes": {
+       "arr": true,
+       "n": "nodes"
+      },
+      "peers": {
+       "arr": true,
+       "n": "peers"
+      },
+      "pending": {
+       "n": "pending"
+      },
+      "primary_exit_node": {
+       "n": "primaryExitNode"
+      },
+      "reverse_dns": {
+       "n": "reverseDns"
+      },
+      "rt_import": {
+       "n": "rtImport"
+      },
+      "service_vlan": {
+       "n": "serviceVlan"
+      },
+      "service_vlan_protocol": {
+       "n": "serviceVlanProtocol"
+      },
+      "state": {
+       "n": "state"
+      },
+      "type": {
+       "n": "type"
+      },
+      "vrf_vxlan": {
+       "n": "vrfVxlan"
+      }
+     },
+     "n": "zones"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentSdnZones:getVirtualEnvironmentSdnZones"
+  },
+  "proxmox_virtual_environment_time": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "local_time": {
+     "n": "localTime"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "time_zone": {
+     "n": "timeZone"
+    },
+    "utc_time": {
+     "n": "utcTime"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentTime:getVirtualEnvironmentTime"
+  },
+  "proxmox_virtual_environment_user": {
+   "f": {
+    "acl": {
+     "arr": true,
+     "f": {
+      "path": {
+       "n": "path"
+      },
+      "propagate": {
+       "n": "propagate"
+      },
+      "role_id": {
+       "n": "roleId"
+      }
+     },
+     "n": "acls"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "email": {
+     "n": "email"
+    },
+    "enabled": {
+     "n": "enabled"
+    },
+    "expiration_date": {
+     "n": "expirationDate"
+    },
+    "first_name": {
+     "n": "firstName"
+    },
+    "groups": {
+     "arr": true,
+     "n": "groups"
+    },
+    "id": {
+     "n": "id"
+    },
+    "keys": {
+     "n": "keys"
+    },
+    "last_name": {
+     "n": "lastName"
+    },
+    "user_id": {
+     "n": "userId"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentUser:getVirtualEnvironmentUser"
+  },
+  "proxmox_virtual_environment_users": {
+   "f": {
+    "comments": {
+     "arr": true,
+     "n": "comments"
+    },
+    "emails": {
+     "arr": true,
+     "n": "emails"
+    },
+    "enabled": {
+     "arr": true,
+     "n": "enableds"
+    },
+    "expiration_dates": {
+     "arr": true,
+     "n": "expirationDates"
+    },
+    "first_names": {
+     "arr": true,
+     "n": "firstNames"
+    },
+    "groups": {
+     "arr": true,
+     "n": "groups"
+    },
+    "id": {
+     "n": "id"
+    },
+    "keys": {
+     "arr": true,
+     "n": "keys"
+    },
+    "last_names": {
+     "arr": true,
+     "n": "lastNames"
+    },
+    "user_ids": {
+     "arr": true,
+     "n": "userIds"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentUsers:getVirtualEnvironmentUsers"
+  },
+  "proxmox_virtual_environment_version": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "release": {
+     "n": "release"
+    },
+    "repository_id": {
+     "n": "repositoryId"
+    },
+    "version": {
+     "n": "version"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentVersion:getVirtualEnvironmentVersion"
+  },
+  "proxmox_virtual_environment_vm": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "status": {
+     "n": "status"
+    },
+    "tags": {
+     "arr": true,
+     "n": "tags"
+    },
+    "template": {
+     "n": "template"
+    },
+    "vm_id": {
+     "n": "vmId"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentVm:getVirtualEnvironmentVm"
+  },
+  "proxmox_virtual_environment_vm2": {
+   "f": {
+    "cdrom": {
+     "f": {
+      "file_id": {
+       "n": "fileId"
+      }
+     },
+     "map": true,
+     "n": "cdrom"
+    },
+    "cpu": {
+     "f": {
+      "affinity": {
+       "n": "affinity"
+      },
+      "architecture": {
+       "n": "architecture"
+      },
+      "cores": {
+       "n": "cores"
+      },
+      "flags": {
+       "arr": true,
+       "n": "flags"
+      },
+      "limit": {
+       "n": "limit"
+      },
+      "numa": {
+       "n": "numa"
+      },
+      "sockets": {
+       "n": "sockets"
+      },
+      "type": {
+       "n": "type"
+      },
+      "units": {
+       "n": "units"
+      },
+      "vcpus": {
+       "n": "vcpus"
+      }
+     },
+     "n": "cpu"
+    },
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "rng": {
+     "f": {
+      "max_bytes": {
+       "n": "maxBytes"
+      },
+      "period": {
+       "n": "period"
+      },
+      "source": {
+       "n": "source"
+      }
+     },
+     "n": "rng"
+    },
+    "status": {
+     "n": "status"
+    },
+    "tags": {
+     "arr": true,
+     "n": "tags"
+    },
+    "template": {
+     "n": "template"
+    },
+    "timeouts": {
+     "f": {
+      "read": {
+       "n": "read"
+      }
+     },
+     "n": "timeouts"
+    },
+    "vga": {
+     "f": {
+      "clipboard": {
+       "n": "clipboard"
+      },
+      "memory": {
+       "n": "memory"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "vga"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentVm2:getVirtualEnvironmentVm2"
+  },
+  "proxmox_virtual_environment_vms": {
+   "f": {
+    "filter": {
+     "arr": true,
+     "f": {
+      "name": {
+       "n": "name"
+      },
+      "regex": {
+       "n": "regex"
+      },
+      "values": {
+       "arr": true,
+       "n": "values"
+      }
+     },
+     "n": "filters"
+    },
+    "id": {
+     "n": "id"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "tags": {
+     "arr": true,
+     "n": "tags"
+    },
+    "vms": {
+     "arr": true,
+     "f": {
+      "name": {
+       "n": "name"
+      },
+      "node_name": {
+       "n": "nodeName"
+      },
+      "status": {
+       "n": "status"
+      },
+      "tags": {
+       "arr": true,
+       "n": "tags"
+      },
+      "template": {
+       "n": "template"
+      },
+      "vm_id": {
+       "n": "vmId"
+      }
+     },
+     "n": "vms"
+    }
+   },
+   "token": "proxmox:index/getVirtualEnvironmentVms:getVirtualEnvironmentVms"
+  },
+  "proxmox_vm": {
+   "f": {
+    "cdrom": {
+     "f": {
+      "file_id": {
+       "n": "fileId"
+      }
+     },
+     "map": true,
+     "n": "cdrom"
+    },
+    "cpu": {
+     "f": {
+      "affinity": {
+       "n": "affinity"
+      },
+      "architecture": {
+       "n": "architecture"
+      },
+      "cores": {
+       "n": "cores"
+      },
+      "flags": {
+       "arr": true,
+       "n": "flags"
+      },
+      "limit": {
+       "n": "limit"
+      },
+      "numa": {
+       "n": "numa"
+      },
+      "sockets": {
+       "n": "sockets"
+      },
+      "type": {
+       "n": "type"
+      },
+      "units": {
+       "n": "units"
+      },
+      "vcpus": {
+       "n": "vcpus"
+      }
+     },
+     "n": "cpu"
+    },
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "rng": {
+     "f": {
+      "max_bytes": {
+       "n": "maxBytes"
+      },
+      "period": {
+       "n": "period"
+      },
+      "source": {
+       "n": "source"
+      }
+     },
+     "n": "rng"
+    },
+    "status": {
+     "n": "status"
+    },
+    "tags": {
+     "arr": true,
+     "n": "tags"
+    },
+    "template": {
+     "n": "template"
+    },
+    "timeouts": {
+     "f": {
+      "read": {
+       "n": "read"
+      }
+     },
+     "n": "timeouts"
+    },
+    "vga": {
+     "f": {
+      "clipboard": {
+       "n": "clipboard"
+      },
+      "memory": {
+       "n": "memory"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "vga"
+    }
+   },
+   "token": "proxmox:index/getVm:getVm"
+  }
+ },
+ "package": "proxmox",
+ "provider": {
+  "api_headers": {
+   "map": true,
+   "n": "apiHeaders"
+  },
+  "api_token": {
+   "n": "apiToken"
+  },
+  "auth_ticket": {
+   "n": "authTicket"
+  },
+  "csrf_prevention_token": {
+   "n": "csrfPreventionToken"
+  },
+  "endpoint": {
+   "n": "endpoint"
+  },
+  "insecure": {
+   "n": "insecure"
+  },
+  "min_tls": {
+   "n": "minTls"
+  },
+  "otp": {
+   "n": "otp"
+  },
+  "password": {
+   "n": "password"
+  },
+  "random_vm_id_end": {
+   "n": "randomVmIdEnd"
+  },
+  "random_vm_id_start": {
+   "n": "randomVmIdStart"
+  },
+  "random_vm_ids": {
+   "n": "randomVmIds"
+  },
+  "ssh": {
+   "f": {
+    "agent": {
+     "n": "agent"
+    },
+    "agent_forwarding": {
+     "n": "agentForwarding"
+    },
+    "agent_socket": {
+     "n": "agentSocket"
+    },
+    "node": {
+     "arr": true,
+     "f": {
+      "address": {
+       "n": "address"
+      },
+      "name": {
+       "n": "name"
+      },
+      "port": {
+       "n": "port"
+      }
+     },
+     "n": "nodes"
+    },
+    "node_address_source": {
+     "n": "nodeAddressSource"
+    },
+    "password": {
+     "n": "password"
+    },
+    "private_key": {
+     "n": "privateKey"
+    },
+    "socks5_password": {
+     "n": "socks5Password"
+    },
+    "socks5_server": {
+     "n": "socks5Server"
+    },
+    "socks5_username": {
+     "n": "socks5Username"
+    },
+    "username": {
+     "n": "username"
+    }
+   },
+   "n": "ssh"
+  },
+  "tmp_dir": {
+   "n": "tmpDir"
+  },
+  "username": {
+   "n": "username"
+  }
+ },
+ "resources": {
+  "proxmox_acl": {
+   "f": {
+    "group_id": {
+     "n": "groupId"
+    },
+    "id": {
+     "n": "id"
+    },
+    "path": {
+     "n": "path"
+    },
+    "propagate": {
+     "n": "propagate"
+    },
+    "role_id": {
+     "n": "roleId"
+    },
+    "token_id": {
+     "n": "tokenId"
+    },
+    "user_id": {
+     "n": "userId"
+    }
+   },
+   "token": "proxmox:index/acl:Acl"
+  },
+  "proxmox_acme_account": {
+   "f": {
+    "contact": {
+     "n": "contact"
+    },
+    "created_at": {
+     "n": "createdAt"
+    },
+    "directory": {
+     "n": "directory"
+    },
+    "eab_hmac_key": {
+     "n": "eabHmacKey"
+    },
+    "eab_kid": {
+     "n": "eabKid"
+    },
+    "location": {
+     "n": "location"
+    },
+    "name": {
+     "n": "name"
+    },
+    "tos": {
+     "n": "tos"
+    }
+   },
+   "token": "proxmox:index/acmeAccount:AcmeAccount"
+  },
+  "proxmox_acme_certificate": {
+   "f": {
+    "account": {
+     "n": "account"
+    },
+    "certificate": {
+     "n": "certificate"
+    },
+    "domains": {
+     "arr": true,
+     "f": {
+      "alias": {
+       "n": "alias"
+      },
+      "domain": {
+       "n": "domain"
+      },
+      "plugin": {
+       "n": "plugin"
+      }
+     },
+     "n": "domains"
+    },
+    "fingerprint": {
+     "n": "fingerprint"
+    },
+    "force": {
+     "n": "force"
+    },
+    "id": {
+     "n": "id"
+    },
+    "issuer": {
+     "n": "issuer"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "not_after": {
+     "n": "notAfter"
+    },
+    "not_before": {
+     "n": "notBefore"
+    },
+    "subject": {
+     "n": "subject"
+    },
+    "subject_alternative_names": {
+     "arr": true,
+     "n": "subjectAlternativeNames"
+    }
+   },
+   "token": "proxmox:index/acmeCertificate:AcmeCertificate"
+  },
+  "proxmox_acme_dns_plugin": {
+   "f": {
+    "api": {
+     "n": "api"
+    },
+    "data": {
+     "map": true,
+     "n": "data"
+    },
+    "data_wo": {
+     "map": true,
+     "n": "dataWo"
+    },
+    "data_wo_version": {
+     "n": "dataWoVersion"
+    },
+    "digest": {
+     "n": "digest"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "plugin": {
+     "n": "plugin"
+    },
+    "validation_delay": {
+     "n": "validationDelay"
+    }
+   },
+   "token": "proxmox:index/acmeDnsPlugin:AcmeDnsPlugin"
+  },
+  "proxmox_apt_repository": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "components": {
+     "arr": true,
+     "n": "components"
+    },
+    "enabled": {
+     "n": "enabled"
+    },
+    "file_path": {
+     "n": "filePath"
+    },
+    "file_type": {
+     "n": "fileType"
+    },
+    "id": {
+     "n": "id"
+    },
+    "index": {
+     "n": "index"
+    },
+    "node": {
+     "n": "node"
+    },
+    "package_types": {
+     "arr": true,
+     "n": "packageTypes"
+    },
+    "suites": {
+     "arr": true,
+     "n": "suites"
+    },
+    "uris": {
+     "arr": true,
+     "n": "uris"
+    }
+   },
+   "token": "proxmox:index/aptRepository:AptRepository"
+  },
+  "proxmox_apt_standard_repository": {
+   "f": {
+    "description": {
+     "n": "description"
+    },
+    "file_path": {
+     "n": "filePath"
+    },
+    "handle": {
+     "n": "handle"
+    },
+    "id": {
+     "n": "id"
+    },
+    "index": {
+     "n": "index"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node": {
+     "n": "node"
+    },
+    "status": {
+     "n": "status"
+    }
+   },
+   "token": "proxmox:index/aptStandardRepository:AptStandardRepository"
+  },
+  "proxmox_backup_job": {
+   "f": {
+    "all": {
+     "n": "all"
+    },
+    "bwlimit": {
+     "n": "bwlimit"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "compress": {
+     "n": "compress"
+    },
+    "enabled": {
+     "n": "enabled"
+    },
+    "exclude": {
+     "arr": true,
+     "n": "excludes"
+    },
+    "exclude_path": {
+     "arr": true,
+     "n": "excludePaths"
+    },
+    "fleecing": {
+     "f": {
+      "enabled": {
+       "n": "enabled"
+      },
+      "storage": {
+       "n": "storage"
+      }
+     },
+     "n": "fleecing"
+    },
+    "id": {
+     "n": "backupJobId"
+    },
+    "ionice": {
+     "n": "ionice"
+    },
+    "lockwait": {
+     "n": "lockwait"
+    },
+    "mailnotification": {
+     "n": "mailnotification"
+    },
+    "mailto": {
+     "arr": true,
+     "n": "mailtos"
+    },
+    "maxfiles": {
+     "n": "maxfiles"
+    },
+    "mode": {
+     "n": "mode"
+    },
+    "node": {
+     "n": "node"
+    },
+    "notes_template": {
+     "n": "notesTemplate"
+    },
+    "pbs_change_detection_mode": {
+     "n": "pbsChangeDetectionMode"
+    },
+    "performance": {
+     "f": {
+      "max_workers": {
+       "n": "maxWorkers"
+      },
+      "pbs_entries_max": {
+       "n": "pbsEntriesMax"
+      }
+     },
+     "n": "performance"
+    },
+    "pigz": {
+     "n": "pigz"
+    },
+    "pool": {
+     "n": "pool"
+    },
+    "protected": {
+     "n": "protected"
+    },
+    "prune_backups": {
+     "map": true,
+     "n": "pruneBackups"
+    },
+    "remove": {
+     "n": "remove"
+    },
+    "repeat_missed": {
+     "n": "repeatMissed"
+    },
+    "schedule": {
+     "n": "schedule"
+    },
+    "script": {
+     "n": "script"
+    },
+    "starttime": {
+     "n": "starttime"
+    },
+    "stdexcludes": {
+     "n": "stdexcludes"
+    },
+    "stopwait": {
+     "n": "stopwait"
+    },
+    "storage": {
+     "n": "storage"
+    },
+    "tmpdir": {
+     "n": "tmpdir"
+    },
+    "vmid": {
+     "arr": true,
+     "n": "vmids"
+    },
+    "zstd": {
+     "n": "zstd"
+    }
+   },
+   "token": "proxmox:index/backupJob:BackupJob"
+  },
+  "proxmox_ceph_pool": {
+   "f": {
+    "add_storages": {
+     "n": "addStorages"
+    },
+    "application": {
+     "n": "application"
+    },
+    "crush_rule": {
+     "n": "crushRule"
+    },
+    "erasure_coding": {
+     "n": "erasureCoding"
+    },
+    "force_destroy": {
+     "n": "forceDestroy"
+    },
+    "id": {
+     "n": "id"
+    },
+    "min_size": {
+     "n": "minSize"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "pg_autoscale_mode": {
+     "n": "pgAutoscaleMode"
+    },
+    "pg_num": {
+     "n": "pgNum"
+    },
+    "pg_num_min": {
+     "n": "pgNumMin"
+    },
+    "remove_ecprofile": {
+     "n": "removeEcprofile"
+    },
+    "remove_storages": {
+     "n": "removeStorages"
+    },
+    "size": {
+     "n": "size"
+    },
+    "target_size": {
+     "n": "targetSize"
+    },
+    "target_size_ratio": {
+     "n": "targetSizeRatio"
+    }
+   },
+   "token": "proxmox:index/cephPool:CephPool"
+  },
+  "proxmox_cloned_vm": {
+   "f": {
+    "cdrom": {
+     "f": {
+      "file_id": {
+       "n": "fileId"
+      }
+     },
+     "map": true,
+     "n": "cdrom"
+    },
+    "clone": {
+     "f": {
+      "bandwidth_limit": {
+       "n": "bandwidthLimit"
+      },
+      "full": {
+       "n": "full"
+      },
+      "pool_id": {
+       "n": "poolId"
+      },
+      "retries": {
+       "n": "retries"
+      },
+      "snapshot_name": {
+       "n": "snapshotName"
+      },
+      "source_node_name": {
+       "n": "sourceNodeName"
+      },
+      "source_vm_id": {
+       "n": "sourceVmId"
+      },
+      "target_datastore": {
+       "n": "targetDatastore"
+      },
+      "target_format": {
+       "n": "targetFormat"
+      }
+     },
+     "n": "clone"
+    },
+    "cpu": {
+     "f": {
+      "affinity": {
+       "n": "affinity"
+      },
+      "architecture": {
+       "n": "architecture"
+      },
+      "cores": {
+       "n": "cores"
+      },
+      "flags": {
+       "arr": true,
+       "n": "flags"
+      },
+      "limit": {
+       "n": "limit"
+      },
+      "numa": {
+       "n": "numa"
+      },
+      "sockets": {
+       "n": "sockets"
+      },
+      "type": {
+       "n": "type"
+      },
+      "units": {
+       "n": "units"
+      },
+      "vcpus": {
+       "n": "vcpus"
+      }
+     },
+     "n": "cpu"
+    },
+    "delete": {
+     "f": {
+      "disk": {
+       "arr": true,
+       "n": "disks"
+      },
+      "network": {
+       "arr": true,
+       "n": "networks"
+      }
+     },
+     "n": "delete"
+    },
+    "delete_unreferenced_disks_on_destroy": {
+     "n": "deleteUnreferencedDisksOnDestroy"
+    },
+    "description": {
+     "n": "description"
+    },
+    "disk": {
+     "f": {
+      "aio": {
+       "n": "aio"
+      },
+      "backup": {
+       "n": "backup"
+      },
+      "cache": {
+       "n": "cache"
+      },
+      "datastore_id": {
+       "n": "datastoreId"
+      },
+      "discard": {
+       "n": "discard"
+      },
+      "file": {
+       "n": "file"
+      },
+      "format": {
+       "n": "format"
+      },
+      "import_from": {
+       "n": "importFrom"
+      },
+      "iothread": {
+       "n": "iothread"
+      },
+      "media": {
+       "n": "media"
+      },
+      "replicate": {
+       "n": "replicate"
+      },
+      "serial": {
+       "n": "serial"
+      },
+      "size_gb": {
+       "n": "sizeGb"
+      },
+      "ssd": {
+       "n": "ssd"
+      }
+     },
+     "map": true,
+     "n": "disk"
+    },
+    "id": {
+     "n": "clonedVmId"
+    },
+    "memory": {
+     "f": {
+      "balloon": {
+       "n": "balloon"
+      },
+      "hugepages": {
+       "n": "hugepages"
+      },
+      "keep_hugepages": {
+       "n": "keepHugepages"
+      },
+      "shares": {
+       "n": "shares"
+      },
+      "size": {
+       "n": "size"
+      }
+     },
+     "n": "memory"
+    },
+    "name": {
+     "n": "name"
+    },
+    "network": {
+     "f": {
+      "bridge": {
+       "n": "bridge"
+      },
+      "firewall": {
+       "n": "firewall"
+      },
+      "link_down": {
+       "n": "linkDown"
+      },
+      "mac_address": {
+       "n": "macAddress"
+      },
+      "model": {
+       "n": "model"
+      },
+      "mtu": {
+       "n": "mtu"
+      },
+      "queues": {
+       "n": "queues"
+      },
+      "rate_limit": {
+       "n": "rateLimit"
+      },
+      "tag": {
+       "n": "tag"
+      },
+      "trunks": {
+       "arr": true,
+       "n": "trunks"
+      }
+     },
+     "map": true,
+     "n": "network"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "purge_on_destroy": {
+     "n": "purgeOnDestroy"
+    },
+    "rng": {
+     "f": {
+      "max_bytes": {
+       "n": "maxBytes"
+      },
+      "period": {
+       "n": "period"
+      },
+      "source": {
+       "n": "source"
+      }
+     },
+     "n": "rng"
+    },
+    "started": {
+     "n": "started"
+    },
+    "stop_on_destroy": {
+     "n": "stopOnDestroy"
+    },
+    "tags": {
+     "arr": true,
+     "n": "tags"
+    },
+    "timeouts": {
+     "f": {
+      "create": {
+       "n": "create"
+      },
+      "delete": {
+       "n": "delete"
+      },
+      "read": {
+       "n": "read"
+      },
+      "update": {
+       "n": "update"
+      }
+     },
+     "n": "timeouts"
+    },
+    "vga": {
+     "f": {
+      "clipboard": {
+       "n": "clipboard"
+      },
+      "memory": {
+       "n": "memory"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "vga"
+    }
+   },
+   "token": "proxmox:index/clonedVm:ClonedVm"
+  },
+  "proxmox_cluster_options": {
+   "f": {
+    "bandwidth_limit_clone": {
+     "n": "bandwidthLimitClone"
+    },
+    "bandwidth_limit_default": {
+     "n": "bandwidthLimitDefault"
+    },
+    "bandwidth_limit_migration": {
+     "n": "bandwidthLimitMigration"
+    },
+    "bandwidth_limit_move": {
+     "n": "bandwidthLimitMove"
+    },
+    "bandwidth_limit_restore": {
+     "n": "bandwidthLimitRestore"
+    },
+    "console": {
+     "n": "console"
+    },
+    "crs_ha": {
+     "n": "crsHa"
+    },
+    "crs_ha_auto_rebalance": {
+     "n": "crsHaAutoRebalance"
+    },
+    "crs_ha_auto_rebalance_hold_duration": {
+     "n": "crsHaAutoRebalanceHoldDuration"
+    },
+    "crs_ha_auto_rebalance_margin": {
+     "n": "crsHaAutoRebalanceMargin"
+    },
+    "crs_ha_auto_rebalance_method": {
+     "n": "crsHaAutoRebalanceMethod"
+    },
+    "crs_ha_auto_rebalance_threshold": {
+     "n": "crsHaAutoRebalanceThreshold"
+    },
+    "crs_ha_rebalance_on_start": {
+     "n": "crsHaRebalanceOnStart"
+    },
+    "description": {
+     "n": "description"
+    },
+    "email_from": {
+     "n": "emailFrom"
+    },
+    "ha_shutdown_policy": {
+     "n": "haShutdownPolicy"
+    },
+    "http_proxy": {
+     "n": "httpProxy"
+    },
+    "id": {
+     "n": "id"
+    },
+    "keyboard": {
+     "n": "keyboard"
+    },
+    "language": {
+     "n": "language"
+    },
+    "mac_prefix": {
+     "n": "macPrefix"
+    },
+    "max_workers": {
+     "n": "maxWorkers"
+    },
+    "migration_cidr": {
+     "n": "migrationCidr"
+    },
+    "migration_type": {
+     "n": "migrationType"
+    },
+    "next_id": {
+     "f": {
+      "lower": {
+       "n": "lower"
+      },
+      "upper": {
+       "n": "upper"
+      }
+     },
+     "n": "nextId"
+    },
+    "notify": {
+     "f": {
+      "ha_fencing_mode": {
+       "n": "haFencingMode"
+      },
+      "ha_fencing_target": {
+       "n": "haFencingTarget"
+      },
+      "package_updates": {
+       "n": "packageUpdates"
+      },
+      "package_updates_target": {
+       "n": "packageUpdatesTarget"
+      },
+      "replication": {
+       "n": "replication"
+      },
+      "replication_target": {
+       "n": "replicationTarget"
+      }
+     },
+     "n": "notify"
+    }
+   },
+   "token": "proxmox:index/clusterOptions:ClusterOptions"
+  },
+  "proxmox_download_file": {
+   "f": {
+    "checksum": {
+     "n": "checksum"
+    },
+    "checksum_algorithm": {
+     "n": "checksumAlgorithm"
+    },
+    "content_type": {
+     "n": "contentType"
+    },
+    "datastore_id": {
+     "n": "datastoreId"
+    },
+    "decompression_algorithm": {
+     "n": "decompressionAlgorithm"
+    },
+    "file_name": {
+     "n": "fileName"
+    },
+    "id": {
+     "n": "id"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "overwrite": {
+     "n": "overwrite"
+    },
+    "overwrite_unmanaged": {
+     "n": "overwriteUnmanaged"
+    },
+    "size": {
+     "n": "size"
+    },
+    "upload_timeout": {
+     "n": "uploadTimeout"
+    },
+    "url": {
+     "n": "url"
+    },
+    "verify": {
+     "n": "verify"
+    }
+   },
+   "token": "proxmox:index/downloadFile:DownloadFile"
+  },
+  "proxmox_hagroup": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "group": {
+     "n": "group"
+    },
+    "id": {
+     "n": "id"
+    },
+    "no_failback": {
+     "n": "noFailback"
+    },
+    "nodes": {
+     "map": true,
+     "n": "nodes"
+    },
+    "restricted": {
+     "n": "restricted"
+    }
+   },
+   "token": "proxmox:index/hagroup:Hagroup"
+  },
+  "proxmox_hardware_mapping_dir": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "id": {
+     "n": "id"
+    },
+    "map": {
+     "arr": true,
+     "f": {
+      "node": {
+       "n": "node"
+      },
+      "path": {
+       "n": "path"
+      }
+     },
+     "n": "maps"
+    },
+    "name": {
+     "n": "name"
+    }
+   },
+   "token": "proxmox:index/hardwareMappingDir:HardwareMappingDir"
+  },
+  "proxmox_hardware_mapping_pci": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "id": {
+     "n": "id"
+    },
+    "map": {
+     "arr": true,
+     "f": {
+      "comment": {
+       "n": "comment"
+      },
+      "id": {
+       "n": "id"
+      },
+      "iommu_group": {
+       "n": "iommuGroup"
+      },
+      "node": {
+       "n": "node"
+      },
+      "path": {
+       "n": "path"
+      },
+      "subsystem_id": {
+       "n": "subsystemId"
+      }
+     },
+     "n": "maps"
+    },
+    "mediated_devices": {
+     "n": "mediatedDevices"
+    },
+    "name": {
+     "n": "name"
+    }
+   },
+   "token": "proxmox:index/hardwareMappingPci:HardwareMappingPci"
+  },
+  "proxmox_hardware_mapping_usb": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "id": {
+     "n": "id"
+    },
+    "map": {
+     "arr": true,
+     "f": {
+      "comment": {
+       "n": "comment"
+      },
+      "id": {
+       "n": "id"
+      },
+      "node": {
+       "n": "node"
+      },
+      "path": {
+       "n": "path"
+      }
+     },
+     "n": "maps"
+    },
+    "name": {
+     "n": "name"
+    }
+   },
+   "token": "proxmox:index/hardwareMappingUsb:HardwareMappingUsb"
+  },
+  "proxmox_haresource": {
+   "f": {
+    "auto_rebalance": {
+     "n": "autoRebalance"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "failback": {
+     "n": "failback"
+    },
+    "group": {
+     "n": "group"
+    },
+    "id": {
+     "n": "id"
+    },
+    "max_relocate": {
+     "n": "maxRelocate"
+    },
+    "max_restart": {
+     "n": "maxRestart"
+    },
+    "resource_id": {
+     "n": "resourceId"
+    },
+    "state": {
+     "n": "state"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/haresource:Haresource"
+  },
+  "proxmox_harule": {
+   "f": {
+    "affinity": {
+     "n": "affinity"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "id": {
+     "n": "id"
+    },
+    "nodes": {
+     "map": true,
+     "n": "nodes"
+    },
+    "resources": {
+     "arr": true,
+     "n": "resources"
+    },
+    "rule": {
+     "n": "rule"
+    },
+    "strict": {
+     "n": "strict"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/harule:Harule"
+  },
+  "proxmox_metrics_server": {
+   "f": {
+    "disable": {
+     "n": "disable"
+    },
+    "graphite_path": {
+     "n": "graphitePath"
+    },
+    "graphite_proto": {
+     "n": "graphiteProto"
+    },
+    "id": {
+     "n": "id"
+    },
+    "influx_api_path_prefix": {
+     "n": "influxApiPathPrefix"
+    },
+    "influx_bucket": {
+     "n": "influxBucket"
+    },
+    "influx_db_proto": {
+     "n": "influxDbProto"
+    },
+    "influx_max_body_size": {
+     "n": "influxMaxBodySize"
+    },
+    "influx_organization": {
+     "n": "influxOrganization"
+    },
+    "influx_token": {
+     "n": "influxToken"
+    },
+    "influx_token_wo": {
+     "n": "influxTokenWo"
+    },
+    "influx_token_wo_version": {
+     "n": "influxTokenWoVersion"
+    },
+    "influx_verify": {
+     "n": "influxVerify"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "name": {
+     "n": "name"
+    },
+    "opentelemetry_compression": {
+     "n": "opentelemetryCompression"
+    },
+    "opentelemetry_headers": {
+     "n": "opentelemetryHeaders"
+    },
+    "opentelemetry_max_body_size": {
+     "n": "opentelemetryMaxBodySize"
+    },
+    "opentelemetry_path": {
+     "n": "opentelemetryPath"
+    },
+    "opentelemetry_proto": {
+     "n": "opentelemetryProto"
+    },
+    "opentelemetry_resource_attributes": {
+     "n": "opentelemetryResourceAttributes"
+    },
+    "opentelemetry_timeout": {
+     "n": "opentelemetryTimeout"
+    },
+    "opentelemetry_verify_ssl": {
+     "n": "opentelemetryVerifySsl"
+    },
+    "port": {
+     "n": "port"
+    },
+    "server": {
+     "n": "server"
+    },
+    "timeout": {
+     "n": "timeout"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/metricsServer:MetricsServer"
+  },
+  "proxmox_network_applier": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "on_create": {
+     "n": "onCreate"
+    },
+    "on_destroy": {
+     "n": "onDestroy"
+    },
+    "timeout_reload": {
+     "n": "timeoutReload"
+    },
+    "triggers": {
+     "map": true,
+     "n": "triggers"
+    }
+   },
+   "token": "proxmox:index/networkApplier:NetworkApplier"
+  },
+  "proxmox_network_linux_bond": {
+   "f": {
+    "address": {
+     "n": "address"
+    },
+    "address6": {
+     "n": "address6"
+    },
+    "autostart": {
+     "n": "autostart"
+    },
+    "bond_mode": {
+     "n": "bondMode"
+    },
+    "bond_primary": {
+     "n": "bondPrimary"
+    },
+    "bond_xmit_hash_policy": {
+     "n": "bondXmitHashPolicy"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "gateway": {
+     "n": "gateway"
+    },
+    "gateway6": {
+     "n": "gateway6"
+    },
+    "id": {
+     "n": "id"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "reload": {
+     "n": "reload"
+    },
+    "slaves": {
+     "arr": true,
+     "n": "slaves"
+    },
+    "timeout_reload": {
+     "n": "timeoutReload"
+    }
+   },
+   "token": "proxmox:index/networkLinuxBond:NetworkLinuxBond"
+  },
+  "proxmox_network_linux_bridge": {
+   "f": {
+    "address": {
+     "n": "address"
+    },
+    "address6": {
+     "n": "address6"
+    },
+    "autostart": {
+     "n": "autostart"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "gateway": {
+     "n": "gateway"
+    },
+    "gateway6": {
+     "n": "gateway6"
+    },
+    "id": {
+     "n": "id"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "ports": {
+     "arr": true,
+     "n": "ports"
+    },
+    "reload": {
+     "n": "reload"
+    },
+    "timeout_reload": {
+     "n": "timeoutReload"
+    },
+    "vids": {
+     "n": "vids"
+    },
+    "vlan_aware": {
+     "n": "vlanAware"
+    }
+   },
+   "token": "proxmox:index/networkLinuxBridge:NetworkLinuxBridge"
+  },
+  "proxmox_network_linux_vlan": {
+   "f": {
+    "address": {
+     "n": "address"
+    },
+    "address6": {
+     "n": "address6"
+    },
+    "autostart": {
+     "n": "autostart"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "gateway": {
+     "n": "gateway"
+    },
+    "gateway6": {
+     "n": "gateway6"
+    },
+    "id": {
+     "n": "id"
+    },
+    "interface": {
+     "n": "interface"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "reload": {
+     "n": "reload"
+    },
+    "timeout_reload": {
+     "n": "timeoutReload"
+    },
+    "vlan": {
+     "n": "vlan"
+    }
+   },
+   "token": "proxmox:index/networkLinuxVlan:NetworkLinuxVlan"
+  },
+  "proxmox_node_config": {
+   "f": {
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "id"
+    },
+    "node_name": {
+     "n": "nodeName"
+    }
+   },
+   "token": "proxmox:index/nodeConfig:NodeConfig"
+  },
+  "proxmox_node_disk_zfs": {
+   "f": {
+    "add_storage": {
+     "n": "addStorage"
+    },
+    "ashift": {
+     "n": "ashift"
+    },
+    "cleanup_config": {
+     "n": "cleanupConfig"
+    },
+    "cleanup_disks": {
+     "n": "cleanupDisks"
+    },
+    "compression": {
+     "n": "compression"
+    },
+    "devices": {
+     "arr": true,
+     "n": "devices"
+    },
+    "draid_config": {
+     "f": {
+      "data": {
+       "n": "data"
+      },
+      "spares": {
+       "n": "spares"
+      }
+     },
+     "n": "draidConfig"
+    },
+    "errors": {
+     "n": "errors"
+    },
+    "id": {
+     "n": "id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "raidlevel": {
+     "n": "raidlevel"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "proxmox:index/nodeDiskZfs:NodeDiskZfs"
+  },
+  "proxmox_node_firewall": {
+   "f": {
+    "enabled": {
+     "n": "enabled"
+    },
+    "id": {
+     "n": "id"
+    },
+    "log_level_forward": {
+     "n": "logLevelForward"
+    },
+    "log_level_in": {
+     "n": "logLevelIn"
+    },
+    "log_level_out": {
+     "n": "logLevelOut"
+    },
+    "ndp": {
+     "n": "ndp"
+    },
+    "nf_conntrack_max": {
+     "n": "nfConntrackMax"
+    },
+    "nf_conntrack_tcp_timeout_established": {
+     "n": "nfConntrackTcpTimeoutEstablished"
+    },
+    "nftables": {
+     "n": "nftables"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "nosmurfs": {
+     "n": "nosmurfs"
+    },
+    "smurf_log_level": {
+     "n": "smurfLogLevel"
+    },
+    "tcp_flags_log_level": {
+     "n": "tcpFlagsLogLevel"
+    }
+   },
+   "token": "proxmox:index/nodeFirewall:NodeFirewall"
+  },
+  "proxmox_oci_image": {
+   "f": {
+    "datastore_id": {
+     "n": "datastoreId"
+    },
+    "file_name": {
+     "n": "fileName"
+    },
+    "id": {
+     "n": "id"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "overwrite": {
+     "n": "overwrite"
+    },
+    "overwrite_unmanaged": {
+     "n": "overwriteUnmanaged"
+    },
+    "reference": {
+     "n": "reference"
+    },
+    "size": {
+     "n": "size"
+    },
+    "upload_timeout": {
+     "n": "uploadTimeout"
+    }
+   },
+   "token": "proxmox:index/ociImage:OciImage"
+  },
+  "proxmox_pool_membership": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "pool_id": {
+     "n": "poolId"
+    },
+    "storage_id": {
+     "n": "storageId"
+    },
+    "type": {
+     "n": "type"
+    },
+    "vm_id": {
+     "n": "vmId"
+    }
+   },
+   "token": "proxmox:index/poolMembership:PoolMembership"
+  },
+  "proxmox_realm_ldap": {
+   "f": {
+    "base_dn": {
+     "n": "baseDn"
+    },
+    "bind_dn": {
+     "n": "bindDn"
+    },
+    "bind_password": {
+     "n": "bindPassword"
+    },
+    "ca_path": {
+     "n": "caPath"
+    },
+    "case_sensitive": {
+     "n": "caseSensitive"
+    },
+    "cert_key_path": {
+     "n": "certKeyPath"
+    },
+    "cert_path": {
+     "n": "certPath"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "default": {
+     "n": "default"
+    },
+    "filter": {
+     "n": "filter"
+    },
+    "group_classes": {
+     "n": "groupClasses"
+    },
+    "group_dn": {
+     "n": "groupDn"
+    },
+    "group_filter": {
+     "n": "groupFilter"
+    },
+    "group_name_attr": {
+     "n": "groupNameAttr"
+    },
+    "id": {
+     "n": "id"
+    },
+    "mode": {
+     "n": "mode"
+    },
+    "port": {
+     "n": "port"
+    },
+    "realm": {
+     "n": "realm"
+    },
+    "secure": {
+     "n": "secure"
+    },
+    "server1": {
+     "n": "server1"
+    },
+    "server2": {
+     "n": "server2"
+    },
+    "ssl_version": {
+     "n": "sslVersion"
+    },
+    "sync_attributes": {
+     "n": "syncAttributes"
+    },
+    "sync_defaults_options": {
+     "n": "syncDefaultsOptions"
+    },
+    "user_attr": {
+     "n": "userAttr"
+    },
+    "user_classes": {
+     "n": "userClasses"
+    },
+    "verify": {
+     "n": "verify"
+    }
+   },
+   "token": "proxmox:index/realmLdap:RealmLdap"
+  },
+  "proxmox_realm_openid": {
+   "f": {
+    "acr_values": {
+     "n": "acrValues"
+    },
+    "audiences": {
+     "n": "audiences"
+    },
+    "autocreate": {
+     "n": "autocreate"
+    },
+    "client_id": {
+     "n": "clientId"
+    },
+    "client_key": {
+     "n": "clientKey"
+    },
+    "client_key_wo": {
+     "n": "clientKeyWo"
+    },
+    "client_key_wo_version": {
+     "n": "clientKeyWoVersion"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "default": {
+     "n": "default"
+    },
+    "groups_autocreate": {
+     "n": "groupsAutocreate"
+    },
+    "groups_claim": {
+     "n": "groupsClaim"
+    },
+    "groups_overwrite": {
+     "n": "groupsOverwrite"
+    },
+    "id": {
+     "n": "id"
+    },
+    "issuer_url": {
+     "n": "issuerUrl"
+    },
+    "prompt": {
+     "n": "prompt"
+    },
+    "query_userinfo": {
+     "n": "queryUserinfo"
+    },
+    "realm": {
+     "n": "realm"
+    },
+    "scopes": {
+     "n": "scopes"
+    },
+    "username_claim": {
+     "n": "usernameClaim"
+    }
+   },
+   "token": "proxmox:index/realmOpenid:RealmOpenid"
+  },
+  "proxmox_realm_sync": {
+   "f": {
+    "dry_run": {
+     "n": "dryRun"
+    },
+    "enable_new": {
+     "n": "enableNew"
+    },
+    "full": {
+     "n": "full"
+    },
+    "id": {
+     "n": "id"
+    },
+    "purge": {
+     "n": "purge"
+    },
+    "realm": {
+     "n": "realm"
+    },
+    "remove_vanished": {
+     "n": "removeVanished"
+    },
+    "scope": {
+     "n": "scope"
+    }
+   },
+   "token": "proxmox:index/realmSync:RealmSync"
+  },
+  "proxmox_replication": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "guest": {
+     "n": "guest"
+    },
+    "id": {
+     "n": "replicationId"
+    },
+    "jobnum": {
+     "n": "jobnum"
+    },
+    "rate": {
+     "n": "rate"
+    },
+    "schedule": {
+     "n": "schedule"
+    },
+    "source": {
+     "n": "source"
+    },
+    "target": {
+     "n": "target"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/replication:Replication"
+  },
+  "proxmox_sdn_applier": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "on_create": {
+     "n": "onCreate"
+    },
+    "on_destroy": {
+     "n": "onDestroy"
+    }
+   },
+   "token": "proxmox:index/sdnApplier:SdnApplier"
+  },
+  "proxmox_sdn_controller_evpn": {
+   "f": {
+    "asn": {
+     "n": "asn"
+    },
+    "digest": {
+     "n": "digest"
+    },
+    "fabric": {
+     "n": "fabric"
+    },
+    "id": {
+     "n": "sdnControllerEvpnId"
+    },
+    "peers": {
+     "arr": true,
+     "n": "peers"
+    }
+   },
+   "token": "proxmox:index/sdnControllerEvpn:SdnControllerEvpn"
+  },
+  "proxmox_sdn_fabric_node_openfabric": {
+   "f": {
+    "fabric_id": {
+     "n": "fabricId"
+    },
+    "id": {
+     "n": "id"
+    },
+    "interface_names": {
+     "arr": true,
+     "n": "interfaceNames"
+    },
+    "ip": {
+     "n": "ip"
+    },
+    "ip6": {
+     "n": "ip6"
+    },
+    "node_id": {
+     "n": "nodeId"
+    }
+   },
+   "token": "proxmox:index/sdnFabricNodeOpenfabric:SdnFabricNodeOpenfabric"
+  },
+  "proxmox_sdn_fabric_node_ospf": {
+   "f": {
+    "fabric_id": {
+     "n": "fabricId"
+    },
+    "id": {
+     "n": "id"
+    },
+    "interface_names": {
+     "arr": true,
+     "n": "interfaceNames"
+    },
+    "ip": {
+     "n": "ip"
+    },
+    "node_id": {
+     "n": "nodeId"
+    }
+   },
+   "token": "proxmox:index/sdnFabricNodeOspf:SdnFabricNodeOspf"
+  },
+  "proxmox_sdn_fabric_openfabric": {
+   "f": {
+    "csnp_interval": {
+     "n": "csnpInterval"
+    },
+    "hello_interval": {
+     "n": "helloInterval"
+    },
+    "id": {
+     "n": "sdnFabricOpenfabricId"
+    },
+    "ip6_prefix": {
+     "n": "ip6Prefix"
+    },
+    "ip_prefix": {
+     "n": "ipPrefix"
+    }
+   },
+   "token": "proxmox:index/sdnFabricOpenfabric:SdnFabricOpenfabric"
+  },
+  "proxmox_sdn_fabric_ospf": {
+   "f": {
+    "area": {
+     "n": "area"
+    },
+    "id": {
+     "n": "sdnFabricOspfId"
+    },
+    "ip_prefix": {
+     "n": "ipPrefix"
+    }
+   },
+   "token": "proxmox:index/sdnFabricOspf:SdnFabricOspf"
+  },
+  "proxmox_sdn_subnet": {
+   "f": {
+    "cidr": {
+     "n": "cidr"
+    },
+    "dhcp_dns_server": {
+     "n": "dhcpDnsServer"
+    },
+    "dhcp_range": {
+     "f": {
+      "end_address": {
+       "n": "endAddress"
+      },
+      "start_address": {
+       "n": "startAddress"
+      }
+     },
+     "n": "dhcpRange"
+    },
+    "dns_zone_prefix": {
+     "n": "dnsZonePrefix"
+    },
+    "gateway": {
+     "n": "gateway"
+    },
+    "id": {
+     "n": "id"
+    },
+    "snat": {
+     "n": "snat"
+    },
+    "vnet": {
+     "n": "vnet"
+    }
+   },
+   "token": "proxmox:index/sdnSubnet:SdnSubnet"
+  },
+  "proxmox_sdn_vnet": {
+   "f": {
+    "alias": {
+     "n": "alias"
+    },
+    "id": {
+     "n": "sdnVnetId"
+    },
+    "isolate_ports": {
+     "n": "isolatePorts"
+    },
+    "tag": {
+     "n": "tag"
+    },
+    "vlan_aware": {
+     "n": "vlanAware"
+    },
+    "zone": {
+     "n": "zone"
+    }
+   },
+   "token": "proxmox:index/sdnVnet:SdnVnet"
+  },
+  "proxmox_sdn_zone_evpn": {
+   "f": {
+    "advertise_subnets": {
+     "n": "advertiseSubnets"
+    },
+    "controller": {
+     "n": "controller"
+    },
+    "disable_arp_nd_suppression": {
+     "n": "disableArpNdSuppression"
+    },
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "exit_nodes": {
+     "arr": true,
+     "n": "exitNodes"
+    },
+    "exit_nodes_local_routing": {
+     "n": "exitNodesLocalRouting"
+    },
+    "id": {
+     "n": "sdnZoneEvpnId"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "primary_exit_node": {
+     "n": "primaryExitNode"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "rt_import": {
+     "n": "rtImport"
+    },
+    "state": {
+     "n": "state"
+    },
+    "vrf_vxlan": {
+     "n": "vrfVxlan"
+    }
+   },
+   "token": "proxmox:index/sdnZoneEvpn:SdnZoneEvpn"
+  },
+  "proxmox_sdn_zone_qinq": {
+   "f": {
+    "bridge": {
+     "n": "bridge"
+    },
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "id": {
+     "n": "sdnZoneQinqId"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "service_vlan": {
+     "n": "serviceVlan"
+    },
+    "service_vlan_protocol": {
+     "n": "serviceVlanProtocol"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "proxmox:index/sdnZoneQinq:SdnZoneQinq"
+  },
+  "proxmox_sdn_zone_simple": {
+   "f": {
+    "dhcp": {
+     "n": "dhcp"
+    },
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "id": {
+     "n": "sdnZoneSimpleId"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "proxmox:index/sdnZoneSimple:SdnZoneSimple"
+  },
+  "proxmox_sdn_zone_vlan": {
+   "f": {
+    "bridge": {
+     "n": "bridge"
+    },
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "id": {
+     "n": "sdnZoneVlanId"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "proxmox:index/sdnZoneVlan:SdnZoneVlan"
+  },
+  "proxmox_sdn_zone_vxlan": {
+   "f": {
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "id": {
+     "n": "sdnZoneVxlanId"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "peers": {
+     "arr": true,
+     "n": "peers"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "proxmox:index/sdnZoneVxlan:SdnZoneVxlan"
+  },
+  "proxmox_storage_cifs": {
+   "f": {
+    "backups": {
+     "f": {
+      "keep_all": {
+       "n": "keepAll"
+      },
+      "keep_daily": {
+       "n": "keepDaily"
+      },
+      "keep_hourly": {
+       "n": "keepHourly"
+      },
+      "keep_last": {
+       "n": "keepLast"
+      },
+      "keep_monthly": {
+       "n": "keepMonthly"
+      },
+      "keep_weekly": {
+       "n": "keepWeekly"
+      },
+      "keep_yearly": {
+       "n": "keepYearly"
+      },
+      "max_protected_backups": {
+       "n": "maxProtectedBackups"
+      }
+     },
+     "n": "backups"
+    },
+    "content": {
+     "arr": true,
+     "n": "contents"
+    },
+    "create_base_path": {
+     "n": "createBasePath"
+    },
+    "create_subdirs": {
+     "n": "createSubdirs"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "domain": {
+     "n": "domain"
+    },
+    "id": {
+     "n": "storageCifsId"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "options": {
+     "n": "options"
+    },
+    "password": {
+     "n": "password"
+    },
+    "preallocation": {
+     "n": "preallocation"
+    },
+    "server": {
+     "n": "server"
+    },
+    "share": {
+     "n": "share"
+    },
+    "shared": {
+     "n": "shared"
+    },
+    "snapshot_as_volume_chain": {
+     "n": "snapshotAsVolumeChain"
+    },
+    "subdirectory": {
+     "n": "subdirectory"
+    },
+    "username": {
+     "n": "username"
+    }
+   },
+   "token": "proxmox:index/storageCifs:StorageCifs"
+  },
+  "proxmox_storage_directory": {
+   "f": {
+    "backups": {
+     "f": {
+      "keep_all": {
+       "n": "keepAll"
+      },
+      "keep_daily": {
+       "n": "keepDaily"
+      },
+      "keep_hourly": {
+       "n": "keepHourly"
+      },
+      "keep_last": {
+       "n": "keepLast"
+      },
+      "keep_monthly": {
+       "n": "keepMonthly"
+      },
+      "keep_weekly": {
+       "n": "keepWeekly"
+      },
+      "keep_yearly": {
+       "n": "keepYearly"
+      },
+      "max_protected_backups": {
+       "n": "maxProtectedBackups"
+      }
+     },
+     "n": "backups"
+    },
+    "content": {
+     "arr": true,
+     "n": "contents"
+    },
+    "create_base_path": {
+     "n": "createBasePath"
+    },
+    "create_subdirs": {
+     "n": "createSubdirs"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "id": {
+     "n": "storageDirectoryId"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "path": {
+     "n": "path"
+    },
+    "preallocation": {
+     "n": "preallocation"
+    },
+    "shared": {
+     "n": "shared"
+    }
+   },
+   "token": "proxmox:index/storageDirectory:StorageDirectory"
+  },
+  "proxmox_storage_lvm": {
+   "f": {
+    "content": {
+     "arr": true,
+     "n": "contents"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "id": {
+     "n": "storageLvmId"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "shared": {
+     "n": "shared"
+    },
+    "volume_group": {
+     "n": "volumeGroup"
+    },
+    "wipe_removed_volumes": {
+     "n": "wipeRemovedVolumes"
+    }
+   },
+   "token": "proxmox:index/storageLvm:StorageLvm"
+  },
+  "proxmox_storage_lvmthin": {
+   "f": {
+    "content": {
+     "arr": true,
+     "n": "contents"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "id": {
+     "n": "storageLvmthinId"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "shared": {
+     "n": "shared"
+    },
+    "thin_pool": {
+     "n": "thinPool"
+    },
+    "volume_group": {
+     "n": "volumeGroup"
+    }
+   },
+   "token": "proxmox:index/storageLvmthin:StorageLvmthin"
+  },
+  "proxmox_storage_nfs": {
+   "f": {
+    "backups": {
+     "f": {
+      "keep_all": {
+       "n": "keepAll"
+      },
+      "keep_daily": {
+       "n": "keepDaily"
+      },
+      "keep_hourly": {
+       "n": "keepHourly"
+      },
+      "keep_last": {
+       "n": "keepLast"
+      },
+      "keep_monthly": {
+       "n": "keepMonthly"
+      },
+      "keep_weekly": {
+       "n": "keepWeekly"
+      },
+      "keep_yearly": {
+       "n": "keepYearly"
+      },
+      "max_protected_backups": {
+       "n": "maxProtectedBackups"
+      }
+     },
+     "n": "backups"
+    },
+    "content": {
+     "arr": true,
+     "n": "contents"
+    },
+    "create_base_path": {
+     "n": "createBasePath"
+    },
+    "create_subdirs": {
+     "n": "createSubdirs"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "export": {
+     "n": "export"
+    },
+    "id": {
+     "n": "storageNfsId"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "options": {
+     "n": "options"
+    },
+    "preallocation": {
+     "n": "preallocation"
+    },
+    "server": {
+     "n": "server"
+    },
+    "shared": {
+     "n": "shared"
+    },
+    "snapshot_as_volume_chain": {
+     "n": "snapshotAsVolumeChain"
+    }
+   },
+   "token": "proxmox:index/storageNfs:StorageNfs"
+  },
+  "proxmox_storage_pbs": {
+   "f": {
+    "backups": {
+     "f": {
+      "keep_all": {
+       "n": "keepAll"
+      },
+      "keep_daily": {
+       "n": "keepDaily"
+      },
+      "keep_hourly": {
+       "n": "keepHourly"
+      },
+      "keep_last": {
+       "n": "keepLast"
+      },
+      "keep_monthly": {
+       "n": "keepMonthly"
+      },
+      "keep_weekly": {
+       "n": "keepWeekly"
+      },
+      "keep_yearly": {
+       "n": "keepYearly"
+      },
+      "max_protected_backups": {
+       "n": "maxProtectedBackups"
+      }
+     },
+     "n": "backups"
+    },
+    "content": {
+     "arr": true,
+     "n": "contents"
+    },
+    "datastore": {
+     "n": "datastore"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "encryption_key": {
+     "n": "encryptionKey"
+    },
+    "encryption_key_fingerprint": {
+     "n": "encryptionKeyFingerprint"
+    },
+    "fingerprint": {
+     "n": "fingerprint"
+    },
+    "generate_encryption_key": {
+     "n": "generateEncryptionKey"
+    },
+    "generated_encryption_key": {
+     "n": "generatedEncryptionKey"
+    },
+    "id": {
+     "n": "storagePbsId"
+    },
+    "namespace": {
+     "n": "namespace"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "password": {
+     "n": "password"
+    },
+    "server": {
+     "n": "server"
+    },
+    "shared": {
+     "n": "shared"
+    },
+    "username": {
+     "n": "username"
+    }
+   },
+   "token": "proxmox:index/storagePbs:StoragePbs"
+  },
+  "proxmox_storage_zfspool": {
+   "f": {
+    "blocksize": {
+     "n": "blocksize"
+    },
+    "content": {
+     "arr": true,
+     "n": "contents"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "id": {
+     "n": "storageZfspoolId"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "shared": {
+     "n": "shared"
+    },
+    "thin_provision": {
+     "n": "thinProvision"
+    },
+    "zfs_pool": {
+     "n": "zfsPool"
+    }
+   },
+   "token": "proxmox:index/storageZfspool:StorageZfspool"
+  },
+  "proxmox_user_token": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "expiration_date": {
+     "n": "expirationDate"
+    },
+    "id": {
+     "n": "id"
+    },
+    "privileges_separation": {
+     "n": "privilegesSeparation"
+    },
+    "token_name": {
+     "n": "tokenName"
+    },
+    "user_id": {
+     "n": "userId"
+    },
+    "value": {
+     "n": "value"
+    }
+   },
+   "token": "proxmox:index/userToken:UserToken"
+  },
+  "proxmox_virtual_environment_acl": {
+   "f": {
+    "group_id": {
+     "n": "groupId"
+    },
+    "id": {
+     "n": "id"
+    },
+    "path": {
+     "n": "path"
+    },
+    "propagate": {
+     "n": "propagate"
+    },
+    "role_id": {
+     "n": "roleId"
+    },
+    "token_id": {
+     "n": "tokenId"
+    },
+    "user_id": {
+     "n": "userId"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentAcl:VirtualEnvironmentAcl"
+  },
+  "proxmox_virtual_environment_acme_account": {
+   "f": {
+    "contact": {
+     "n": "contact"
+    },
+    "created_at": {
+     "n": "createdAt"
+    },
+    "directory": {
+     "n": "directory"
+    },
+    "eab_hmac_key": {
+     "n": "eabHmacKey"
+    },
+    "eab_kid": {
+     "n": "eabKid"
+    },
+    "location": {
+     "n": "location"
+    },
+    "name": {
+     "n": "name"
+    },
+    "tos": {
+     "n": "tos"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentAcmeAccount:VirtualEnvironmentAcmeAccount"
+  },
+  "proxmox_virtual_environment_acme_certificate": {
+   "f": {
+    "account": {
+     "n": "account"
+    },
+    "certificate": {
+     "n": "certificate"
+    },
+    "domains": {
+     "arr": true,
+     "f": {
+      "alias": {
+       "n": "alias"
+      },
+      "domain": {
+       "n": "domain"
+      },
+      "plugin": {
+       "n": "plugin"
+      }
+     },
+     "n": "domains"
+    },
+    "fingerprint": {
+     "n": "fingerprint"
+    },
+    "force": {
+     "n": "force"
+    },
+    "id": {
+     "n": "id"
+    },
+    "issuer": {
+     "n": "issuer"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "not_after": {
+     "n": "notAfter"
+    },
+    "not_before": {
+     "n": "notBefore"
+    },
+    "subject": {
+     "n": "subject"
+    },
+    "subject_alternative_names": {
+     "arr": true,
+     "n": "subjectAlternativeNames"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentAcmeCertificate:VirtualEnvironmentAcmeCertificate"
+  },
+  "proxmox_virtual_environment_acme_dns_plugin": {
+   "f": {
+    "api": {
+     "n": "api"
+    },
+    "data": {
+     "map": true,
+     "n": "data"
+    },
+    "data_wo": {
+     "map": true,
+     "n": "dataWo"
+    },
+    "data_wo_version": {
+     "n": "dataWoVersion"
+    },
+    "digest": {
+     "n": "digest"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "plugin": {
+     "n": "plugin"
+    },
+    "validation_delay": {
+     "n": "validationDelay"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentAcmeDnsPlugin:VirtualEnvironmentAcmeDnsPlugin"
+  },
+  "proxmox_virtual_environment_apt_repository": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "components": {
+     "arr": true,
+     "n": "components"
+    },
+    "enabled": {
+     "n": "enabled"
+    },
+    "file_path": {
+     "n": "filePath"
+    },
+    "file_type": {
+     "n": "fileType"
+    },
+    "id": {
+     "n": "id"
+    },
+    "index": {
+     "n": "index"
+    },
+    "node": {
+     "n": "node"
+    },
+    "package_types": {
+     "arr": true,
+     "n": "packageTypes"
+    },
+    "suites": {
+     "arr": true,
+     "n": "suites"
+    },
+    "uris": {
+     "arr": true,
+     "n": "uris"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentAptRepository:VirtualEnvironmentAptRepository"
+  },
+  "proxmox_virtual_environment_apt_standard_repository": {
+   "f": {
+    "description": {
+     "n": "description"
+    },
+    "file_path": {
+     "n": "filePath"
+    },
+    "handle": {
+     "n": "handle"
+    },
+    "id": {
+     "n": "id"
+    },
+    "index": {
+     "n": "index"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node": {
+     "n": "node"
+    },
+    "status": {
+     "n": "status"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentAptStandardRepository:VirtualEnvironmentAptStandardRepository"
+  },
+  "proxmox_virtual_environment_certificate": {
+   "f": {
+    "certificate": {
+     "n": "certificate"
+    },
+    "certificate_chain": {
+     "n": "certificateChain"
+    },
+    "expiration_date": {
+     "n": "expirationDate"
+    },
+    "file_name": {
+     "n": "fileName"
+    },
+    "id": {
+     "n": "virtualEnvironmentCertificateId"
+    },
+    "issuer": {
+     "n": "issuer"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "overwrite": {
+     "n": "overwrite"
+    },
+    "private_key": {
+     "n": "privateKey"
+    },
+    "public_key_size": {
+     "n": "publicKeySize"
+    },
+    "public_key_type": {
+     "n": "publicKeyType"
+    },
+    "ssl_fingerprint": {
+     "n": "sslFingerprint"
+    },
+    "start_date": {
+     "n": "startDate"
+    },
+    "subject": {
+     "n": "subject"
+    },
+    "subject_alternative_names": {
+     "arr": true,
+     "n": "subjectAlternativeNames"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentCertificate:VirtualEnvironmentCertificate"
+  },
+  "proxmox_virtual_environment_cloned_vm": {
+   "f": {
+    "cdrom": {
+     "f": {
+      "file_id": {
+       "n": "fileId"
+      }
+     },
+     "map": true,
+     "n": "cdrom"
+    },
+    "clone": {
+     "f": {
+      "bandwidth_limit": {
+       "n": "bandwidthLimit"
+      },
+      "full": {
+       "n": "full"
+      },
+      "pool_id": {
+       "n": "poolId"
+      },
+      "retries": {
+       "n": "retries"
+      },
+      "snapshot_name": {
+       "n": "snapshotName"
+      },
+      "source_node_name": {
+       "n": "sourceNodeName"
+      },
+      "source_vm_id": {
+       "n": "sourceVmId"
+      },
+      "target_datastore": {
+       "n": "targetDatastore"
+      },
+      "target_format": {
+       "n": "targetFormat"
+      }
+     },
+     "n": "clone"
+    },
+    "cpu": {
+     "f": {
+      "affinity": {
+       "n": "affinity"
+      },
+      "architecture": {
+       "n": "architecture"
+      },
+      "cores": {
+       "n": "cores"
+      },
+      "flags": {
+       "arr": true,
+       "n": "flags"
+      },
+      "limit": {
+       "n": "limit"
+      },
+      "numa": {
+       "n": "numa"
+      },
+      "sockets": {
+       "n": "sockets"
+      },
+      "type": {
+       "n": "type"
+      },
+      "units": {
+       "n": "units"
+      },
+      "vcpus": {
+       "n": "vcpus"
+      }
+     },
+     "n": "cpu"
+    },
+    "delete": {
+     "f": {
+      "disk": {
+       "arr": true,
+       "n": "disks"
+      },
+      "network": {
+       "arr": true,
+       "n": "networks"
+      }
+     },
+     "n": "delete"
+    },
+    "delete_unreferenced_disks_on_destroy": {
+     "n": "deleteUnreferencedDisksOnDestroy"
+    },
+    "description": {
+     "n": "description"
+    },
+    "disk": {
+     "f": {
+      "aio": {
+       "n": "aio"
+      },
+      "backup": {
+       "n": "backup"
+      },
+      "cache": {
+       "n": "cache"
+      },
+      "datastore_id": {
+       "n": "datastoreId"
+      },
+      "discard": {
+       "n": "discard"
+      },
+      "file": {
+       "n": "file"
+      },
+      "format": {
+       "n": "format"
+      },
+      "import_from": {
+       "n": "importFrom"
+      },
+      "iothread": {
+       "n": "iothread"
+      },
+      "media": {
+       "n": "media"
+      },
+      "replicate": {
+       "n": "replicate"
+      },
+      "serial": {
+       "n": "serial"
+      },
+      "size_gb": {
+       "n": "sizeGb"
+      },
+      "ssd": {
+       "n": "ssd"
+      }
+     },
+     "map": true,
+     "n": "disk"
+    },
+    "id": {
+     "n": "virtualEnvironmentClonedVmId"
+    },
+    "memory": {
+     "f": {
+      "balloon": {
+       "n": "balloon"
+      },
+      "hugepages": {
+       "n": "hugepages"
+      },
+      "keep_hugepages": {
+       "n": "keepHugepages"
+      },
+      "shares": {
+       "n": "shares"
+      },
+      "size": {
+       "n": "size"
+      }
+     },
+     "n": "memory"
+    },
+    "name": {
+     "n": "name"
+    },
+    "network": {
+     "f": {
+      "bridge": {
+       "n": "bridge"
+      },
+      "firewall": {
+       "n": "firewall"
+      },
+      "link_down": {
+       "n": "linkDown"
+      },
+      "mac_address": {
+       "n": "macAddress"
+      },
+      "model": {
+       "n": "model"
+      },
+      "mtu": {
+       "n": "mtu"
+      },
+      "queues": {
+       "n": "queues"
+      },
+      "rate_limit": {
+       "n": "rateLimit"
+      },
+      "tag": {
+       "n": "tag"
+      },
+      "trunks": {
+       "arr": true,
+       "n": "trunks"
+      }
+     },
+     "map": true,
+     "n": "network"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "purge_on_destroy": {
+     "n": "purgeOnDestroy"
+    },
+    "rng": {
+     "f": {
+      "max_bytes": {
+       "n": "maxBytes"
+      },
+      "period": {
+       "n": "period"
+      },
+      "source": {
+       "n": "source"
+      }
+     },
+     "n": "rng"
+    },
+    "started": {
+     "n": "started"
+    },
+    "stop_on_destroy": {
+     "n": "stopOnDestroy"
+    },
+    "tags": {
+     "arr": true,
+     "n": "tags"
+    },
+    "timeouts": {
+     "f": {
+      "create": {
+       "n": "create"
+      },
+      "delete": {
+       "n": "delete"
+      },
+      "read": {
+       "n": "read"
+      },
+      "update": {
+       "n": "update"
+      }
+     },
+     "n": "timeouts"
+    },
+    "vga": {
+     "f": {
+      "clipboard": {
+       "n": "clipboard"
+      },
+      "memory": {
+       "n": "memory"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "vga"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentClonedVm:VirtualEnvironmentClonedVm"
+  },
+  "proxmox_virtual_environment_cluster_firewall": {
+   "f": {
+    "ebtables": {
+     "n": "ebtables"
+    },
+    "enabled": {
+     "n": "enabled"
+    },
+    "forward_policy": {
+     "n": "forwardPolicy"
+    },
+    "id": {
+     "n": "virtualEnvironmentClusterFirewallId"
+    },
+    "input_policy": {
+     "n": "inputPolicy"
+    },
+    "log_ratelimit": {
+     "f": {
+      "burst": {
+       "n": "burst"
+      },
+      "enabled": {
+       "n": "enabled"
+      },
+      "rate": {
+       "n": "rate"
+      }
+     },
+     "n": "logRatelimit"
+    },
+    "output_policy": {
+     "n": "outputPolicy"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentClusterFirewall:VirtualEnvironmentClusterFirewall"
+  },
+  "proxmox_virtual_environment_cluster_firewall_security_group": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "container_id": {
+     "n": "containerId"
+    },
+    "id": {
+     "n": "virtualEnvironmentClusterFirewallSecurityGroupId"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "rule": {
+     "arr": true,
+     "f": {
+      "action": {
+       "n": "action"
+      },
+      "comment": {
+       "n": "comment"
+      },
+      "dest": {
+       "n": "dest"
+      },
+      "dport": {
+       "n": "dport"
+      },
+      "enabled": {
+       "n": "enabled"
+      },
+      "iface": {
+       "n": "iface"
+      },
+      "log": {
+       "n": "log"
+      },
+      "macro": {
+       "n": "macro"
+      },
+      "pos": {
+       "n": "pos"
+      },
+      "proto": {
+       "n": "proto"
+      },
+      "security_group": {
+       "n": "securityGroup"
+      },
+      "source": {
+       "n": "source"
+      },
+      "sport": {
+       "n": "sport"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "rules"
+    },
+    "vm_id": {
+     "n": "vmId"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentClusterFirewallSecurityGroup:VirtualEnvironmentClusterFirewallSecurityGroup"
+  },
+  "proxmox_virtual_environment_cluster_options": {
+   "f": {
+    "bandwidth_limit_clone": {
+     "n": "bandwidthLimitClone"
+    },
+    "bandwidth_limit_default": {
+     "n": "bandwidthLimitDefault"
+    },
+    "bandwidth_limit_migration": {
+     "n": "bandwidthLimitMigration"
+    },
+    "bandwidth_limit_move": {
+     "n": "bandwidthLimitMove"
+    },
+    "bandwidth_limit_restore": {
+     "n": "bandwidthLimitRestore"
+    },
+    "console": {
+     "n": "console"
+    },
+    "crs_ha": {
+     "n": "crsHa"
+    },
+    "crs_ha_auto_rebalance": {
+     "n": "crsHaAutoRebalance"
+    },
+    "crs_ha_auto_rebalance_hold_duration": {
+     "n": "crsHaAutoRebalanceHoldDuration"
+    },
+    "crs_ha_auto_rebalance_margin": {
+     "n": "crsHaAutoRebalanceMargin"
+    },
+    "crs_ha_auto_rebalance_method": {
+     "n": "crsHaAutoRebalanceMethod"
+    },
+    "crs_ha_auto_rebalance_threshold": {
+     "n": "crsHaAutoRebalanceThreshold"
+    },
+    "crs_ha_rebalance_on_start": {
+     "n": "crsHaRebalanceOnStart"
+    },
+    "description": {
+     "n": "description"
+    },
+    "email_from": {
+     "n": "emailFrom"
+    },
+    "ha_shutdown_policy": {
+     "n": "haShutdownPolicy"
+    },
+    "http_proxy": {
+     "n": "httpProxy"
+    },
+    "id": {
+     "n": "id"
+    },
+    "keyboard": {
+     "n": "keyboard"
+    },
+    "language": {
+     "n": "language"
+    },
+    "mac_prefix": {
+     "n": "macPrefix"
+    },
+    "max_workers": {
+     "n": "maxWorkers"
+    },
+    "migration_cidr": {
+     "n": "migrationCidr"
+    },
+    "migration_type": {
+     "n": "migrationType"
+    },
+    "next_id": {
+     "f": {
+      "lower": {
+       "n": "lower"
+      },
+      "upper": {
+       "n": "upper"
+      }
+     },
+     "n": "nextId"
+    },
+    "notify": {
+     "f": {
+      "ha_fencing_mode": {
+       "n": "haFencingMode"
+      },
+      "ha_fencing_target": {
+       "n": "haFencingTarget"
+      },
+      "package_updates": {
+       "n": "packageUpdates"
+      },
+      "package_updates_target": {
+       "n": "packageUpdatesTarget"
+      },
+      "replication": {
+       "n": "replication"
+      },
+      "replication_target": {
+       "n": "replicationTarget"
+      }
+     },
+     "n": "notify"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentClusterOptions:VirtualEnvironmentClusterOptions"
+  },
+  "proxmox_virtual_environment_container": {
+   "f": {
+    "clone": {
+     "f": {
+      "datastore_id": {
+       "n": "datastoreId"
+      },
+      "full": {
+       "n": "full"
+      },
+      "node_name": {
+       "n": "nodeName"
+      },
+      "vm_id": {
+       "n": "vmId"
+      }
+     },
+     "n": "clone"
+    },
+    "console": {
+     "f": {
+      "enabled": {
+       "n": "enabled"
+      },
+      "tty_count": {
+       "n": "ttyCount"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "console"
+    },
+    "cpu": {
+     "f": {
+      "architecture": {
+       "n": "architecture"
+      },
+      "cores": {
+       "n": "cores"
+      },
+      "limit": {
+       "n": "limit"
+      },
+      "units": {
+       "n": "units"
+      }
+     },
+     "n": "cpu"
+    },
+    "delete_unreferenced_disks_on_destroy": {
+     "n": "deleteUnreferencedDisksOnDestroy"
+    },
+    "description": {
+     "n": "description"
+    },
+    "device_passthrough": {
+     "arr": true,
+     "f": {
+      "deny_write": {
+       "n": "denyWrite"
+      },
+      "gid": {
+       "n": "gid"
+      },
+      "mode": {
+       "n": "mode"
+      },
+      "path": {
+       "n": "path"
+      },
+      "uid": {
+       "n": "uid"
+      }
+     },
+     "n": "devicePassthroughs"
+    },
+    "disk": {
+     "f": {
+      "acl": {
+       "n": "acl"
+      },
+      "datastore_id": {
+       "n": "datastoreId"
+      },
+      "mount_options": {
+       "arr": true,
+       "n": "mountOptions"
+      },
+      "path_in_datastore": {
+       "n": "pathInDatastore"
+      },
+      "quota": {
+       "n": "quota"
+      },
+      "replicate": {
+       "n": "replicate"
+      },
+      "size": {
+       "n": "size"
+      }
+     },
+     "n": "disk"
+    },
+    "environment_variables": {
+     "map": true,
+     "n": "environmentVariables"
+    },
+    "features": {
+     "f": {
+      "fuse": {
+       "n": "fuse"
+      },
+      "keyctl": {
+       "n": "keyctl"
+      },
+      "mknod": {
+       "n": "mknod"
+      },
+      "mount": {
+       "arr": true,
+       "n": "mounts"
+      },
+      "nesting": {
+       "n": "nesting"
+      }
+     },
+     "n": "features"
+    },
+    "hook_script_file_id": {
+     "n": "hookScriptFileId"
+    },
+    "id": {
+     "n": "virtualEnvironmentContainerId"
+    },
+    "idmap": {
+     "arr": true,
+     "f": {
+      "container_id": {
+       "n": "containerId"
+      },
+      "host_id": {
+       "n": "hostId"
+      },
+      "size": {
+       "n": "size"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "idmaps"
+    },
+    "initialization": {
+     "f": {
+      "dns": {
+       "f": {
+        "domain": {
+         "n": "domain"
+        },
+        "server": {
+         "n": "server"
+        },
+        "servers": {
+         "arr": true,
+         "n": "servers"
+        }
+       },
+       "n": "dns"
+      },
+      "entrypoint": {
+       "n": "entrypoint"
+      },
+      "hostname": {
+       "n": "hostname"
+      },
+      "ip_config": {
+       "arr": true,
+       "f": {
+        "ipv4": {
+         "f": {
+          "address": {
+           "n": "address"
+          },
+          "gateway": {
+           "n": "gateway"
+          }
+         },
+         "n": "ipv4"
+        },
+        "ipv6": {
+         "f": {
+          "address": {
+           "n": "address"
+          },
+          "gateway": {
+           "n": "gateway"
+          }
+         },
+         "n": "ipv6"
+        }
+       },
+       "n": "ipConfigs"
+      },
+      "user_account": {
+       "f": {
+        "keys": {
+         "arr": true,
+         "n": "keys"
+        },
+        "password": {
+         "n": "password"
+        }
+       },
+       "n": "userAccount"
+      }
+     },
+     "n": "initialization"
+    },
+    "ipv4": {
+     "map": true,
+     "n": "ipv4"
+    },
+    "ipv6": {
+     "map": true,
+     "n": "ipv6"
+    },
+    "memory": {
+     "f": {
+      "dedicated": {
+       "n": "dedicated"
+      },
+      "swap": {
+       "n": "swap"
+      }
+     },
+     "n": "memory"
+    },
+    "mount_point": {
+     "arr": true,
+     "f": {
+      "acl": {
+       "n": "acl"
+      },
+      "backup": {
+       "n": "backup"
+      },
+      "mount_options": {
+       "arr": true,
+       "n": "mountOptions"
+      },
+      "path": {
+       "n": "path"
+      },
+      "path_in_datastore": {
+       "n": "pathInDatastore"
+      },
+      "quota": {
+       "n": "quota"
+      },
+      "read_only": {
+       "n": "readOnly"
+      },
+      "replicate": {
+       "n": "replicate"
+      },
+      "shared": {
+       "n": "shared"
+      },
+      "size": {
+       "n": "size"
+      },
+      "volume": {
+       "n": "volume"
+      }
+     },
+     "n": "mountPoints"
+    },
+    "network_interface": {
+     "arr": true,
+     "f": {
+      "bridge": {
+       "n": "bridge"
+      },
+      "enabled": {
+       "n": "enabled"
+      },
+      "firewall": {
+       "n": "firewall"
+      },
+      "host_managed": {
+       "n": "hostManaged"
+      },
+      "mac_address": {
+       "n": "macAddress"
+      },
+      "mtu": {
+       "n": "mtu"
+      },
+      "name": {
+       "n": "name"
+      },
+      "rate_limit": {
+       "n": "rateLimit"
+      },
+      "vlan_id": {
+       "n": "vlanId"
+      }
+     },
+     "n": "networkInterfaces"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "operating_system": {
+     "f": {
+      "template_file_id": {
+       "n": "templateFileId"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "operatingSystem"
+    },
+    "pool_id": {
+     "n": "poolId"
+    },
+    "protection": {
+     "n": "protection"
+    },
+    "purge_on_destroy": {
+     "n": "purgeOnDestroy"
+    },
+    "start_on_boot": {
+     "n": "startOnBoot"
+    },
+    "started": {
+     "n": "started"
+    },
+    "startup": {
+     "f": {
+      "down_delay": {
+       "n": "downDelay"
+      },
+      "order": {
+       "n": "order"
+      },
+      "up_delay": {
+       "n": "upDelay"
+      }
+     },
+     "n": "startup"
+    },
+    "tags": {
+     "arr": true,
+     "n": "tags"
+    },
+    "template": {
+     "n": "template"
+    },
+    "timeout_clone": {
+     "n": "timeoutClone"
+    },
+    "timeout_create": {
+     "n": "timeoutCreate"
+    },
+    "timeout_delete": {
+     "n": "timeoutDelete"
+    },
+    "timeout_start": {
+     "n": "timeoutStart"
+    },
+    "timeout_update": {
+     "n": "timeoutUpdate"
+    },
+    "unprivileged": {
+     "n": "unprivileged"
+    },
+    "vm_id": {
+     "n": "vmId"
+    },
+    "wait_for_ip": {
+     "f": {
+      "ipv4": {
+       "n": "ipv4"
+      },
+      "ipv6": {
+       "n": "ipv6"
+      }
+     },
+     "n": "waitForIp"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentContainer:VirtualEnvironmentContainer"
+  },
+  "proxmox_virtual_environment_dns": {
+   "f": {
+    "domain": {
+     "n": "domain"
+    },
+    "id": {
+     "n": "virtualEnvironmentDnsId"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "servers": {
+     "arr": true,
+     "n": "servers"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentDns:VirtualEnvironmentDns"
+  },
+  "proxmox_virtual_environment_download_file": {
+   "f": {
+    "checksum": {
+     "n": "checksum"
+    },
+    "checksum_algorithm": {
+     "n": "checksumAlgorithm"
+    },
+    "content_type": {
+     "n": "contentType"
+    },
+    "datastore_id": {
+     "n": "datastoreId"
+    },
+    "decompression_algorithm": {
+     "n": "decompressionAlgorithm"
+    },
+    "file_name": {
+     "n": "fileName"
+    },
+    "id": {
+     "n": "id"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "overwrite": {
+     "n": "overwrite"
+    },
+    "overwrite_unmanaged": {
+     "n": "overwriteUnmanaged"
+    },
+    "size": {
+     "n": "size"
+    },
+    "upload_timeout": {
+     "n": "uploadTimeout"
+    },
+    "url": {
+     "n": "url"
+    },
+    "verify": {
+     "n": "verify"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentDownloadFile:VirtualEnvironmentDownloadFile"
+  },
+  "proxmox_virtual_environment_file": {
+   "f": {
+    "content_type": {
+     "n": "contentType"
+    },
+    "datastore_id": {
+     "n": "datastoreId"
+    },
+    "file_mode": {
+     "n": "fileMode"
+    },
+    "file_modification_date": {
+     "n": "fileModificationDate"
+    },
+    "file_name": {
+     "n": "fileName"
+    },
+    "file_size": {
+     "n": "fileSize"
+    },
+    "file_tag": {
+     "n": "fileTag"
+    },
+    "id": {
+     "n": "virtualEnvironmentFileId"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "overwrite": {
+     "n": "overwrite"
+    },
+    "source_file": {
+     "f": {
+      "changed": {
+       "n": "changed"
+      },
+      "checksum": {
+       "n": "checksum"
+      },
+      "file_name": {
+       "n": "fileName"
+      },
+      "insecure": {
+       "n": "insecure"
+      },
+      "min_tls": {
+       "n": "minTls"
+      },
+      "path": {
+       "n": "path"
+      }
+     },
+     "n": "sourceFile"
+    },
+    "source_raw": {
+     "f": {
+      "data": {
+       "n": "data"
+      },
+      "file_name": {
+       "n": "fileName"
+      },
+      "resize": {
+       "n": "resize"
+      }
+     },
+     "n": "sourceRaw"
+    },
+    "timeout_upload": {
+     "n": "timeoutUpload"
+    },
+    "upload_mode": {
+     "n": "uploadMode"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentFile:VirtualEnvironmentFile"
+  },
+  "proxmox_virtual_environment_firewall_alias": {
+   "f": {
+    "cidr": {
+     "n": "cidr"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "container_id": {
+     "n": "containerId"
+    },
+    "id": {
+     "n": "virtualEnvironmentFirewallAliasId"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "vm_id": {
+     "n": "vmId"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentFirewallAlias:VirtualEnvironmentFirewallAlias"
+  },
+  "proxmox_virtual_environment_firewall_ipset": {
+   "f": {
+    "cidr": {
+     "arr": true,
+     "f": {
+      "comment": {
+       "n": "comment"
+      },
+      "name": {
+       "n": "name"
+      },
+      "nomatch": {
+       "n": "nomatch"
+      }
+     },
+     "n": "cidrs"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "container_id": {
+     "n": "containerId"
+    },
+    "id": {
+     "n": "virtualEnvironmentFirewallIpsetId"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "vm_id": {
+     "n": "vmId"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentFirewallIpset:VirtualEnvironmentFirewallIpset"
+  },
+  "proxmox_virtual_environment_firewall_options": {
+   "f": {
+    "container_id": {
+     "n": "containerId"
+    },
+    "dhcp": {
+     "n": "dhcp"
+    },
+    "enabled": {
+     "n": "enabled"
+    },
+    "id": {
+     "n": "virtualEnvironmentFirewallOptionsId"
+    },
+    "input_policy": {
+     "n": "inputPolicy"
+    },
+    "ipfilter": {
+     "n": "ipfilter"
+    },
+    "log_level_in": {
+     "n": "logLevelIn"
+    },
+    "log_level_out": {
+     "n": "logLevelOut"
+    },
+    "macfilter": {
+     "n": "macfilter"
+    },
+    "ndp": {
+     "n": "ndp"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "output_policy": {
+     "n": "outputPolicy"
+    },
+    "radv": {
+     "n": "radv"
+    },
+    "vm_id": {
+     "n": "vmId"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentFirewallOptions:VirtualEnvironmentFirewallOptions"
+  },
+  "proxmox_virtual_environment_firewall_rules": {
+   "f": {
+    "container_id": {
+     "n": "containerId"
+    },
+    "id": {
+     "n": "virtualEnvironmentFirewallRulesId"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "rule": {
+     "arr": true,
+     "f": {
+      "action": {
+       "n": "action"
+      },
+      "comment": {
+       "n": "comment"
+      },
+      "dest": {
+       "n": "dest"
+      },
+      "dport": {
+       "n": "dport"
+      },
+      "enabled": {
+       "n": "enabled"
+      },
+      "iface": {
+       "n": "iface"
+      },
+      "log": {
+       "n": "log"
+      },
+      "macro": {
+       "n": "macro"
+      },
+      "pos": {
+       "n": "pos"
+      },
+      "proto": {
+       "n": "proto"
+      },
+      "security_group": {
+       "n": "securityGroup"
+      },
+      "source": {
+       "n": "source"
+      },
+      "sport": {
+       "n": "sport"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "rules"
+    },
+    "vm_id": {
+     "n": "vmId"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentFirewallRules:VirtualEnvironmentFirewallRules"
+  },
+  "proxmox_virtual_environment_group": {
+   "f": {
+    "acl": {
+     "arr": true,
+     "f": {
+      "path": {
+       "n": "path"
+      },
+      "propagate": {
+       "n": "propagate"
+      },
+      "role_id": {
+       "n": "roleId"
+      }
+     },
+     "n": "acls"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "group_id": {
+     "n": "groupId"
+    },
+    "id": {
+     "n": "virtualEnvironmentGroupId"
+    },
+    "members": {
+     "arr": true,
+     "n": "members"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentGroup:VirtualEnvironmentGroup"
+  },
+  "proxmox_virtual_environment_hagroup": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "group": {
+     "n": "group"
+    },
+    "id": {
+     "n": "id"
+    },
+    "no_failback": {
+     "n": "noFailback"
+    },
+    "nodes": {
+     "map": true,
+     "n": "nodes"
+    },
+    "restricted": {
+     "n": "restricted"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentHagroup:VirtualEnvironmentHagroup"
+  },
+  "proxmox_virtual_environment_hardware_mapping_dir": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "id": {
+     "n": "id"
+    },
+    "map": {
+     "arr": true,
+     "f": {
+      "node": {
+       "n": "node"
+      },
+      "path": {
+       "n": "path"
+      }
+     },
+     "n": "maps"
+    },
+    "name": {
+     "n": "name"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentHardwareMappingDir:VirtualEnvironmentHardwareMappingDir"
+  },
+  "proxmox_virtual_environment_hardware_mapping_pci": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "id": {
+     "n": "id"
+    },
+    "map": {
+     "arr": true,
+     "f": {
+      "comment": {
+       "n": "comment"
+      },
+      "id": {
+       "n": "id"
+      },
+      "iommu_group": {
+       "n": "iommuGroup"
+      },
+      "node": {
+       "n": "node"
+      },
+      "path": {
+       "n": "path"
+      },
+      "subsystem_id": {
+       "n": "subsystemId"
+      }
+     },
+     "n": "maps"
+    },
+    "mediated_devices": {
+     "n": "mediatedDevices"
+    },
+    "name": {
+     "n": "name"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentHardwareMappingPci:VirtualEnvironmentHardwareMappingPci"
+  },
+  "proxmox_virtual_environment_hardware_mapping_usb": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "id": {
+     "n": "id"
+    },
+    "map": {
+     "arr": true,
+     "f": {
+      "comment": {
+       "n": "comment"
+      },
+      "id": {
+       "n": "id"
+      },
+      "node": {
+       "n": "node"
+      },
+      "path": {
+       "n": "path"
+      }
+     },
+     "n": "maps"
+    },
+    "name": {
+     "n": "name"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentHardwareMappingUsb:VirtualEnvironmentHardwareMappingUsb"
+  },
+  "proxmox_virtual_environment_haresource": {
+   "f": {
+    "auto_rebalance": {
+     "n": "autoRebalance"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "failback": {
+     "n": "failback"
+    },
+    "group": {
+     "n": "group"
+    },
+    "id": {
+     "n": "id"
+    },
+    "max_relocate": {
+     "n": "maxRelocate"
+    },
+    "max_restart": {
+     "n": "maxRestart"
+    },
+    "resource_id": {
+     "n": "resourceId"
+    },
+    "state": {
+     "n": "state"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentHaresource:VirtualEnvironmentHaresource"
+  },
+  "proxmox_virtual_environment_harule": {
+   "f": {
+    "affinity": {
+     "n": "affinity"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "id": {
+     "n": "id"
+    },
+    "nodes": {
+     "map": true,
+     "n": "nodes"
+    },
+    "resources": {
+     "arr": true,
+     "n": "resources"
+    },
+    "rule": {
+     "n": "rule"
+    },
+    "strict": {
+     "n": "strict"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentHarule:VirtualEnvironmentHarule"
+  },
+  "proxmox_virtual_environment_hosts": {
+   "f": {
+    "addresses": {
+     "arr": true,
+     "n": "addresses"
+    },
+    "digest": {
+     "n": "digest"
+    },
+    "entries": {
+     "arr": true,
+     "f": {
+      "address": {
+       "n": "address"
+      },
+      "hostnames": {
+       "arr": true,
+       "n": "hostnames"
+      }
+     },
+     "n": "entries"
+    },
+    "entry": {
+     "arr": true,
+     "f": {
+      "address": {
+       "n": "address"
+      },
+      "hostnames": {
+       "arr": true,
+       "n": "hostnames"
+      }
+     },
+     "n": "entry"
+    },
+    "hostnames": {
+     "arr": true,
+     "n": "hostnames"
+    },
+    "id": {
+     "n": "virtualEnvironmentHostsId"
+    },
+    "node_name": {
+     "n": "nodeName"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentHosts:VirtualEnvironmentHosts"
+  },
+  "proxmox_virtual_environment_metrics_server": {
+   "f": {
+    "disable": {
+     "n": "disable"
+    },
+    "graphite_path": {
+     "n": "graphitePath"
+    },
+    "graphite_proto": {
+     "n": "graphiteProto"
+    },
+    "id": {
+     "n": "id"
+    },
+    "influx_api_path_prefix": {
+     "n": "influxApiPathPrefix"
+    },
+    "influx_bucket": {
+     "n": "influxBucket"
+    },
+    "influx_db_proto": {
+     "n": "influxDbProto"
+    },
+    "influx_max_body_size": {
+     "n": "influxMaxBodySize"
+    },
+    "influx_organization": {
+     "n": "influxOrganization"
+    },
+    "influx_token": {
+     "n": "influxToken"
+    },
+    "influx_token_wo": {
+     "n": "influxTokenWo"
+    },
+    "influx_token_wo_version": {
+     "n": "influxTokenWoVersion"
+    },
+    "influx_verify": {
+     "n": "influxVerify"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "name": {
+     "n": "name"
+    },
+    "opentelemetry_compression": {
+     "n": "opentelemetryCompression"
+    },
+    "opentelemetry_headers": {
+     "n": "opentelemetryHeaders"
+    },
+    "opentelemetry_max_body_size": {
+     "n": "opentelemetryMaxBodySize"
+    },
+    "opentelemetry_path": {
+     "n": "opentelemetryPath"
+    },
+    "opentelemetry_proto": {
+     "n": "opentelemetryProto"
+    },
+    "opentelemetry_resource_attributes": {
+     "n": "opentelemetryResourceAttributes"
+    },
+    "opentelemetry_timeout": {
+     "n": "opentelemetryTimeout"
+    },
+    "opentelemetry_verify_ssl": {
+     "n": "opentelemetryVerifySsl"
+    },
+    "port": {
+     "n": "port"
+    },
+    "server": {
+     "n": "server"
+    },
+    "timeout": {
+     "n": "timeout"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentMetricsServer:VirtualEnvironmentMetricsServer"
+  },
+  "proxmox_virtual_environment_network_linux_bridge": {
+   "f": {
+    "address": {
+     "n": "address"
+    },
+    "address6": {
+     "n": "address6"
+    },
+    "autostart": {
+     "n": "autostart"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "gateway": {
+     "n": "gateway"
+    },
+    "gateway6": {
+     "n": "gateway6"
+    },
+    "id": {
+     "n": "id"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "ports": {
+     "arr": true,
+     "n": "ports"
+    },
+    "reload": {
+     "n": "reload"
+    },
+    "timeout_reload": {
+     "n": "timeoutReload"
+    },
+    "vids": {
+     "n": "vids"
+    },
+    "vlan_aware": {
+     "n": "vlanAware"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentNetworkLinuxBridge:VirtualEnvironmentNetworkLinuxBridge"
+  },
+  "proxmox_virtual_environment_network_linux_vlan": {
+   "f": {
+    "address": {
+     "n": "address"
+    },
+    "address6": {
+     "n": "address6"
+    },
+    "autostart": {
+     "n": "autostart"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "gateway": {
+     "n": "gateway"
+    },
+    "gateway6": {
+     "n": "gateway6"
+    },
+    "id": {
+     "n": "id"
+    },
+    "interface": {
+     "n": "interface"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "reload": {
+     "n": "reload"
+    },
+    "timeout_reload": {
+     "n": "timeoutReload"
+    },
+    "vlan": {
+     "n": "vlan"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentNetworkLinuxVlan:VirtualEnvironmentNetworkLinuxVlan"
+  },
+  "proxmox_virtual_environment_node_firewall": {
+   "f": {
+    "enabled": {
+     "n": "enabled"
+    },
+    "id": {
+     "n": "id"
+    },
+    "log_level_forward": {
+     "n": "logLevelForward"
+    },
+    "log_level_in": {
+     "n": "logLevelIn"
+    },
+    "log_level_out": {
+     "n": "logLevelOut"
+    },
+    "ndp": {
+     "n": "ndp"
+    },
+    "nf_conntrack_max": {
+     "n": "nfConntrackMax"
+    },
+    "nf_conntrack_tcp_timeout_established": {
+     "n": "nfConntrackTcpTimeoutEstablished"
+    },
+    "nftables": {
+     "n": "nftables"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "nosmurfs": {
+     "n": "nosmurfs"
+    },
+    "smurf_log_level": {
+     "n": "smurfLogLevel"
+    },
+    "tcp_flags_log_level": {
+     "n": "tcpFlagsLogLevel"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentNodeFirewall:VirtualEnvironmentNodeFirewall"
+  },
+  "proxmox_virtual_environment_oci_image": {
+   "f": {
+    "datastore_id": {
+     "n": "datastoreId"
+    },
+    "file_name": {
+     "n": "fileName"
+    },
+    "id": {
+     "n": "id"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "overwrite": {
+     "n": "overwrite"
+    },
+    "overwrite_unmanaged": {
+     "n": "overwriteUnmanaged"
+    },
+    "reference": {
+     "n": "reference"
+    },
+    "size": {
+     "n": "size"
+    },
+    "upload_timeout": {
+     "n": "uploadTimeout"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentOciImage:VirtualEnvironmentOciImage"
+  },
+  "proxmox_virtual_environment_pool": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "id": {
+     "n": "virtualEnvironmentPoolId"
+    },
+    "members": {
+     "arr": true,
+     "f": {
+      "datastore_id": {
+       "n": "datastoreId"
+      },
+      "id": {
+       "n": "id"
+      },
+      "node_name": {
+       "n": "nodeName"
+      },
+      "type": {
+       "n": "type"
+      },
+      "vm_id": {
+       "n": "vmId"
+      }
+     },
+     "n": "members"
+    },
+    "pool_id": {
+     "n": "poolId"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentPool:VirtualEnvironmentPool"
+  },
+  "proxmox_virtual_environment_pool_membership": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "pool_id": {
+     "n": "poolId"
+    },
+    "storage_id": {
+     "n": "storageId"
+    },
+    "type": {
+     "n": "type"
+    },
+    "vm_id": {
+     "n": "vmId"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentPoolMembership:VirtualEnvironmentPoolMembership"
+  },
+  "proxmox_virtual_environment_realm_ldap": {
+   "f": {
+    "base_dn": {
+     "n": "baseDn"
+    },
+    "bind_dn": {
+     "n": "bindDn"
+    },
+    "bind_password": {
+     "n": "bindPassword"
+    },
+    "ca_path": {
+     "n": "caPath"
+    },
+    "case_sensitive": {
+     "n": "caseSensitive"
+    },
+    "cert_key_path": {
+     "n": "certKeyPath"
+    },
+    "cert_path": {
+     "n": "certPath"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "default": {
+     "n": "default"
+    },
+    "filter": {
+     "n": "filter"
+    },
+    "group_classes": {
+     "n": "groupClasses"
+    },
+    "group_dn": {
+     "n": "groupDn"
+    },
+    "group_filter": {
+     "n": "groupFilter"
+    },
+    "group_name_attr": {
+     "n": "groupNameAttr"
+    },
+    "id": {
+     "n": "id"
+    },
+    "mode": {
+     "n": "mode"
+    },
+    "port": {
+     "n": "port"
+    },
+    "realm": {
+     "n": "realm"
+    },
+    "secure": {
+     "n": "secure"
+    },
+    "server1": {
+     "n": "server1"
+    },
+    "server2": {
+     "n": "server2"
+    },
+    "ssl_version": {
+     "n": "sslVersion"
+    },
+    "sync_attributes": {
+     "n": "syncAttributes"
+    },
+    "sync_defaults_options": {
+     "n": "syncDefaultsOptions"
+    },
+    "user_attr": {
+     "n": "userAttr"
+    },
+    "user_classes": {
+     "n": "userClasses"
+    },
+    "verify": {
+     "n": "verify"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentRealmLdap:VirtualEnvironmentRealmLdap"
+  },
+  "proxmox_virtual_environment_realm_openid": {
+   "f": {
+    "acr_values": {
+     "n": "acrValues"
+    },
+    "audiences": {
+     "n": "audiences"
+    },
+    "autocreate": {
+     "n": "autocreate"
+    },
+    "client_id": {
+     "n": "clientId"
+    },
+    "client_key": {
+     "n": "clientKey"
+    },
+    "client_key_wo": {
+     "n": "clientKeyWo"
+    },
+    "client_key_wo_version": {
+     "n": "clientKeyWoVersion"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "default": {
+     "n": "default"
+    },
+    "groups_autocreate": {
+     "n": "groupsAutocreate"
+    },
+    "groups_claim": {
+     "n": "groupsClaim"
+    },
+    "groups_overwrite": {
+     "n": "groupsOverwrite"
+    },
+    "id": {
+     "n": "id"
+    },
+    "issuer_url": {
+     "n": "issuerUrl"
+    },
+    "prompt": {
+     "n": "prompt"
+    },
+    "query_userinfo": {
+     "n": "queryUserinfo"
+    },
+    "realm": {
+     "n": "realm"
+    },
+    "scopes": {
+     "n": "scopes"
+    },
+    "username_claim": {
+     "n": "usernameClaim"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentRealmOpenid:VirtualEnvironmentRealmOpenid"
+  },
+  "proxmox_virtual_environment_realm_sync": {
+   "f": {
+    "dry_run": {
+     "n": "dryRun"
+    },
+    "enable_new": {
+     "n": "enableNew"
+    },
+    "full": {
+     "n": "full"
+    },
+    "id": {
+     "n": "id"
+    },
+    "purge": {
+     "n": "purge"
+    },
+    "realm": {
+     "n": "realm"
+    },
+    "remove_vanished": {
+     "n": "removeVanished"
+    },
+    "scope": {
+     "n": "scope"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentRealmSync:VirtualEnvironmentRealmSync"
+  },
+  "proxmox_virtual_environment_replication": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "guest": {
+     "n": "guest"
+    },
+    "id": {
+     "n": "virtualEnvironmentReplicationId"
+    },
+    "jobnum": {
+     "n": "jobnum"
+    },
+    "rate": {
+     "n": "rate"
+    },
+    "schedule": {
+     "n": "schedule"
+    },
+    "source": {
+     "n": "source"
+    },
+    "target": {
+     "n": "target"
+    },
+    "type": {
+     "n": "type"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentReplication:VirtualEnvironmentReplication"
+  },
+  "proxmox_virtual_environment_role": {
+   "f": {
+    "id": {
+     "n": "virtualEnvironmentRoleId"
+    },
+    "privileges": {
+     "arr": true,
+     "n": "privileges"
+    },
+    "role_id": {
+     "n": "roleId"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentRole:VirtualEnvironmentRole"
+  },
+  "proxmox_virtual_environment_sdn_applier": {
+   "f": {
+    "id": {
+     "n": "id"
+    },
+    "on_create": {
+     "n": "onCreate"
+    },
+    "on_destroy": {
+     "n": "onDestroy"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentSdnApplier:VirtualEnvironmentSdnApplier"
+  },
+  "proxmox_virtual_environment_sdn_fabric_node_openfabric": {
+   "f": {
+    "fabric_id": {
+     "n": "fabricId"
+    },
+    "id": {
+     "n": "id"
+    },
+    "interface_names": {
+     "arr": true,
+     "n": "interfaceNames"
+    },
+    "ip": {
+     "n": "ip"
+    },
+    "ip6": {
+     "n": "ip6"
+    },
+    "node_id": {
+     "n": "nodeId"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentSdnFabricNodeOpenfabric:VirtualEnvironmentSdnFabricNodeOpenfabric"
+  },
+  "proxmox_virtual_environment_sdn_fabric_node_ospf": {
+   "f": {
+    "fabric_id": {
+     "n": "fabricId"
+    },
+    "id": {
+     "n": "id"
+    },
+    "interface_names": {
+     "arr": true,
+     "n": "interfaceNames"
+    },
+    "ip": {
+     "n": "ip"
+    },
+    "node_id": {
+     "n": "nodeId"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentSdnFabricNodeOspf:VirtualEnvironmentSdnFabricNodeOspf"
+  },
+  "proxmox_virtual_environment_sdn_fabric_openfabric": {
+   "f": {
+    "csnp_interval": {
+     "n": "csnpInterval"
+    },
+    "hello_interval": {
+     "n": "helloInterval"
+    },
+    "id": {
+     "n": "virtualEnvironmentSdnFabricOpenfabricId"
+    },
+    "ip6_prefix": {
+     "n": "ip6Prefix"
+    },
+    "ip_prefix": {
+     "n": "ipPrefix"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentSdnFabricOpenfabric:VirtualEnvironmentSdnFabricOpenfabric"
+  },
+  "proxmox_virtual_environment_sdn_fabric_ospf": {
+   "f": {
+    "area": {
+     "n": "area"
+    },
+    "id": {
+     "n": "virtualEnvironmentSdnFabricOspfId"
+    },
+    "ip_prefix": {
+     "n": "ipPrefix"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentSdnFabricOspf:VirtualEnvironmentSdnFabricOspf"
+  },
+  "proxmox_virtual_environment_sdn_subnet": {
+   "f": {
+    "cidr": {
+     "n": "cidr"
+    },
+    "dhcp_dns_server": {
+     "n": "dhcpDnsServer"
+    },
+    "dhcp_range": {
+     "f": {
+      "end_address": {
+       "n": "endAddress"
+      },
+      "start_address": {
+       "n": "startAddress"
+      }
+     },
+     "n": "dhcpRange"
+    },
+    "dns_zone_prefix": {
+     "n": "dnsZonePrefix"
+    },
+    "gateway": {
+     "n": "gateway"
+    },
+    "id": {
+     "n": "id"
+    },
+    "snat": {
+     "n": "snat"
+    },
+    "vnet": {
+     "n": "vnet"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentSdnSubnet:VirtualEnvironmentSdnSubnet"
+  },
+  "proxmox_virtual_environment_sdn_vnet": {
+   "f": {
+    "alias": {
+     "n": "alias"
+    },
+    "id": {
+     "n": "virtualEnvironmentSdnVnetId"
+    },
+    "isolate_ports": {
+     "n": "isolatePorts"
+    },
+    "tag": {
+     "n": "tag"
+    },
+    "vlan_aware": {
+     "n": "vlanAware"
+    },
+    "zone": {
+     "n": "zone"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentSdnVnet:VirtualEnvironmentSdnVnet"
+  },
+  "proxmox_virtual_environment_sdn_zone_evpn": {
+   "f": {
+    "advertise_subnets": {
+     "n": "advertiseSubnets"
+    },
+    "controller": {
+     "n": "controller"
+    },
+    "disable_arp_nd_suppression": {
+     "n": "disableArpNdSuppression"
+    },
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "exit_nodes": {
+     "arr": true,
+     "n": "exitNodes"
+    },
+    "exit_nodes_local_routing": {
+     "n": "exitNodesLocalRouting"
+    },
+    "id": {
+     "n": "virtualEnvironmentSdnZoneEvpnId"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "primary_exit_node": {
+     "n": "primaryExitNode"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "rt_import": {
+     "n": "rtImport"
+    },
+    "state": {
+     "n": "state"
+    },
+    "vrf_vxlan": {
+     "n": "vrfVxlan"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentSdnZoneEvpn:VirtualEnvironmentSdnZoneEvpn"
+  },
+  "proxmox_virtual_environment_sdn_zone_qinq": {
+   "f": {
+    "bridge": {
+     "n": "bridge"
+    },
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "id": {
+     "n": "virtualEnvironmentSdnZoneQinqId"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "service_vlan": {
+     "n": "serviceVlan"
+    },
+    "service_vlan_protocol": {
+     "n": "serviceVlanProtocol"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentSdnZoneQinq:VirtualEnvironmentSdnZoneQinq"
+  },
+  "proxmox_virtual_environment_sdn_zone_simple": {
+   "f": {
+    "dhcp": {
+     "n": "dhcp"
+    },
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "id": {
+     "n": "virtualEnvironmentSdnZoneSimpleId"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentSdnZoneSimple:VirtualEnvironmentSdnZoneSimple"
+  },
+  "proxmox_virtual_environment_sdn_zone_vlan": {
+   "f": {
+    "bridge": {
+     "n": "bridge"
+    },
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "id": {
+     "n": "virtualEnvironmentSdnZoneVlanId"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentSdnZoneVlan:VirtualEnvironmentSdnZoneVlan"
+  },
+  "proxmox_virtual_environment_sdn_zone_vxlan": {
+   "f": {
+    "dns": {
+     "n": "dns"
+    },
+    "dns_zone": {
+     "n": "dnsZone"
+    },
+    "id": {
+     "n": "virtualEnvironmentSdnZoneVxlanId"
+    },
+    "ipam": {
+     "n": "ipam"
+    },
+    "mtu": {
+     "n": "mtu"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "peers": {
+     "arr": true,
+     "n": "peers"
+    },
+    "pending": {
+     "n": "pending"
+    },
+    "reverse_dns": {
+     "n": "reverseDns"
+    },
+    "state": {
+     "n": "state"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentSdnZoneVxlan:VirtualEnvironmentSdnZoneVxlan"
+  },
+  "proxmox_virtual_environment_storage_cifs": {
+   "f": {
+    "backups": {
+     "f": {
+      "keep_all": {
+       "n": "keepAll"
+      },
+      "keep_daily": {
+       "n": "keepDaily"
+      },
+      "keep_hourly": {
+       "n": "keepHourly"
+      },
+      "keep_last": {
+       "n": "keepLast"
+      },
+      "keep_monthly": {
+       "n": "keepMonthly"
+      },
+      "keep_weekly": {
+       "n": "keepWeekly"
+      },
+      "keep_yearly": {
+       "n": "keepYearly"
+      },
+      "max_protected_backups": {
+       "n": "maxProtectedBackups"
+      }
+     },
+     "n": "backups"
+    },
+    "content": {
+     "arr": true,
+     "n": "contents"
+    },
+    "create_base_path": {
+     "n": "createBasePath"
+    },
+    "create_subdirs": {
+     "n": "createSubdirs"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "domain": {
+     "n": "domain"
+    },
+    "id": {
+     "n": "virtualEnvironmentStorageCifsId"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "options": {
+     "n": "options"
+    },
+    "password": {
+     "n": "password"
+    },
+    "preallocation": {
+     "n": "preallocation"
+    },
+    "server": {
+     "n": "server"
+    },
+    "share": {
+     "n": "share"
+    },
+    "shared": {
+     "n": "shared"
+    },
+    "snapshot_as_volume_chain": {
+     "n": "snapshotAsVolumeChain"
+    },
+    "subdirectory": {
+     "n": "subdirectory"
+    },
+    "username": {
+     "n": "username"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentStorageCifs:VirtualEnvironmentStorageCifs"
+  },
+  "proxmox_virtual_environment_storage_directory": {
+   "f": {
+    "backups": {
+     "f": {
+      "keep_all": {
+       "n": "keepAll"
+      },
+      "keep_daily": {
+       "n": "keepDaily"
+      },
+      "keep_hourly": {
+       "n": "keepHourly"
+      },
+      "keep_last": {
+       "n": "keepLast"
+      },
+      "keep_monthly": {
+       "n": "keepMonthly"
+      },
+      "keep_weekly": {
+       "n": "keepWeekly"
+      },
+      "keep_yearly": {
+       "n": "keepYearly"
+      },
+      "max_protected_backups": {
+       "n": "maxProtectedBackups"
+      }
+     },
+     "n": "backups"
+    },
+    "content": {
+     "arr": true,
+     "n": "contents"
+    },
+    "create_base_path": {
+     "n": "createBasePath"
+    },
+    "create_subdirs": {
+     "n": "createSubdirs"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "id": {
+     "n": "virtualEnvironmentStorageDirectoryId"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "path": {
+     "n": "path"
+    },
+    "preallocation": {
+     "n": "preallocation"
+    },
+    "shared": {
+     "n": "shared"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentStorageDirectory:VirtualEnvironmentStorageDirectory"
+  },
+  "proxmox_virtual_environment_storage_lvm": {
+   "f": {
+    "content": {
+     "arr": true,
+     "n": "contents"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "id": {
+     "n": "virtualEnvironmentStorageLvmId"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "shared": {
+     "n": "shared"
+    },
+    "volume_group": {
+     "n": "volumeGroup"
+    },
+    "wipe_removed_volumes": {
+     "n": "wipeRemovedVolumes"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentStorageLvm:VirtualEnvironmentStorageLvm"
+  },
+  "proxmox_virtual_environment_storage_lvmthin": {
+   "f": {
+    "content": {
+     "arr": true,
+     "n": "contents"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "id": {
+     "n": "virtualEnvironmentStorageLvmthinId"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "shared": {
+     "n": "shared"
+    },
+    "thin_pool": {
+     "n": "thinPool"
+    },
+    "volume_group": {
+     "n": "volumeGroup"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentStorageLvmthin:VirtualEnvironmentStorageLvmthin"
+  },
+  "proxmox_virtual_environment_storage_nfs": {
+   "f": {
+    "backups": {
+     "f": {
+      "keep_all": {
+       "n": "keepAll"
+      },
+      "keep_daily": {
+       "n": "keepDaily"
+      },
+      "keep_hourly": {
+       "n": "keepHourly"
+      },
+      "keep_last": {
+       "n": "keepLast"
+      },
+      "keep_monthly": {
+       "n": "keepMonthly"
+      },
+      "keep_weekly": {
+       "n": "keepWeekly"
+      },
+      "keep_yearly": {
+       "n": "keepYearly"
+      },
+      "max_protected_backups": {
+       "n": "maxProtectedBackups"
+      }
+     },
+     "n": "backups"
+    },
+    "content": {
+     "arr": true,
+     "n": "contents"
+    },
+    "create_base_path": {
+     "n": "createBasePath"
+    },
+    "create_subdirs": {
+     "n": "createSubdirs"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "export": {
+     "n": "export"
+    },
+    "id": {
+     "n": "virtualEnvironmentStorageNfsId"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "options": {
+     "n": "options"
+    },
+    "preallocation": {
+     "n": "preallocation"
+    },
+    "server": {
+     "n": "server"
+    },
+    "shared": {
+     "n": "shared"
+    },
+    "snapshot_as_volume_chain": {
+     "n": "snapshotAsVolumeChain"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentStorageNfs:VirtualEnvironmentStorageNfs"
+  },
+  "proxmox_virtual_environment_storage_pbs": {
+   "f": {
+    "backups": {
+     "f": {
+      "keep_all": {
+       "n": "keepAll"
+      },
+      "keep_daily": {
+       "n": "keepDaily"
+      },
+      "keep_hourly": {
+       "n": "keepHourly"
+      },
+      "keep_last": {
+       "n": "keepLast"
+      },
+      "keep_monthly": {
+       "n": "keepMonthly"
+      },
+      "keep_weekly": {
+       "n": "keepWeekly"
+      },
+      "keep_yearly": {
+       "n": "keepYearly"
+      },
+      "max_protected_backups": {
+       "n": "maxProtectedBackups"
+      }
+     },
+     "n": "backups"
+    },
+    "content": {
+     "arr": true,
+     "n": "contents"
+    },
+    "datastore": {
+     "n": "datastore"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "encryption_key": {
+     "n": "encryptionKey"
+    },
+    "encryption_key_fingerprint": {
+     "n": "encryptionKeyFingerprint"
+    },
+    "fingerprint": {
+     "n": "fingerprint"
+    },
+    "generate_encryption_key": {
+     "n": "generateEncryptionKey"
+    },
+    "generated_encryption_key": {
+     "n": "generatedEncryptionKey"
+    },
+    "id": {
+     "n": "virtualEnvironmentStoragePbsId"
+    },
+    "namespace": {
+     "n": "namespace"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "password": {
+     "n": "password"
+    },
+    "server": {
+     "n": "server"
+    },
+    "shared": {
+     "n": "shared"
+    },
+    "username": {
+     "n": "username"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentStoragePbs:VirtualEnvironmentStoragePbs"
+  },
+  "proxmox_virtual_environment_storage_zfspool": {
+   "f": {
+    "blocksize": {
+     "n": "blocksize"
+    },
+    "content": {
+     "arr": true,
+     "n": "contents"
+    },
+    "disable": {
+     "n": "disable"
+    },
+    "id": {
+     "n": "virtualEnvironmentStorageZfspoolId"
+    },
+    "nodes": {
+     "arr": true,
+     "n": "nodes"
+    },
+    "shared": {
+     "n": "shared"
+    },
+    "thin_provision": {
+     "n": "thinProvision"
+    },
+    "zfs_pool": {
+     "n": "zfsPool"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentStorageZfspool:VirtualEnvironmentStorageZfspool"
+  },
+  "proxmox_virtual_environment_time": {
+   "f": {
+    "id": {
+     "n": "virtualEnvironmentTimeId"
+    },
+    "local_time": {
+     "n": "localTime"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "time_zone": {
+     "n": "timeZone"
+    },
+    "utc_time": {
+     "n": "utcTime"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentTime:VirtualEnvironmentTime"
+  },
+  "proxmox_virtual_environment_user": {
+   "f": {
+    "acl": {
+     "arr": true,
+     "f": {
+      "path": {
+       "n": "path"
+      },
+      "propagate": {
+       "n": "propagate"
+      },
+      "role_id": {
+       "n": "roleId"
+      }
+     },
+     "n": "acls"
+    },
+    "comment": {
+     "n": "comment"
+    },
+    "email": {
+     "n": "email"
+    },
+    "enabled": {
+     "n": "enabled"
+    },
+    "expiration_date": {
+     "n": "expirationDate"
+    },
+    "first_name": {
+     "n": "firstName"
+    },
+    "groups": {
+     "arr": true,
+     "n": "groups"
+    },
+    "id": {
+     "n": "virtualEnvironmentUserId"
+    },
+    "keys": {
+     "n": "keys"
+    },
+    "last_name": {
+     "n": "lastName"
+    },
+    "password": {
+     "n": "password"
+    },
+    "user_id": {
+     "n": "userId"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentUser:VirtualEnvironmentUser"
+  },
+  "proxmox_virtual_environment_user_token": {
+   "f": {
+    "comment": {
+     "n": "comment"
+    },
+    "expiration_date": {
+     "n": "expirationDate"
+    },
+    "id": {
+     "n": "id"
+    },
+    "privileges_separation": {
+     "n": "privilegesSeparation"
+    },
+    "token_name": {
+     "n": "tokenName"
+    },
+    "user_id": {
+     "n": "userId"
+    },
+    "value": {
+     "n": "value"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentUserToken:VirtualEnvironmentUserToken"
+  },
+  "proxmox_virtual_environment_vm": {
+   "f": {
+    "acpi": {
+     "n": "acpi"
+    },
+    "agent": {
+     "f": {
+      "enabled": {
+       "n": "enabled"
+      },
+      "timeout": {
+       "n": "timeout"
+      },
+      "trim": {
+       "n": "trim"
+      },
+      "type": {
+       "n": "type"
+      },
+      "wait_for_ip": {
+       "f": {
+        "disabled": {
+         "n": "disabled"
+        },
+        "ipv4": {
+         "n": "ipv4"
+        },
+        "ipv6": {
+         "n": "ipv6"
+        }
+       },
+       "n": "waitForIp"
+      }
+     },
+     "n": "agent"
+    },
+    "amd_sev": {
+     "f": {
+      "allow_smt": {
+       "n": "allowSmt"
+      },
+      "kernel_hashes": {
+       "n": "kernelHashes"
+      },
+      "no_debug": {
+       "n": "noDebug"
+      },
+      "no_key_sharing": {
+       "n": "noKeySharing"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "amdSev"
+    },
+    "audio_device": {
+     "f": {
+      "device": {
+       "n": "device"
+      },
+      "driver": {
+       "n": "driver"
+      },
+      "enabled": {
+       "n": "enabled"
+      }
+     },
+     "n": "audioDevice"
+    },
+    "bios": {
+     "n": "bios"
+    },
+    "boot_order": {
+     "arr": true,
+     "n": "bootOrders"
+    },
+    "cdrom": {
+     "f": {
+      "enabled": {
+       "n": "enabled"
+      },
+      "file_id": {
+       "n": "fileId"
+      },
+      "interface": {
+       "n": "interface"
+      }
+     },
+     "n": "cdrom"
+    },
+    "clone": {
+     "f": {
+      "datastore_id": {
+       "n": "datastoreId"
+      },
+      "full": {
+       "n": "full"
+      },
+      "node_name": {
+       "n": "nodeName"
+      },
+      "retries": {
+       "n": "retries"
+      },
+      "vm_id": {
+       "n": "vmId"
+      }
+     },
+     "n": "clone"
+    },
+    "cpu": {
+     "f": {
+      "affinity": {
+       "n": "affinity"
+      },
+      "architecture": {
+       "n": "architecture"
+      },
+      "cores": {
+       "n": "cores"
+      },
+      "flags": {
+       "arr": true,
+       "n": "flags"
+      },
+      "hotplugged": {
+       "n": "hotplugged"
+      },
+      "limit": {
+       "n": "limit"
+      },
+      "numa": {
+       "n": "numa"
+      },
+      "sockets": {
+       "n": "sockets"
+      },
+      "type": {
+       "n": "type"
+      },
+      "units": {
+       "n": "units"
+      }
+     },
+     "n": "cpu"
+    },
+    "delete_unreferenced_disks_on_destroy": {
+     "n": "deleteUnreferencedDisksOnDestroy"
+    },
+    "description": {
+     "n": "description"
+    },
+    "disk": {
+     "arr": true,
+     "f": {
+      "aio": {
+       "n": "aio"
+      },
+      "backup": {
+       "n": "backup"
+      },
+      "cache": {
+       "n": "cache"
+      },
+      "datastore_id": {
+       "n": "datastoreId"
+      },
+      "discard": {
+       "n": "discard"
+      },
+      "file_format": {
+       "n": "fileFormat"
+      },
+      "file_id": {
+       "n": "fileId"
+      },
+      "import_from": {
+       "n": "importFrom"
+      },
+      "interface": {
+       "n": "interface"
+      },
+      "iothread": {
+       "n": "iothread"
+      },
+      "path_in_datastore": {
+       "n": "pathInDatastore"
+      },
+      "queues": {
+       "n": "queues"
+      },
+      "replicate": {
+       "n": "replicate"
+      },
+      "serial": {
+       "n": "serial"
+      },
+      "size": {
+       "n": "size"
+      },
+      "speed": {
+       "f": {
+        "iops_read": {
+         "n": "iopsRead"
+        },
+        "iops_read_burstable": {
+         "n": "iopsReadBurstable"
+        },
+        "iops_write": {
+         "n": "iopsWrite"
+        },
+        "iops_write_burstable": {
+         "n": "iopsWriteBurstable"
+        },
+        "read": {
+         "n": "read"
+        },
+        "read_burstable": {
+         "n": "readBurstable"
+        },
+        "write": {
+         "n": "write"
+        },
+        "write_burstable": {
+         "n": "writeBurstable"
+        }
+       },
+       "n": "speed"
+      },
+      "ssd": {
+       "n": "ssd"
+      }
+     },
+     "n": "disks"
+    },
+    "efi_disk": {
+     "f": {
+      "datastore_id": {
+       "n": "datastoreId"
+      },
+      "file_format": {
+       "n": "fileFormat"
+      },
+      "pre_enrolled_keys": {
+       "n": "preEnrolledKeys"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "efiDisk"
+    },
+    "hook_script_file_id": {
+     "n": "hookScriptFileId"
+    },
+    "hostpci": {
+     "arr": true,
+     "f": {
+      "device": {
+       "n": "device"
+      },
+      "id": {
+       "n": "id"
+      },
+      "mapping": {
+       "n": "mapping"
+      },
+      "mdev": {
+       "n": "mdev"
+      },
+      "pcie": {
+       "n": "pcie"
+      },
+      "rom_file": {
+       "n": "romFile"
+      },
+      "rombar": {
+       "n": "rombar"
+      },
+      "xvga": {
+       "n": "xvga"
+      }
+     },
+     "n": "hostpcis"
+    },
+    "hotplug": {
+     "n": "hotplug"
+    },
+    "id": {
+     "n": "virtualEnvironmentVmId"
+    },
+    "initialization": {
+     "f": {
+      "datastore_id": {
+       "n": "datastoreId"
+      },
+      "dns": {
+       "f": {
+        "domain": {
+         "n": "domain"
+        },
+        "servers": {
+         "arr": true,
+         "n": "servers"
+        }
+       },
+       "n": "dns"
+      },
+      "file_format": {
+       "n": "fileFormat"
+      },
+      "interface": {
+       "n": "interface"
+      },
+      "ip_config": {
+       "arr": true,
+       "f": {
+        "ipv4": {
+         "f": {
+          "address": {
+           "n": "address"
+          },
+          "gateway": {
+           "n": "gateway"
+          }
+         },
+         "n": "ipv4"
+        },
+        "ipv6": {
+         "f": {
+          "address": {
+           "n": "address"
+          },
+          "gateway": {
+           "n": "gateway"
+          }
+         },
+         "n": "ipv6"
+        }
+       },
+       "n": "ipConfigs"
+      },
+      "meta_data_file_id": {
+       "n": "metaDataFileId"
+      },
+      "network_data_file_id": {
+       "n": "networkDataFileId"
+      },
+      "type": {
+       "n": "type"
+      },
+      "upgrade": {
+       "n": "upgrade"
+      },
+      "user_account": {
+       "f": {
+        "keys": {
+         "arr": true,
+         "n": "keys"
+        },
+        "password": {
+         "n": "password"
+        },
+        "username": {
+         "n": "username"
+        }
+       },
+       "n": "userAccount"
+      },
+      "user_data_file_id": {
+       "n": "userDataFileId"
+      },
+      "vendor_data_file_id": {
+       "n": "vendorDataFileId"
+      }
+     },
+     "n": "initialization"
+    },
+    "ipv4_addresses": {
+     "arr": true,
+     "n": "ipv4Addresses"
+    },
+    "ipv6_addresses": {
+     "arr": true,
+     "n": "ipv6Addresses"
+    },
+    "keyboard_layout": {
+     "n": "keyboardLayout"
+    },
+    "kvm_arguments": {
+     "n": "kvmArguments"
+    },
+    "mac_addresses": {
+     "arr": true,
+     "n": "macAddresses"
+    },
+    "machine": {
+     "n": "machine"
+    },
+    "memory": {
+     "f": {
+      "dedicated": {
+       "n": "dedicated"
+      },
+      "floating": {
+       "n": "floating"
+      },
+      "hugepages": {
+       "n": "hugepages"
+      },
+      "keep_hugepages": {
+       "n": "keepHugepages"
+      },
+      "shared": {
+       "n": "shared"
+      }
+     },
+     "n": "memory"
+    },
+    "migrate": {
+     "n": "migrate"
+    },
+    "name": {
+     "n": "name"
+    },
+    "network_device": {
+     "arr": true,
+     "f": {
+      "bridge": {
+       "n": "bridge"
+      },
+      "disconnected": {
+       "n": "disconnected"
+      },
+      "enabled": {
+       "n": "enabled"
+      },
+      "firewall": {
+       "n": "firewall"
+      },
+      "mac_address": {
+       "n": "macAddress"
+      },
+      "model": {
+       "n": "model"
+      },
+      "mtu": {
+       "n": "mtu"
+      },
+      "queues": {
+       "n": "queues"
+      },
+      "rate_limit": {
+       "n": "rateLimit"
+      },
+      "trunks": {
+       "n": "trunks"
+      },
+      "vlan_id": {
+       "n": "vlanId"
+      }
+     },
+     "n": "networkDevices"
+    },
+    "network_interface_names": {
+     "arr": true,
+     "n": "networkInterfaceNames"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "numa": {
+     "arr": true,
+     "f": {
+      "cpus": {
+       "n": "cpus"
+      },
+      "device": {
+       "n": "device"
+      },
+      "hostnodes": {
+       "n": "hostnodes"
+      },
+      "memory": {
+       "n": "memory"
+      },
+      "policy": {
+       "n": "policy"
+      }
+     },
+     "n": "numas"
+    },
+    "on_boot": {
+     "n": "onBoot"
+    },
+    "operating_system": {
+     "f": {
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "operatingSystem"
+    },
+    "pool_id": {
+     "n": "poolId"
+    },
+    "protection": {
+     "n": "protection"
+    },
+    "purge_on_destroy": {
+     "n": "purgeOnDestroy"
+    },
+    "reboot": {
+     "n": "reboot"
+    },
+    "reboot_after_update": {
+     "n": "rebootAfterUpdate"
+    },
+    "rng": {
+     "arr": true,
+     "f": {
+      "max_bytes": {
+       "n": "maxBytes"
+      },
+      "period": {
+       "n": "period"
+      },
+      "source": {
+       "n": "source"
+      }
+     },
+     "n": "rngs"
+    },
+    "scsi_hardware": {
+     "n": "scsiHardware"
+    },
+    "serial_device": {
+     "arr": true,
+     "f": {
+      "device": {
+       "n": "device"
+      }
+     },
+     "n": "serialDevices"
+    },
+    "smbios": {
+     "f": {
+      "family": {
+       "n": "family"
+      },
+      "manufacturer": {
+       "n": "manufacturer"
+      },
+      "product": {
+       "n": "product"
+      },
+      "serial": {
+       "n": "serial"
+      },
+      "sku": {
+       "n": "sku"
+      },
+      "uuid": {
+       "n": "uuid"
+      },
+      "version": {
+       "n": "version"
+      }
+     },
+     "n": "smbios"
+    },
+    "started": {
+     "n": "started"
+    },
+    "startup": {
+     "f": {
+      "down_delay": {
+       "n": "downDelay"
+      },
+      "order": {
+       "n": "order"
+      },
+      "up_delay": {
+       "n": "upDelay"
+      }
+     },
+     "n": "startup"
+    },
+    "stop_on_destroy": {
+     "n": "stopOnDestroy"
+    },
+    "tablet_device": {
+     "n": "tabletDevice"
+    },
+    "tags": {
+     "arr": true,
+     "n": "tags"
+    },
+    "template": {
+     "n": "template"
+    },
+    "timeout_clone": {
+     "n": "timeoutClone"
+    },
+    "timeout_create": {
+     "n": "timeoutCreate"
+    },
+    "timeout_migrate": {
+     "n": "timeoutMigrate"
+    },
+    "timeout_move_disk": {
+     "n": "timeoutMoveDisk"
+    },
+    "timeout_reboot": {
+     "n": "timeoutReboot"
+    },
+    "timeout_shutdown_vm": {
+     "n": "timeoutShutdownVm"
+    },
+    "timeout_start_vm": {
+     "n": "timeoutStartVm"
+    },
+    "timeout_stop_vm": {
+     "n": "timeoutStopVm"
+    },
+    "tpm_state": {
+     "f": {
+      "datastore_id": {
+       "n": "datastoreId"
+      },
+      "version": {
+       "n": "version"
+      }
+     },
+     "n": "tpmState"
+    },
+    "usb": {
+     "arr": true,
+     "f": {
+      "host": {
+       "n": "host"
+      },
+      "mapping": {
+       "n": "mapping"
+      },
+      "usb3": {
+       "n": "usb3"
+      }
+     },
+     "n": "usbs"
+    },
+    "vga": {
+     "f": {
+      "clipboard": {
+       "n": "clipboard"
+      },
+      "memory": {
+       "n": "memory"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "vga"
+    },
+    "virtiofs": {
+     "arr": true,
+     "f": {
+      "cache": {
+       "n": "cache"
+      },
+      "direct_io": {
+       "n": "directIo"
+      },
+      "expose_acl": {
+       "n": "exposeAcl"
+      },
+      "expose_xattr": {
+       "n": "exposeXattr"
+      },
+      "mapping": {
+       "n": "mapping"
+      }
+     },
+     "n": "virtiofs"
+    },
+    "vm_id": {
+     "n": "vmId"
+    },
+    "watchdog": {
+     "f": {
+      "action": {
+       "n": "action"
+      },
+      "enabled": {
+       "n": "enabled"
+      },
+      "model": {
+       "n": "model"
+      }
+     },
+     "n": "watchdog"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentVm:VirtualEnvironmentVm"
+  },
+  "proxmox_virtual_environment_vm2": {
+   "f": {
+    "cdrom": {
+     "f": {
+      "file_id": {
+       "n": "fileId"
+      }
+     },
+     "map": true,
+     "n": "cdrom"
+    },
+    "cpu": {
+     "f": {
+      "affinity": {
+       "n": "affinity"
+      },
+      "architecture": {
+       "n": "architecture"
+      },
+      "cores": {
+       "n": "cores"
+      },
+      "flags": {
+       "arr": true,
+       "n": "flags"
+      },
+      "limit": {
+       "n": "limit"
+      },
+      "numa": {
+       "n": "numa"
+      },
+      "sockets": {
+       "n": "sockets"
+      },
+      "type": {
+       "n": "type"
+      },
+      "units": {
+       "n": "units"
+      },
+      "vcpus": {
+       "n": "vcpus"
+      }
+     },
+     "n": "cpu"
+    },
+    "delete_unreferenced_disks_on_destroy": {
+     "n": "deleteUnreferencedDisksOnDestroy"
+    },
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "virtualEnvironmentVm2Id"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "purge_on_destroy": {
+     "n": "purgeOnDestroy"
+    },
+    "rng": {
+     "f": {
+      "max_bytes": {
+       "n": "maxBytes"
+      },
+      "period": {
+       "n": "period"
+      },
+      "source": {
+       "n": "source"
+      }
+     },
+     "n": "rng"
+    },
+    "stop_on_destroy": {
+     "n": "stopOnDestroy"
+    },
+    "tags": {
+     "arr": true,
+     "n": "tags"
+    },
+    "template": {
+     "n": "template"
+    },
+    "timeouts": {
+     "f": {
+      "create": {
+       "n": "create"
+      },
+      "delete": {
+       "n": "delete"
+      },
+      "read": {
+       "n": "read"
+      },
+      "update": {
+       "n": "update"
+      }
+     },
+     "n": "timeouts"
+    },
+    "vga": {
+     "f": {
+      "clipboard": {
+       "n": "clipboard"
+      },
+      "memory": {
+       "n": "memory"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "vga"
+    }
+   },
+   "token": "proxmox:index/virtualEnvironmentVm2:VirtualEnvironmentVm2"
+  },
+  "proxmox_vm": {
+   "f": {
+    "cdrom": {
+     "f": {
+      "file_id": {
+       "n": "fileId"
+      }
+     },
+     "map": true,
+     "n": "cdrom"
+    },
+    "cpu": {
+     "f": {
+      "affinity": {
+       "n": "affinity"
+      },
+      "architecture": {
+       "n": "architecture"
+      },
+      "cores": {
+       "n": "cores"
+      },
+      "flags": {
+       "arr": true,
+       "n": "flags"
+      },
+      "limit": {
+       "n": "limit"
+      },
+      "numa": {
+       "n": "numa"
+      },
+      "sockets": {
+       "n": "sockets"
+      },
+      "type": {
+       "n": "type"
+      },
+      "units": {
+       "n": "units"
+      },
+      "vcpus": {
+       "n": "vcpus"
+      }
+     },
+     "n": "cpu"
+    },
+    "delete_unreferenced_disks_on_destroy": {
+     "n": "deleteUnreferencedDisksOnDestroy"
+    },
+    "description": {
+     "n": "description"
+    },
+    "id": {
+     "n": "vmId"
+    },
+    "name": {
+     "n": "name"
+    },
+    "node_name": {
+     "n": "nodeName"
+    },
+    "purge_on_destroy": {
+     "n": "purgeOnDestroy"
+    },
+    "rng": {
+     "f": {
+      "max_bytes": {
+       "n": "maxBytes"
+      },
+      "period": {
+       "n": "period"
+      },
+      "source": {
+       "n": "source"
+      }
+     },
+     "n": "rng"
+    },
+    "stop_on_destroy": {
+     "n": "stopOnDestroy"
+    },
+    "tags": {
+     "arr": true,
+     "n": "tags"
+    },
+    "template": {
+     "n": "template"
+    },
+    "timeouts": {
+     "f": {
+      "create": {
+       "n": "create"
+      },
+      "delete": {
+       "n": "delete"
+      },
+      "read": {
+       "n": "read"
+      },
+      "update": {
+       "n": "update"
+      }
+     },
+     "n": "timeouts"
+    },
+    "vga": {
+     "f": {
+      "clipboard": {
+       "n": "clipboard"
+      },
+      "memory": {
+       "n": "memory"
+      },
+      "type": {
+       "n": "type"
+      }
+     },
+     "n": "vga"
+    }
+   },
+   "token": "proxmox:index/vm:Vm"
+  }
+ },
+ "source": "bpg/proxmox",
+ "version": "0.115.0"
+}

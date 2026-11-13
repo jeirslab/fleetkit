@@ -1,0 +1,1175 @@
+{
+  "name": "ansible",
+  "version": "1.5.0",
+  "description": "A Pulumi provider dynamically bridged from ansible.",
+  "attribution": "This Pulumi package is based on the [`ansible` Terraform Provider](https://github.com/ansible/terraform-provider-ansible).",
+  "repository": "https://github.com/ansible/terraform-provider-ansible",
+  "publisher": "ansible",
+  "meta": {
+    "moduleFormat": "(.*)(?:/[^/]*)"
+  },
+  "language": {
+    "csharp": {
+      "compatibility": "tfbridge20",
+      "liftSingleValueMethodReturns": true,
+      "respectSchemaVersion": true
+    },
+    "go": {
+      "importBasePath": "github.com/pulumi/pulumi-terraform-provider/sdks/go/ansible/ansible",
+      "rootPackageName": "ansible",
+      "liftSingleValueMethodReturns": true,
+      "generateExtraInputTypes": true,
+      "respectSchemaVersion": true
+    },
+    "java": {
+      "basePackage": "",
+      "buildFiles": "",
+      "gradleNexusPublishPluginVersion": "",
+      "gradleTest": ""
+    },
+    "nodejs": {
+      "packageDescription": "A Pulumi provider dynamically bridged from ansible.",
+      "readme": "\u003e This provider is a derived work of the [Terraform Provider](https://github.com/ansible/terraform-provider-ansible)\n\u003e distributed under [MPL 2.0](https://www.mozilla.org/en-US/MPL/2.0/). If you encounter a bug or missing feature,\n\u003e please consult the source [`terraform-provider-ansible` repo](https://github.com/ansible/terraform-provider-ansible/issues).",
+      "compatibility": "tfbridge20",
+      "disableUnionOutputTypes": true,
+      "liftSingleValueMethodReturns": true,
+      "respectSchemaVersion": true
+    },
+    "python": {
+      "readme": "\u003e This provider is a derived work of the [Terraform Provider](https://github.com/ansible/terraform-provider-ansible)\n\u003e distributed under [MPL 2.0](https://www.mozilla.org/en-US/MPL/2.0/). If you encounter a bug or missing feature,\n\u003e please consult the source [`terraform-provider-ansible` repo](https://github.com/ansible/terraform-provider-ansible/issues).",
+      "compatibility": "tfbridge20",
+      "respectSchemaVersion": true,
+      "pyproject": {
+        "enabled": true
+      }
+    }
+  },
+  "config": {},
+  "types": {
+    "ansible:index/PlaybookTimeouts:PlaybookTimeouts": {
+      "properties": {
+        "create": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ansible:index/getInventoryGroup:getInventoryGroup": {
+      "properties": {
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/types/ansible:index/getInventoryGroupGroup:getInventoryGroupGroup"
+          },
+          "description": "Describes an ansible group.\n"
+        },
+        "hosts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/types/ansible:index/getInventoryGroupHost:getInventoryGroupHost"
+          },
+          "description": "Describes an ansible host.\n"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the group.\n"
+        },
+        "vars": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Variables to be set for the group.\n"
+        }
+      },
+      "type": "object",
+      "required": [
+        "name"
+      ]
+    },
+    "ansible:index/getInventoryGroupGroup:getInventoryGroupGroup": {
+      "properties": {
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/types/ansible:index/getInventoryGroupGroupGroup:getInventoryGroupGroupGroup"
+          },
+          "description": "Describes an ansible group.\n"
+        },
+        "hosts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/types/ansible:index/getInventoryGroupGroupHost:getInventoryGroupGroupHost"
+          },
+          "description": "Describes an ansible host.\n"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the group.\n"
+        },
+        "vars": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Variables to be set for the group.\n"
+        }
+      },
+      "type": "object",
+      "required": [
+        "name"
+      ]
+    },
+    "ansible:index/getInventoryGroupGroupGroup:getInventoryGroupGroupGroup": {
+      "properties": {
+        "hosts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/types/ansible:index/getInventoryGroupGroupGroupHost:getInventoryGroupGroupGroupHost"
+          },
+          "description": "Describes an ansible host.\n"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the group.\n"
+        },
+        "vars": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Variables to be set for the group.\n"
+        }
+      },
+      "type": "object",
+      "required": [
+        "name"
+      ]
+    },
+    "ansible:index/getInventoryGroupGroupGroupHost:getInventoryGroupGroupGroupHost": {
+      "properties": {
+        "ansibleBecome": {
+          "type": "boolean",
+          "description": "Allows you to force privilege escalation.\n"
+        },
+        "ansibleBecomeExe": {
+          "type": "string",
+          "description": "Allows you to set the executable for the escalation method you selected.\n"
+        },
+        "ansibleBecomeFlags": {
+          "type": "string",
+          "description": "Allows you to set the flags passed to the selected escalation method\n"
+        },
+        "ansibleBecomeMethod": {
+          "type": "string",
+          "description": "Allows you to set the privilege escalation method to a matching become plugin.\n"
+        },
+        "ansibleBecomePassword": {
+          "type": "string",
+          "description": "Allows you to set the privilege escalation password.\n",
+          "secret": true
+        },
+        "ansibleBecomeUser": {
+          "type": "string",
+          "description": "Allows you to set the user you become through privilege escalation.\n"
+        },
+        "ansibleConnection": {
+          "type": "string",
+          "description": "Specifies the connection type to the host. This can be the name of any Ansible connection plugin. SSH protocol types are ssh or paramiko. The default is ssh.\n"
+        },
+        "ansibleHost": {
+          "type": "string",
+          "description": "Specifies the resolvable name or IP of the host to connect to, if it is different from the alias (name) you wish to give to it.\n"
+        },
+        "ansiblePassword": {
+          "type": "string",
+          "description": "The password to use when connecting (logging in) to the host.\n",
+          "secret": true
+        },
+        "ansiblePort": {
+          "type": "number",
+          "description": "The connection port number, if not the default (22 for ssh).\n"
+        },
+        "ansiblePrivateKeyFile": {
+          "type": "string",
+          "description": "Private key file used by SSH. This is useful if you use multiple keys and you do not want to use SSH agent.\n"
+        },
+        "ansiblePythonInterpreter": {
+          "type": "string",
+          "description": "Allows you to set the Python interpreter to use for the target system.\n"
+        },
+        "ansibleScpExtraArgs": {
+          "type": "string",
+          "description": "Extra arguments to pass to the scp command.\n"
+        },
+        "ansibleSftpExtraArgs": {
+          "type": "string",
+          "description": "Extra arguments to pass to the sftp command.\n"
+        },
+        "ansibleShellExecutable": {
+          "type": "string",
+          "description": "Allows you to set the shell executable to use for the target system.\n"
+        },
+        "ansibleShellType": {
+          "type": "string",
+          "description": "Specifies the shell type of the target system. You should not use this setting unless you have set the \u003cspan pulumi-lang-nodejs=\"`ansibleShellExecutable`\" pulumi-lang-dotnet=\"`AnsibleShellExecutable`\" pulumi-lang-go=\"`ansibleShellExecutable`\" pulumi-lang-python=\"`ansible_shell_executable`\" pulumi-lang-yaml=\"`ansibleShellExecutable`\" pulumi-lang-java=\"`ansibleShellExecutable`\" pulumi-lang-hcl=\"`ansible_shell_executable`\"\u003e`ansibleShellExecutable`\u003c/span\u003e to a non-Bourne (sh) compatible shell.  By default, Ansible formats commands using sh-style syntax.  If you set this to csh or fish, commands that Ansible executes on target systems follow those shell’s syntax instead.\n"
+        },
+        "ansibleSshCommonArgs": {
+          "type": "string",
+          "description": "Ansible always appends this setting to the default command line for sftp, scp, and ssh. This is useful for configuring a ``ProxyCommand` for a certain host or group.\n"
+        },
+        "ansibleSshExecutable": {
+          "type": "string",
+          "description": "Specify the SSH executable to use.\n"
+        },
+        "ansibleSshExtraArgs": {
+          "type": "string",
+          "description": "Extra arguments to pass to the ssh command.\n"
+        },
+        "ansibleSshPipelining": {
+          "type": "boolean",
+          "description": "Enable pipelining for SSH connections.\n"
+        },
+        "ansibleUser": {
+          "type": "string",
+          "description": "The username to use when connecting (logging in) to the host.\n"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the host.\n"
+        }
+      },
+      "type": "object",
+      "required": [
+        "name"
+      ]
+    },
+    "ansible:index/getInventoryGroupGroupHost:getInventoryGroupGroupHost": {
+      "properties": {
+        "ansibleBecome": {
+          "type": "boolean",
+          "description": "Allows you to force privilege escalation.\n"
+        },
+        "ansibleBecomeExe": {
+          "type": "string",
+          "description": "Allows you to set the executable for the escalation method you selected.\n"
+        },
+        "ansibleBecomeFlags": {
+          "type": "string",
+          "description": "Allows you to set the flags passed to the selected escalation method\n"
+        },
+        "ansibleBecomeMethod": {
+          "type": "string",
+          "description": "Allows you to set the privilege escalation method to a matching become plugin.\n"
+        },
+        "ansibleBecomePassword": {
+          "type": "string",
+          "description": "Allows you to set the privilege escalation password.\n",
+          "secret": true
+        },
+        "ansibleBecomeUser": {
+          "type": "string",
+          "description": "Allows you to set the user you become through privilege escalation.\n"
+        },
+        "ansibleConnection": {
+          "type": "string",
+          "description": "Specifies the connection type to the host. This can be the name of any Ansible connection plugin. SSH protocol types are ssh or paramiko. The default is ssh.\n"
+        },
+        "ansibleHost": {
+          "type": "string",
+          "description": "Specifies the resolvable name or IP of the host to connect to, if it is different from the alias (name) you wish to give to it.\n"
+        },
+        "ansiblePassword": {
+          "type": "string",
+          "description": "The password to use when connecting (logging in) to the host.\n",
+          "secret": true
+        },
+        "ansiblePort": {
+          "type": "number",
+          "description": "The connection port number, if not the default (22 for ssh).\n"
+        },
+        "ansiblePrivateKeyFile": {
+          "type": "string",
+          "description": "Private key file used by SSH. This is useful if you use multiple keys and you do not want to use SSH agent.\n"
+        },
+        "ansiblePythonInterpreter": {
+          "type": "string",
+          "description": "Allows you to set the Python interpreter to use for the target system.\n"
+        },
+        "ansibleScpExtraArgs": {
+          "type": "string",
+          "description": "Extra arguments to pass to the scp command.\n"
+        },
+        "ansibleSftpExtraArgs": {
+          "type": "string",
+          "description": "Extra arguments to pass to the sftp command.\n"
+        },
+        "ansibleShellExecutable": {
+          "type": "string",
+          "description": "Allows you to set the shell executable to use for the target system.\n"
+        },
+        "ansibleShellType": {
+          "type": "string",
+          "description": "Specifies the shell type of the target system. You should not use this setting unless you have set the \u003cspan pulumi-lang-nodejs=\"`ansibleShellExecutable`\" pulumi-lang-dotnet=\"`AnsibleShellExecutable`\" pulumi-lang-go=\"`ansibleShellExecutable`\" pulumi-lang-python=\"`ansible_shell_executable`\" pulumi-lang-yaml=\"`ansibleShellExecutable`\" pulumi-lang-java=\"`ansibleShellExecutable`\" pulumi-lang-hcl=\"`ansible_shell_executable`\"\u003e`ansibleShellExecutable`\u003c/span\u003e to a non-Bourne (sh) compatible shell.  By default, Ansible formats commands using sh-style syntax.  If you set this to csh or fish, commands that Ansible executes on target systems follow those shell’s syntax instead.\n"
+        },
+        "ansibleSshCommonArgs": {
+          "type": "string",
+          "description": "Ansible always appends this setting to the default command line for sftp, scp, and ssh. This is useful for configuring a ``ProxyCommand` for a certain host or group.\n"
+        },
+        "ansibleSshExecutable": {
+          "type": "string",
+          "description": "Specify the SSH executable to use.\n"
+        },
+        "ansibleSshExtraArgs": {
+          "type": "string",
+          "description": "Extra arguments to pass to the ssh command.\n"
+        },
+        "ansibleSshPipelining": {
+          "type": "boolean",
+          "description": "Enable pipelining for SSH connections.\n"
+        },
+        "ansibleUser": {
+          "type": "string",
+          "description": "The username to use when connecting (logging in) to the host.\n"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the host.\n"
+        }
+      },
+      "type": "object",
+      "required": [
+        "name"
+      ]
+    },
+    "ansible:index/getInventoryGroupHost:getInventoryGroupHost": {
+      "properties": {
+        "ansibleBecome": {
+          "type": "boolean",
+          "description": "Allows you to force privilege escalation.\n"
+        },
+        "ansibleBecomeExe": {
+          "type": "string",
+          "description": "Allows you to set the executable for the escalation method you selected.\n"
+        },
+        "ansibleBecomeFlags": {
+          "type": "string",
+          "description": "Allows you to set the flags passed to the selected escalation method\n"
+        },
+        "ansibleBecomeMethod": {
+          "type": "string",
+          "description": "Allows you to set the privilege escalation method to a matching become plugin.\n"
+        },
+        "ansibleBecomePassword": {
+          "type": "string",
+          "description": "Allows you to set the privilege escalation password.\n",
+          "secret": true
+        },
+        "ansibleBecomeUser": {
+          "type": "string",
+          "description": "Allows you to set the user you become through privilege escalation.\n"
+        },
+        "ansibleConnection": {
+          "type": "string",
+          "description": "Specifies the connection type to the host. This can be the name of any Ansible connection plugin. SSH protocol types are ssh or paramiko. The default is ssh.\n"
+        },
+        "ansibleHost": {
+          "type": "string",
+          "description": "Specifies the resolvable name or IP of the host to connect to, if it is different from the alias (name) you wish to give to it.\n"
+        },
+        "ansiblePassword": {
+          "type": "string",
+          "description": "The password to use when connecting (logging in) to the host.\n",
+          "secret": true
+        },
+        "ansiblePort": {
+          "type": "number",
+          "description": "The connection port number, if not the default (22 for ssh).\n"
+        },
+        "ansiblePrivateKeyFile": {
+          "type": "string",
+          "description": "Private key file used by SSH. This is useful if you use multiple keys and you do not want to use SSH agent.\n"
+        },
+        "ansiblePythonInterpreter": {
+          "type": "string",
+          "description": "Allows you to set the Python interpreter to use for the target system.\n"
+        },
+        "ansibleScpExtraArgs": {
+          "type": "string",
+          "description": "Extra arguments to pass to the scp command.\n"
+        },
+        "ansibleSftpExtraArgs": {
+          "type": "string",
+          "description": "Extra arguments to pass to the sftp command.\n"
+        },
+        "ansibleShellExecutable": {
+          "type": "string",
+          "description": "Allows you to set the shell executable to use for the target system.\n"
+        },
+        "ansibleShellType": {
+          "type": "string",
+          "description": "Specifies the shell type of the target system. You should not use this setting unless you have set the \u003cspan pulumi-lang-nodejs=\"`ansibleShellExecutable`\" pulumi-lang-dotnet=\"`AnsibleShellExecutable`\" pulumi-lang-go=\"`ansibleShellExecutable`\" pulumi-lang-python=\"`ansible_shell_executable`\" pulumi-lang-yaml=\"`ansibleShellExecutable`\" pulumi-lang-java=\"`ansibleShellExecutable`\" pulumi-lang-hcl=\"`ansible_shell_executable`\"\u003e`ansibleShellExecutable`\u003c/span\u003e to a non-Bourne (sh) compatible shell.  By default, Ansible formats commands using sh-style syntax.  If you set this to csh or fish, commands that Ansible executes on target systems follow those shell’s syntax instead.\n"
+        },
+        "ansibleSshCommonArgs": {
+          "type": "string",
+          "description": "Ansible always appends this setting to the default command line for sftp, scp, and ssh. This is useful for configuring a ``ProxyCommand` for a certain host or group.\n"
+        },
+        "ansibleSshExecutable": {
+          "type": "string",
+          "description": "Specify the SSH executable to use.\n"
+        },
+        "ansibleSshExtraArgs": {
+          "type": "string",
+          "description": "Extra arguments to pass to the ssh command.\n"
+        },
+        "ansibleSshPipelining": {
+          "type": "boolean",
+          "description": "Enable pipelining for SSH connections.\n"
+        },
+        "ansibleUser": {
+          "type": "string",
+          "description": "The username to use when connecting (logging in) to the host.\n"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the host.\n"
+        }
+      },
+      "type": "object",
+      "required": [
+        "name"
+      ]
+    }
+  },
+  "provider": {
+    "description": "The provider type for the ansible package. By default, resources use package-wide configuration\nsettings, however an explicit `Provider` instance may be created and passed during resource\nconstruction to achieve fine-grained programmatic control over provider settings. See the\n[documentation](https://www.pulumi.com/docs/reference/programming-model/#providers) for more information.\n",
+    "methods": {
+      "terraformConfig": "pulumi:providers:ansible/terraformConfig"
+    }
+  },
+  "resources": {
+    "ansible:index/group:Group": {
+      "properties": {
+        "childrens": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of group children."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the group."
+        },
+        "variables": {
+          "$ref": "pulumi.json#/Any",
+          "description": "Map of variables. Supports any HCL type including strings, numbers, booleans, lists, and maps."
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "inputProperties": {
+        "childrens": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of group children."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the group."
+        },
+        "variables": {
+          "$ref": "pulumi.json#/Any",
+          "description": "Map of variables. Supports any HCL type including strings, numbers, booleans, lists, and maps."
+        }
+      },
+      "stateInputs": {
+        "description": "Input properties used for looking up and filtering Group resources.\n",
+        "properties": {
+          "childrens": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of group children."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name of the group."
+          },
+          "variables": {
+            "$ref": "pulumi.json#/Any",
+            "description": "Map of variables. Supports any HCL type including strings, numbers, booleans, lists, and maps."
+          }
+        },
+        "type": "object"
+      }
+    },
+    "ansible:index/host:Host": {
+      "properties": {
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of group names."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the host."
+        },
+        "variables": {
+          "$ref": "pulumi.json#/Any",
+          "description": "Map of variables. Supports any HCL type including strings, numbers, booleans, lists, and maps."
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "inputProperties": {
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of group names."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the host."
+        },
+        "variables": {
+          "$ref": "pulumi.json#/Any",
+          "description": "Map of variables. Supports any HCL type including strings, numbers, booleans, lists, and maps."
+        }
+      },
+      "stateInputs": {
+        "description": "Input properties used for looking up and filtering Host resources.\n",
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of group names."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name of the host."
+          },
+          "variables": {
+            "$ref": "pulumi.json#/Any",
+            "description": "Map of variables. Supports any HCL type including strings, numbers, booleans, lists, and maps."
+          }
+        },
+        "type": "object"
+      }
+    },
+    "ansible:index/playbook:Playbook": {
+      "properties": {
+        "ansiblePlaybookBinary": {
+          "type": "string",
+          "description": "Path to ansible-playbook executable (binary)."
+        },
+        "ansiblePlaybookStderr": {
+          "type": "string",
+          "description": "An ansible-playbook CLI stderr output."
+        },
+        "ansiblePlaybookStdout": {
+          "type": "string",
+          "description": "An ansible-playbook CLI stdout output."
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Used to build arguments to run Ansible playbook with."
+        },
+        "checkMode": {
+          "type": "boolean",
+          "description": "If 'true', playbook execution won't make any changes but only change predictions will be made."
+        },
+        "diffMode": {
+          "type": "boolean",
+          "description": "If 'true', when changing (small) files and templates, differences in those files will be shown. Recommended usage with 'check_mode'."
+        },
+        "extraVars": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "A map of additional variables as: { key-1 = value-1, key-2 = value-2, ... }."
+        },
+        "forceHandlers": {
+          "type": "boolean",
+          "description": "If 'true', run handlers even if a task fails."
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of desired groups of hosts on which the playbook will be executed."
+        },
+        "ignorePlaybookFailure": {
+          "type": "boolean",
+          "description": "This parameter is good for testing. Set to 'true' if the desired playbook is meant to fail, but still want the resource to run successfully."
+        },
+        "limits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of hosts to include in playbook execution."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the desired host on which the playbook will be executed."
+        },
+        "playbook": {
+          "type": "string",
+          "description": "Path to ansible playbook."
+        },
+        "playbookId": {
+          "type": "string"
+        },
+        "replayable": {
+          "type": "boolean",
+          "description": "If 'true', the playbook will be executed on every 'terraform apply' and with that, the resource will be recreated. If 'false', the playbook will be executed only on the first 'terraform apply'. Note, that if set to 'true', when doing 'terraform destroy', it might not show in the destroy output, even though the resource still gets destroyed."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of tags of plays and tasks to run."
+        },
+        "tempInventoryFile": {
+          "type": "string",
+          "description": "Path to created temporary inventory file."
+        },
+        "timeouts": {
+          "$ref": "#/types/ansible:index/PlaybookTimeouts:PlaybookTimeouts"
+        },
+        "varFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of variable files."
+        },
+        "vaultFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of vault files."
+        },
+        "vaultId": {
+          "type": "string",
+          "description": "ID of the desired vault(s)."
+        },
+        "vaultPasswordFile": {
+          "type": "string",
+          "description": "Path to a vault password file."
+        },
+        "verbosity": {
+          "type": "number",
+          "description": "A verbosity level between 0 and 6. Set ansible 'verbose' parameter, which causes Ansible to print more debug messages. The higher the 'verbosity', the more debug details will be printed."
+        }
+      },
+      "required": [
+        "ansiblePlaybookStderr",
+        "ansiblePlaybookStdout",
+        "args",
+        "playbookId",
+        "name",
+        "playbook",
+        "tempInventoryFile"
+      ],
+      "inputProperties": {
+        "ansiblePlaybookBinary": {
+          "type": "string",
+          "description": "Path to ansible-playbook executable (binary)."
+        },
+        "checkMode": {
+          "type": "boolean",
+          "description": "If 'true', playbook execution won't make any changes but only change predictions will be made."
+        },
+        "diffMode": {
+          "type": "boolean",
+          "description": "If 'true', when changing (small) files and templates, differences in those files will be shown. Recommended usage with 'check_mode'."
+        },
+        "extraVars": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "A map of additional variables as: { key-1 = value-1, key-2 = value-2, ... }."
+        },
+        "forceHandlers": {
+          "type": "boolean",
+          "description": "If 'true', run handlers even if a task fails."
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of desired groups of hosts on which the playbook will be executed."
+        },
+        "ignorePlaybookFailure": {
+          "type": "boolean",
+          "description": "This parameter is good for testing. Set to 'true' if the desired playbook is meant to fail, but still want the resource to run successfully."
+        },
+        "limits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of hosts to include in playbook execution."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the desired host on which the playbook will be executed."
+        },
+        "playbook": {
+          "type": "string",
+          "description": "Path to ansible playbook."
+        },
+        "playbookId": {
+          "type": "string"
+        },
+        "replayable": {
+          "type": "boolean",
+          "description": "If 'true', the playbook will be executed on every 'terraform apply' and with that, the resource will be recreated. If 'false', the playbook will be executed only on the first 'terraform apply'. Note, that if set to 'true', when doing 'terraform destroy', it might not show in the destroy output, even though the resource still gets destroyed."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of tags of plays and tasks to run."
+        },
+        "timeouts": {
+          "$ref": "#/types/ansible:index/PlaybookTimeouts:PlaybookTimeouts"
+        },
+        "varFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of variable files."
+        },
+        "vaultFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of vault files."
+        },
+        "vaultId": {
+          "type": "string",
+          "description": "ID of the desired vault(s)."
+        },
+        "vaultPasswordFile": {
+          "type": "string",
+          "description": "Path to a vault password file."
+        },
+        "verbosity": {
+          "type": "number",
+          "description": "A verbosity level between 0 and 6. Set ansible 'verbose' parameter, which causes Ansible to print more debug messages. The higher the 'verbosity', the more debug details will be printed."
+        }
+      },
+      "requiredInputs": [
+        "playbook"
+      ],
+      "stateInputs": {
+        "description": "Input properties used for looking up and filtering Playbook resources.\n",
+        "properties": {
+          "ansiblePlaybookBinary": {
+            "type": "string",
+            "description": "Path to ansible-playbook executable (binary)."
+          },
+          "ansiblePlaybookStderr": {
+            "type": "string",
+            "description": "An ansible-playbook CLI stderr output."
+          },
+          "ansiblePlaybookStdout": {
+            "type": "string",
+            "description": "An ansible-playbook CLI stdout output."
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Used to build arguments to run Ansible playbook with."
+          },
+          "checkMode": {
+            "type": "boolean",
+            "description": "If 'true', playbook execution won't make any changes but only change predictions will be made."
+          },
+          "diffMode": {
+            "type": "boolean",
+            "description": "If 'true', when changing (small) files and templates, differences in those files will be shown. Recommended usage with 'check_mode'."
+          },
+          "extraVars": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "A map of additional variables as: { key-1 = value-1, key-2 = value-2, ... }."
+          },
+          "forceHandlers": {
+            "type": "boolean",
+            "description": "If 'true', run handlers even if a task fails."
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of desired groups of hosts on which the playbook will be executed."
+          },
+          "ignorePlaybookFailure": {
+            "type": "boolean",
+            "description": "This parameter is good for testing. Set to 'true' if the desired playbook is meant to fail, but still want the resource to run successfully."
+          },
+          "limits": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of hosts to include in playbook execution."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name of the desired host on which the playbook will be executed."
+          },
+          "playbook": {
+            "type": "string",
+            "description": "Path to ansible playbook."
+          },
+          "playbookId": {
+            "type": "string"
+          },
+          "replayable": {
+            "type": "boolean",
+            "description": "If 'true', the playbook will be executed on every 'terraform apply' and with that, the resource will be recreated. If 'false', the playbook will be executed only on the first 'terraform apply'. Note, that if set to 'true', when doing 'terraform destroy', it might not show in the destroy output, even though the resource still gets destroyed."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of tags of plays and tasks to run."
+          },
+          "tempInventoryFile": {
+            "type": "string",
+            "description": "Path to created temporary inventory file."
+          },
+          "timeouts": {
+            "$ref": "#/types/ansible:index/PlaybookTimeouts:PlaybookTimeouts"
+          },
+          "varFiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of variable files."
+          },
+          "vaultFiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of vault files."
+          },
+          "vaultId": {
+            "type": "string",
+            "description": "ID of the desired vault(s)."
+          },
+          "vaultPasswordFile": {
+            "type": "string",
+            "description": "Path to a vault password file."
+          },
+          "verbosity": {
+            "type": "number",
+            "description": "A verbosity level between 0 and 6. Set ansible 'verbose' parameter, which causes Ansible to print more debug messages. The higher the 'verbosity', the more debug details will be printed."
+          }
+        },
+        "type": "object"
+      }
+    },
+    "ansible:index/vault:Vault": {
+      "properties": {
+        "ansibleVaultId": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "vaultFile": {
+          "type": "string",
+          "description": "Path to encrypted vault file."
+        },
+        "vaultId": {
+          "type": "string",
+          "description": "ID of the encrypted vault file."
+        },
+        "vaultPasswordFile": {
+          "type": "string",
+          "description": "Path to vault password file."
+        },
+        "yaml": {
+          "type": "string",
+          "secret": true
+        }
+      },
+      "required": [
+        "args",
+        "ansibleVaultId",
+        "vaultFile",
+        "vaultPasswordFile",
+        "yaml"
+      ],
+      "inputProperties": {
+        "ansibleVaultId": {
+          "type": "string"
+        },
+        "vaultFile": {
+          "type": "string",
+          "description": "Path to encrypted vault file."
+        },
+        "vaultId": {
+          "type": "string",
+          "description": "ID of the encrypted vault file."
+        },
+        "vaultPasswordFile": {
+          "type": "string",
+          "description": "Path to vault password file."
+        }
+      },
+      "requiredInputs": [
+        "vaultFile",
+        "vaultPasswordFile"
+      ],
+      "stateInputs": {
+        "description": "Input properties used for looking up and filtering Vault resources.\n",
+        "properties": {
+          "ansibleVaultId": {
+            "type": "string"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "vaultFile": {
+            "type": "string",
+            "description": "Path to encrypted vault file."
+          },
+          "vaultId": {
+            "type": "string",
+            "description": "ID of the encrypted vault file."
+          },
+          "vaultPasswordFile": {
+            "type": "string",
+            "description": "Path to vault password file."
+          },
+          "yaml": {
+            "type": "string",
+            "secret": true
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "functions": {
+    "ansible:index/getInventory:getInventory": {
+      "inputs": {
+        "description": "A collection of arguments for invoking getInventory.\n",
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/types/ansible:index/getInventoryGroup:getInventoryGroup"
+            }
+          }
+        },
+        "type": "object"
+      },
+      "outputs": {
+        "description": "A collection of values returned by getInventory.\n",
+        "properties": {
+          "groups": {
+            "items": {
+              "$ref": "#/types/ansible:index/getInventoryGroup:getInventoryGroup"
+            },
+            "type": "array"
+          },
+          "json": {
+            "secret": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "json"
+        ],
+        "type": "object"
+      }
+    },
+    "ansible:index/getVault:getVault": {
+      "inputs": {
+        "description": "A collection of arguments for invoking getVault.\n",
+        "properties": {
+          "vaultFile": {
+            "type": "string"
+          },
+          "vaultId": {
+            "type": "string"
+          },
+          "vaultPassword": {
+            "type": "string",
+            "secret": true
+          },
+          "vaultPasswordFile": {
+            "type": "string",
+            "secret": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "vaultFile"
+        ]
+      },
+      "outputs": {
+        "description": "A collection of values returned by getVault.\n",
+        "properties": {
+          "vaultFile": {
+            "type": "string"
+          },
+          "vaultId": {
+            "type": "string"
+          },
+          "vaultPassword": {
+            "secret": true,
+            "type": "string"
+          },
+          "vaultPasswordFile": {
+            "secret": true,
+            "type": "string"
+          },
+          "yaml": {
+            "secret": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "vaultFile",
+          "yaml"
+        ],
+        "type": "object"
+      }
+    },
+    "ansible:index/getVaultString:getVaultString": {
+      "inputs": {
+        "description": "A collection of arguments for invoking getVaultString.\n",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "vaultId": {
+            "type": "string"
+          },
+          "vaultPassword": {
+            "type": "string",
+            "secret": true
+          },
+          "vaultPasswordFile": {
+            "type": "string",
+            "secret": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ]
+      },
+      "outputs": {
+        "description": "A collection of values returned by getVaultString.\n",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "plaintext": {
+            "secret": true,
+            "type": "string"
+          },
+          "vaultId": {
+            "type": "string"
+          },
+          "vaultPassword": {
+            "secret": true,
+            "type": "string"
+          },
+          "vaultPasswordFile": {
+            "secret": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "content",
+          "plaintext"
+        ],
+        "type": "object"
+      }
+    },
+    "pulumi:providers:ansible/terraformConfig": {
+      "description": "This function returns a Terraform config object with terraform-namecased keys,to be used with the Terraform Module Provider.",
+      "inputs": {
+        "properties": {
+          "__self__": {
+            "type": "ref",
+            "$ref": "#/provider"
+          }
+        },
+        "type": "pulumi:providers:ansible/terraformConfig",
+        "required": [
+          "__self__"
+        ]
+      },
+      "outputs": {
+        "properties": {
+          "result": {
+            "additionalProperties": {
+              "$ref": "pulumi.json#/Any"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "parameterization": {
+    "baseProvider": {
+      "name": "terraform-provider",
+      "version": "1.4.0"
+    },
+    "parameter": "eyJyZW1vdGUiOnsidXJsIjoicmVnaXN0cnkub3BlbnRvZnUub3JnL2Fuc2libGUvYW5zaWJsZSIsInZlcnNpb24iOiIxLjUuMCJ9fQ=="
+  }
+}

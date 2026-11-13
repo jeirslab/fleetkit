@@ -71,6 +71,19 @@ let
         }
       ];
 
+  # The auth references may also be keys another estate grants in sharedWith
+  # (one token for the organisations of several estates).
+  sopsRefGranted =
+    estate: where: value:
+    if builtins.isString value then
+      h.secretRefAssertions {
+        inherit where estate;
+        ids = ids.secretRef;
+        grantedRefs = h.grantedTo config.fleet.estates estate;
+      } value
+    else
+      sopsRef estate where value;
+
   gitChecks =
     estate: g:
     let
@@ -95,8 +108,54 @@ let
           ]
         else
           [ ];
+      # github_organization_settings arguments beyond the first set: profile
+      # text and member privileges, each checked for its type when present.
+      orgText = [
+        "blog"
+        "company"
+        "description"
+        "email"
+        "location"
+        "name"
+        "twitterUsername"
+      ];
+      orgBool = [
+        "advancedSecurityEnabledForNewRepositories"
+        "dependabotSecurityUpdatesEnabledForNewRepositories"
+        "membersCanCreateInternalRepositories"
+        "membersCanCreatePages"
+        "membersCanCreatePrivatePages"
+        "membersCanCreatePublicPages"
+        "membersCanForkPrivateRepositories"
+      ];
+      # The named leaves of a block, when present, satisfy `ok`.
+      typed =
+        where: what: ok: names: attrs:
+        lib.optionals (builtins.isAttrs attrs) (
+          map (n: {
+            assertion = ok attrs.${n};
+            message = "${where}.${n}: expected ${what}";
+          }) (lib.filter (n: attrs ? ${n}) names)
+        );
+      plan = g.plan or "free";
+      plans = [
+        "free"
+        "pro"
+        "team"
+        "enterprise"
+      ];
     in
-    keysOk (w "") [
+    [
+      {
+        assertion = builtins.isString plan && builtins.elem plan plans;
+        message = "${w "plan"}: \"${toString plan}\" is not one of ${lib.concatStringsSep ", " plans}";
+      }
+      {
+        assertion = !((g.kind or null) == "org" && plan == "pro");
+        message = "${w "plan"}: \"pro\" is a personal account's plan; an organisation (kind = \"org\") is on free, team or enterprise";
+      }
+    ]
+    ++ keysOk (w "") [
       "actions"
       "auth"
       "backend"
@@ -115,20 +174,31 @@ let
     ++ keysOk (w "auth") [ "appIdRef" "installationIdRef" "kind" "pemRef" "tokenRef" ] (g.auth or { })
     ++ keysOk (w "hostAccess") [ "method" "readOnly" ] (g.hostAccess or { })
     ++ keysOk (w "members") [ "admin" "member" "outside" ] members
-    ++ keysOk (w "organization") [
-      "billingEmail"
-      "defaultRepositoryPermission"
-      "dependabotAlertsEnabledForNewRepositories"
-      "dependencyGraphEnabledForNewRepositories"
-      "hasOrganizationProjects"
-      "hasRepositoryProjects"
-      "membersCanCreatePrivateRepositories"
-      "membersCanCreatePublicRepositories"
-      "membersCanCreateRepositories"
-      "secretScanningEnabledForNewRepositories"
-      "secretScanningPushProtectionEnabledForNewRepositories"
-      "webCommitSignoffRequired"
-    ] (g.organization or { })
+    ++ keysOk (w "organization") (
+      [
+        "billingEmail"
+        "defaultRepositoryPermission"
+        "dependabotAlertsEnabledForNewRepositories"
+        "dependencyGraphEnabledForNewRepositories"
+        "hasOrganizationProjects"
+        "hasRepositoryProjects"
+        "membersCanCreatePrivateRepositories"
+        "membersCanCreatePublicRepositories"
+        "membersCanCreateRepositories"
+        "secretScanningEnabledForNewRepositories"
+        "secretScanningPushProtectionEnabledForNewRepositories"
+        "webCommitSignoffRequired"
+      ]
+      ++ orgText
+      ++ orgBool
+    ) (g.organization or { })
+    ++ typed (w "organization") "a string" builtins.isString orgText (g.organization or { })
+    ++ typed (w "organization") "true or false" builtins.isBool orgBool (g.organization or { })
+    ++ lib.concatLists (
+      lib.mapAttrsToList (
+        t: typed (w "teams.${t}") "a string" builtins.isString [ "description" "name" ]
+      ) teams
+    )
     ++ keysOk (w "actions") [
       "allowedActions"
       "enabledRepositories"
@@ -144,7 +214,7 @@ let
     ++ lib.concatLists (
       lib.mapAttrsToList (
         t: team:
-        keysOk (w "teams.${t}") [ "members" "privacy" "repos" ] team
+        keysOk (w "teams.${t}") [ "description" "maintainers" "members" "name" "privacy" "repos" ] team
         ++ keysOkEach (w "teams.${t}.repos") [ "repo" "permission" ] (team.repos or [ ])
       ) teams
     )
@@ -179,6 +249,7 @@ let
       lib.mapAttrsToList (
         t: team:
         principalRefs (w "teams.${t}.members") (team.members or [ ])
+        ++ principalRefs (w "teams.${t}.maintainers") (team.maintainers or [ ])
         ++ lib.concatMap (
           r:
           [
@@ -222,7 +293,7 @@ let
           assertion = auth ? ${k};
           message = "${w "auth.${k}"}: required when auth.kind is \"${toString authKind}\" but missing";
         }
-      ] ++ opt auth k (sopsRef estate (w "auth.${k}"))) authNeeds
+      ] ++ opt auth k (sopsRefGranted estate (w "auth.${k}"))) authNeeds
     );
 
   cacheChecks =

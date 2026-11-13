@@ -25,17 +25,38 @@ outputs = { fleetkit, xgcs, ... }: {
 - Repositories: an estate declares its GitHub organisation and repositories
   in the model (`fleet.estates.<e>.git`, `fleet.repos.<e>`). That is the
   GitHub management plane only; nothing is cloned or vendored from it.
-- `lib.mkTerraform` renders an estate's managed guests and pools as a
-  `main.tf.json` attrset; see `docs/terraform.md`. The kit never runs tofu.
-- `lib.mkGithubTerraform` renders an estate's organisation and repositories as
-  a `main.tf.json` attrset for the GitHub provider; see `docs/github.md`. The
-  kit never runs tofu.
+- `lib.pulumi` (Pulumi.nix): an estate's Pulumi stacks as Nix modules, each
+  resource's properties typed from the pinned schemas, the model's stacks
+  imported with `fromModel`, backends from `fleet.backends`. Experimental; see
+  `docs/pulumi.md`.
+- `lib.mkPulumi` / `lib.mkGithubPulumi` render an estate's guests and pools,
+  and its GitHub organisation, as Pulumi YAML programs; Pulumi runs the pinned
+  Terraform providers through its terraform-provider bridge. `lib.internal`
+  holds the provider-argument stage they compile from (`docs/terraform.md`,
+  `docs/github.md`). Experimental; see `docs/pulumi.md`.
+- `packages.fleetkit` (`cli/`) deploys an estate: `pulumi up` on its programs,
+  then `colmena apply` on its hive, from the command line or an HTTP API
+  (`fleetkit serve`), or as a GitOps server that deploys the estate repo's
+  branch (`fleetkit serve --repo`, `nixosModules.fleetkit-server`), driven by
+  GitHub Actions through `actions/deploy` (which can join a Tailscale or
+  Headscale tailnet first; `examples/github/fleetkit.yml`).
+  Experimental; see `docs/pulumi.md`.
 - `providers/` pinned provider schemas the guest model is checked against.
+- Add-ons: an estate switches on extra providers or runners in its
+  declaration (`fleet.estates.<e>.addons`, off by default). `ansible` runs
+  playbooks against the estate's guests in its guests stack, through the
+  pinned `ansible/ansible` provider; see `docs/addons.md`.
 - `docs/` the model's decisions: `guest-model.md`, `guest-provider-map.md`,
-  `deploy.md`, `tenants.md`, `schema-todo.md` (the inventory of untyped blocks).
+  `deploy.md`, `tenants.md`, `addons.md`, `schema-todo.md` (the inventory of
+  untyped blocks).
 - `docs/secrets.md` host keys, operators and readers in the model, the
   rendered and checked `.sops.yaml`, and the re-key recipe. The kit never
   decrypts.
+- `lib.secrets`, `nixosModules.secrets`, `packages.<system>.secrets`,
+  `templates.data`: the secrets utility (ADR-0009, ADR-0017). A secrets data
+  repository (sops files and their registry) is one `lib.secrets.mkData` call;
+  the `secrets` command renders, checks, scans and re-keys it. See
+  `docs/registry.md` and `docs/secrets.md`.
 - `tools/gates.sh` parse, eval, lint and provider fidelity. Checks that need
   real data (negative cases, parity) run in the estate repo.
 

@@ -30,7 +30,8 @@ estate is the first tenant; its declaration lives in
    Anything else fails evaluation, `mkForce` included.
 2. The grant (`modules/guests.nix`, `grantAssertions`): a guest's pool is a
    pool of its own estate, its vmid is inside the pool's vmid ranges and its
-   address inside the pool's host ranges.
+   address inside the pool's host ranges. A guest with `pool = "none"` (in no
+   pool) is held to the ranges of the estate's `placement.pool`.
 3. Everything the model already checked (references, collisions, secret refs
    per estate, storage on the node, ...), now across both repos.
 
@@ -42,3 +43,11 @@ runner copies the tenant slice next to the lab copy (`.xgcs/fleet/...`).
 A change is a pull request in the tenant repo. Here: `nix flake update xgcs`,
 then `tools/gates.sh`. To try an unmerged branch:
 `nix eval .#fleet --override-input xgcs path:<checkout>`.
+
+A tenant change that uses options of a newer kit needs the lab's fleetkit
+lock bumped first: the lab evaluates the tenant's declaration with the lab's
+kit, so an option the lab's kit does not have is an evaluation error. For the
+GitHub options (`repos.<tenant>.<key>.actions.*`, `labels`, `files`,
+`runners`) and what the kit bump stops rendering, the order across the two
+repositories is in `docs/github.md`, "A tenant: two repositories, a fixed
+order".

@@ -40,6 +40,7 @@ in
     ./operators.nix
     ./repos.nix
     ./guests.nix
+    ./addons.nix
   ];
 
   options = {

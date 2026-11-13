@@ -28,15 +28,33 @@ addressed the same way (`network_device.bridge`). A model path may have
 several lines (one per kind or per target block). Every path in
 `fleet.report.guestOptionPaths` needs at least one line.
 
-Provider arguments derived without a model option of their own: vm `name`
-(= the guest name) and lxc `initialization.hostname` defaulting to the guest
-name.
+Provider arguments that default to the guest name: vm `name` and lxc
+`initialization.hostname`, both from `initialization.hostname` when it is set
+(for a vm only the guest's own, never `guestDefaults`).
+
+`lifecycle.ignore_changes` holds `ignoreChanges` plus what the kit adds by
+itself: `clone` for a guest with `source.clone`, `description` for a
+container with `lxcExtraConf`, and, for a guest whose layered
+`adoption.unrecorded` is `"ignore"`, the arguments an import does not record
+(container: `cpu`, `memory`, `vm_id`, `console`; vm: `cpu`, `memory`,
+`scsi_hardware`, `agent`, `operating_system`, `efi_disk`). The extra `meta`
+lines below; the reasons are in `guest-model.md`, "Adopting existing guests".
+
+Not a guest option, so not in the list: the pool's comment,
+`fleet.estates.<estate>.pools.proxmox.<pool>.comment` =>
+`proxmox_virtual_environment_pool.comment` (rendered when set); and a site
+image's `source`, `fleet.sites.<site>.images.<image>.{source,fileName,datastore,node,contentType}` =>
+`proxmox_virtual_environment_file.<image>.{source_file.path,source_file.file_name,datastore_id,node_name,content_type}`,
+rendered by the estate whose managed guests use the image, each of which gets
+`depends_on` that upload (and a clone of a managed template of the same
+estate, `depends_on` the template).
 
 ## Mappings
 
 ```text
 both: vmid => vm_id
 both: on => node_name
+none: hostKeys.age => the guest's age recipient (age1...); feeds the estate's sops recipients (fleet.report.sops) and wins over the ssh key, not a provider argument
 none: hostKeys.ed25519 => the guest's ssh host public key; feeds the estate's sops recipients (fleet.report.sops), not a provider argument
 none: kind => selects the resource type: lxc = proxmox_virtual_environment_container, vm = proxmox_virtual_environment_vm
 none: id => model identity "<estate>/<name>", read-only
@@ -46,10 +64,12 @@ none: substrate => model role tags, checked against fleet.estates.<estate>.subst
 both: description => description
 both: tags => tags
 both: pool => pool_id
+none: pool => the value "none" renders no pool_id: the guest is in no pool
 both: effectivePool => pool_id
 meta: protect => lifecycle.prevent_destroy
 both: protection => protection
 meta: ignoreChanges => lifecycle.ignore_changes
+meta: adoption.unrecorded => lifecycle.ignore_changes
 lxc: startOnBoot => start_on_boot
 vm: startOnBoot => on_boot
 both: started => started
@@ -70,29 +90,47 @@ lxc: features.fuse => features.fuse
 lxc: features.mount => features.mount
 lxc: unprivileged => unprivileged
 lxc: console.type => console.type
+lxc: console.omit => console
 lxc: environment => environment_variables
 lxc: defaultDatastore => disk.datastore_id
 lxc: defaultDatastore => mount_point.volume
 vm: defaultDatastore => disk.datastore_id
+vm: defaultDatastore => efi_disk.datastore_id
 lxc: initialization.hostname => initialization.hostname
+vm: initialization.hostname => name
 both: initialization.dns.servers => initialization.dns.servers
 both: initialization.dns.domain => initialization.dns.domain
 both: initialization.userAccount.keys => initialization.user_account.keys
 vm: initialization.userAccount.username => initialization.user_account.username
 both: source.osType => operating_system.type
 lxc: source.template => operating_system.template_file_id
+both: source.clone.guest => clone.vm_id
+both: source.clone.guest => clone.node_name
 both: source.clone.vmid => clone.vm_id
 both: source.clone.datastore => clone.datastore_id
 both: source.clone.full => clone.full
 both: source.clone.node => clone.node_name
 vm: source.cdrom.image => cdrom.file_id
+vm: source.image => disk.import_from
 vm: source.cdrom.interface => cdrom.interface
+meta: source.clone.vmid => lifecycle.ignore_changes
+meta: source.clone.guest => lifecycle.ignore_changes
+vm: vm.template => template
+vm: vm.template => started
+vm: vm.template => on_boot
 vm: vm.agent => agent.enabled
 vm: vm.bios => bios
 vm: vm.machine => machine
 vm: vm.serialDevices => serial_device.device
 vm: vm.cloudInit.datastore => initialization.datastore_id
 vm: vm.cloudInit.type => initialization.type
+vm: vm.cloudInit.interface => initialization.interface
+vm: vm.cloudInit.upgrade => initialization.upgrade
+vm: vm.scsiHardware => scsi_hardware
+vm: vm.efiDisk.datastore => efi_disk.datastore_id
+vm: vm.efiDisk.fileFormat => efi_disk.file_format
+vm: vm.efiDisk.type => efi_disk.type
+vm: vm.efiDisk.preEnrolledKeys => efi_disk.pre_enrolled_keys
 lxc: networkInterfaces.*.name => network_interface.name
 none: networkInterfaces.*.network => site network NAME: keys ipv4.<network> and supplies the prefix and gateway defaults (the vm network_device has no name either)
 lxc: networkInterfaces.*.bridge => network_interface.bridge
@@ -145,5 +183,10 @@ vm: hostpci.*.pcie => hostpci.id
 vm: hostpci.*.pcieExpress => hostpci.pcie
 vm: hostpci.*.rombar => hostpci.rombar
 vm: hostpci.*.xvga => hostpci.xvga
+lxc: idmap.*.type => idmap.type
+lxc: idmap.*.containerId => idmap.container_id
+lxc: idmap.*.hostId => idmap.host_id
+lxc: idmap.*.size => idmap.size
+meta: lxcExtraConf => lifecycle.ignore_changes
 companion: lxcExtraConf => terraform_data.<guest>-lxc-conf (local-exec over root ssh: rewrites the "# BEGIN/END fleetkit lxc_extra_conf" block of /etc/pve/lxc/<vmid>.conf, reboots the CT if running)
 ```

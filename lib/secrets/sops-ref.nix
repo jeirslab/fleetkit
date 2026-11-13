@@ -2,7 +2,7 @@
 # renderers (terraform.nix, github.nix). Evaluation only.
 #
 #   import ./sops-ref.nix { fleet; estate; where; } ref
-#     -> { name; path; key; expr; }
+#     -> { name; path; key; extract; expr; }
 #
 # The ref is resolved through the secrets of the estate it NAMES, whichever
 # estate is rendered. `name` is the data.sops_file alias: the file alias, or
@@ -23,6 +23,9 @@ let
   files = fleet.estates.${owner}.secrets.files or { };
   name = if owner == estate then file else "${owner}_${file}";
   key = builtins.replaceStrings [ "/" ] [ "." ] (builtins.elemAt m 2);
+  # The key path as sops --extract takes it (the deploy runner decrypts
+  # backend credentials with it).
+  extract = builtins.filter builtins.isString (builtins.split "/" (builtins.elemAt m 2));
 in
 if m == null then
   throw "${where}: reference \"${ref}\" is not sops:<estate>/<file>#<key>"
@@ -32,7 +35,7 @@ else if !(files ? ${file}) then
   throw "${where}: reference \"${ref}\": fleet.estates.${owner}.secrets.files has no \"${file}\""
 else
   {
-    inherit name key;
+    inherit name key extract;
     inherit (files.${file}) path;
     expr = "\${data.sops_file.${name}.data[\"${key}\"]}";
   }

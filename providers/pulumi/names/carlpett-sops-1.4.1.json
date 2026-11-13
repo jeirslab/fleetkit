@@ -1,0 +1,52 @@
+{
+ "bridge": "1.4.0",
+ "dataSources": {
+  "sops_external": {
+   "f": {
+    "data": {
+     "map": true,
+     "n": "data"
+    },
+    "id": {
+     "n": "id"
+    },
+    "input_type": {
+     "n": "inputType"
+    },
+    "raw": {
+     "n": "raw"
+    },
+    "source": {
+     "n": "source"
+    }
+   },
+   "token": "sops:index/getExternal:getExternal"
+  },
+  "sops_file": {
+   "f": {
+    "data": {
+     "map": true,
+     "n": "data"
+    },
+    "id": {
+     "n": "id"
+    },
+    "input_type": {
+     "n": "inputType"
+    },
+    "raw": {
+     "n": "raw"
+    },
+    "source_file": {
+     "n": "sourceFile"
+    }
+   },
+   "token": "sops:index/getFile:getFile"
+  }
+ },
+ "package": "sops",
+ "provider": {},
+ "resources": {},
+ "source": "carlpett/sops",
+ "version": "1.4.1"
+}

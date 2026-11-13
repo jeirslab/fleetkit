@@ -1,0 +1,491 @@
+"""fleetkit command line.
+
+  fleetkit estates                       estates and their Pulumi stacks
+  fleetkit render ESTATE [STACK]         write the Pulumi projects, print where
+  fleetkit preview ESTATE [options]      pulumi preview + colmena build
+  fleetkit deploy ESTATE [options]       pulumi up + colmena apply
+  fleetkit adopt ESTATE [options]        import what already exists into state
+  fleetkit forget ESTATE STACK URN       drop a resource the program no longer has from state
+  fleetkit serve [--listen ...]          the same deploys over HTTP (api.py)
+  fleetkit tools [list|check|NAME ...]   the repo's custom tools (tools_main.py)
+  fleetkit tailnet versions [options]    Tailscale client versions of the tailnets (tailnet.py)
+
+Run from the estate repo (or pass --flake / set FLEETKIT_FLAKE). Pulumi state
+goes to PULUMI_BACKEND_URL, which must be set; PULUMI_CONFIG_PASSPHRASE(_FILE)
+(or the backend's passphraseRef) encrypts its secrets; SOPS_AGE_KEY_FILE decrypts the model's.
+"""
+from __future__ import annotations
+
+import contextlib
+import json
+import os
+import signal
+import sys
+from pathlib import Path
+
+import click
+
+from . import adopt as adoption
+from . import forget as forgetting
+from . import guard, pipeline, render
+from .events import Cancelled, Emitter
+from .settings import Settings, SettingsError
+
+
+def _settings(ctx: click.Context) -> Settings:
+    try:
+        return Settings.from_env(ctx.obj["flake"], ctx.obj["state_dir"])
+    except SettingsError as e:
+        raise click.ClickException(str(e))
+
+
+@contextlib.contextmanager
+def _signals(ev: Emitter):
+    """SIGINT, SIGTERM and SIGHUP become a cancel of the run instead of
+    killing the process where it stands: the engine (started in its own
+    session, infra.OwnedPulumi) is told to stop after the step in flight, the
+    run ends through its `finally` blocks (the temporary program of an
+    adoption is removed, the run's directory too), and what was done is
+    reported. A second signal makes the engine terminate at once."""
+    def handler(signum, frame):  # noqa: ARG001
+        click.secho(f"{signal.Signals(signum).name}: stopping (again: at once)", fg="red", err=True)
+        ev.cancel()
+
+    old = {}
+    try:
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            old[sig] = signal.signal(sig, handler)
+    except ValueError:  # not the main thread: the caller owns the signals
+        pass
+    try:
+        yield
+    finally:
+        for sig, h in old.items():
+            signal.signal(sig, h)
+
+
+def _cancelled(e: Exception) -> click.ClickException:
+    text = str(e)
+    return click.ClickException("cancelled" if text in ("", "cancelled") else f"cancelled: {text}")
+
+
+def _printer(as_json: bool):
+    def sink(e: dict) -> None:
+        if as_json:
+            click.echo(json.dumps(e))
+            return
+        if e["kind"] == "log":
+            click.echo(f"  {e['stage']:>6} | {e['line']}")
+        elif e["kind"] == "plan" and e["stage"] == "infra":
+            # Every resource that is not `same`, by op: read this, not the counts.
+            for line in e["text"]:
+                click.secho(line, fg="red" if "refuse" in line.lower() else "yellow", err=True)
+        else:
+            rest = {k: v for k, v in e.items() if k not in ("ts", "stage", "kind", "trace")}
+            click.secho(f"[{e['stage']}] {e['kind']} {json.dumps(rest) if rest else ''}",
+                        fg="red" if e["kind"] in ("error", "failed-step") else "cyan", err=True)
+    return sink
+
+
+@click.group()
+@click.option("--flake", envvar="FLEETKIT_FLAKE", help="The estate repo (default: cwd).")
+@click.option("--state-dir", envvar="FLEETKIT_STATE_DIR",
+              help="Work dirs and job logs (default: <flake>/.fleet/fleetkit).")
+@click.option("--tools-dir", envvar="FLEETKIT_TOOLS_DIR",
+              help="The custom tools' directory in the repo (default: tools_dir of fleetkit.toml, else tools).")
+@click.pass_context
+def cli(ctx: click.Context, flake: str | None, state_dir: str | None, tools_dir: str | None) -> None:
+    ctx.obj = {"flake": flake, "state_dir": state_dir, "tools_dir": tools_dir}
+
+
+@cli.command()
+@click.pass_context
+def estates(ctx: click.Context) -> None:
+    """Estates and their Pulumi stacks."""
+    s = _settings(ctx)
+    for e, stacks in sorted(render.estates(s).items()):
+        click.echo(f"{e}: {' '.join(stacks)}")
+
+
+@cli.command("render")
+@click.argument("estate")
+@click.argument("stack", required=False)
+@click.pass_context
+def render_cmd(ctx: click.Context, estate: str, stack: str | None) -> None:
+    """Write the Pulumi project of each stack and print its directory.
+
+    The directory is this command's own (<state>/runs/...): no deploy reads
+    it. It is the program a deploy would run, every guest protected, and is
+    removed by a later run once it is a day old."""
+    s = _settings(ctx)
+    ev = Emitter(lambda e: None)
+    run = render.Run(s, "render", keep=True)
+    for name, st in render.stacks_of(s, estate, [stack] if stack else None).items():
+        project = render.render(s, name, st, ev, run)
+        click.echo(f"{project.wd}  (program {st['file']} sha256 {project.sha256})")
+
+
+def _deploy_options(f):
+    for opt in reversed([
+        click.option("--stack", "stacks", multiple=True, help="Pulumi stack (repeat; default all)."),
+        click.option("--no-infra", is_flag=True, help="Skip Pulumi."),
+        click.option("--no-nixos", is_flag=True, help="Skip Colmena."),
+        click.option("--hive", help="Hive under hives.* (default: the estate)."),
+        click.option("--on", multiple=True, help="Colmena --on (node or @tag; repeat)."),
+        click.option("--refresh", is_flag=True, help="Refresh Pulumi state first."),
+        click.option("--target", "targets", multiple=True, help="Pulumi --target URN (repeat)."),
+        click.option("--allow-replace", multiple=True, metavar="[STACK/]KEY",
+                     help="A guest this deploy may replace: destroy and recreate (repeat). STACK/KEY, a URN, or a KEY "
+                          "that only one stack of the run has."),
+        click.option("--allow-delete", multiple=True, metavar="[STACK/]KEY",
+                     help="A guest this deploy may delete (repeat). STACK/KEY, a URN, or a KEY "
+                          "that only one stack of the run has."),
+        click.option("--allow-update", multiple=True, metavar="[STACK/]KEY",
+                     help="A guest this deploy may update in place: a reboot (repeat). STACK/KEY, a URN, or a KEY "
+                          "that only one stack of the run has."),
+        click.option("--allow-create", multiple=True, metavar="[STACK/]KEY",
+                     help="A guest this deploy may create although the stack declares it as already existing "
+                          "(it has an adoption id and is not in state), or an HA resource it may create "
+                          "(repeat). STACK/KEY, a URN, or a KEY that only one stack of the run has."),
+        click.option("--json", "as_json", is_flag=True, help="Events as JSON lines on stdout."),
+    ]):
+        f = opt(f)
+    return f
+
+
+def _run(ctx: click.Context, estate: str, preview: bool, goal: str, kw: dict) -> None:
+    s = _settings(ctx)
+    req = pipeline.DeployRequest(
+        estate=estate, stacks=list(kw["stacks"]) or None, infra=not kw["no_infra"],
+        nixos=not kw["no_nixos"], hive=kw["hive"], on=list(kw["on"]), goal=goal,
+        preview=preview, refresh=kw["refresh"], targets=list(kw["targets"]),
+        allow_replace=list(kw["allow_replace"]), allow_delete=list(kw["allow_delete"]),
+        allow_update=list(kw["allow_update"]), allow_create=list(kw["allow_create"]))
+    ev = Emitter(_printer(kw["as_json"]))
+    try:
+        with _signals(ev):
+            result = pipeline.run(s, req, ev)
+    except Cancelled as e:
+        if kw["as_json"] and e.result is not None:
+            click.echo(json.dumps({"cancelled": True, **ev.redact(e.result)}))
+        raise _cancelled(e)
+    except KeyboardInterrupt:
+        ev.cancel()
+        raise click.ClickException("interrupted")
+    except guard.GuardError as e:
+        if kw["as_json"] and e.result is not None:
+            click.echo(json.dumps({"refused": True, **ev.redact(e.result)}))
+        raise click.ClickException(ev.redact(str(e)))
+    except Exception as e:  # noqa: BLE001 - shown as the command's error
+        if ev.cancelled:
+            raise click.ClickException(ev.redact(f"cancelled ({type(e).__name__}: {e})"))
+        text = str(e) if type(e).__name__ == "EngineError" else f"{type(e).__name__}: {e}"
+        raise click.ClickException(ev.redact(text))
+    click.secho(json.dumps(result), fg="green", err=not kw["as_json"])
+
+
+@cli.command()
+@click.argument("estate")
+@_deploy_options
+@click.pass_context
+def preview(ctx: click.Context, estate: str, **kw) -> None:
+    """pulumi preview of each stack, then colmena build. Changes nothing.
+
+    Lists every resource that would change, by op, and which of them a deploy
+    would refuse without --allow-replace / --allow-delete / --allow-update /
+    --allow-create."""
+    _run(ctx, estate, True, "switch", kw)
+
+
+@cli.command()
+@click.argument("estate")
+@click.option("--goal", type=click.Choice(["switch", "test", "boot", "dry-activate"]), default="switch")
+@_deploy_options
+@click.pass_context
+def deploy(ctx: click.Context, estate: str, goal: str, **kw) -> None:
+    """pulumi up of each stack, then colmena apply GOAL.
+
+    Every stack is previewed first. A plan that replaces, deletes or updates a
+    guest (a Proxmox container or VM) is refused, with nothing applied, unless
+    the guest is named: --allow-replace KEY, --allow-delete KEY,
+    --allow-update KEY (an in-place update reboots a container). So is the
+    create of a guest the stack declares as already existing (it has an
+    adoption id and is not in state: adopt it, or --allow-create KEY). KEY is
+    STACK/KEY, a URN, or a key only one stack of the run has. Each up is bound
+    to the plan of its preview (the engine refuses anything else), and every
+    guest that is not named is protected for the run. Ctrl-C stops the engine
+    after the step in flight; again, at once."""
+    _run(ctx, estate, False, goal, kw)
+
+
+@cli.command("adopt")
+@click.argument("estate")
+@click.option("--stack", "stacks", multiple=True, help="Pulumi stack (repeat; default all).")
+@click.option("--resource", "resources", multiple=True, metavar="KEY",
+              help="Only these resources (repeat; default every resource with an adoption id but secrets, "
+                   "which are adopted only when named here).")
+@click.option("--id", "ids", multiple=True, metavar="KEY=ID",
+              help="The provider's import id of a resource (repeat); overrides the stack's adoptIds.")
+@click.option("--accept-update", multiple=True, metavar="KEY",
+              help="Adopt KEY although its declaration differs, or the import does not record some of its "
+                   "properties: it is updated in place (a guest REBOOTS).")
+@click.option("--accept-absent", multiple=True, metavar="KEY",
+              help="With --apply: the guest KEY, for which nothing was found by its id, really does not exist "
+                   "(repeat). Without it an absent guest refuses the apply: one that exists under another id "
+                   "would be created a second time by the next deploy.")
+@click.option("--apply", "apply_", is_flag=True, help="Adopt. Without it: the report only, nothing changes.")
+@click.option("--json", "as_json", is_flag=True, help="The report as one JSON document on stdout.")
+@click.pass_context
+def adopt_cmd(ctx: click.Context, estate: str, stacks: tuple[str, ...], resources: tuple[str, ...],
+              ids: tuple[str, ...], accept_update: tuple[str, ...], accept_absent: tuple[str, ...], apply_: bool,
+              as_json: bool) -> None:
+    """Import resources that already exist into a stack's state.
+
+    For each resource with an adoption id that is not in state yet: `import`
+    (the declaration equals the live resource), `import+update` with what
+    differs (live and declared), `import+unrecorded` (the import does not
+    record some properties: still an update, a reboot of a guest),
+    `import+local` (a guest that differs only in its provider-local timeouts:
+    nothing is sent to the hypervisor, no reboot, nothing to accept), `absent`
+    (it does not exist: a deploy will create it), `secret` (not adopted unless
+    named with --resource), `duplicate` (its id is in state under another
+    name, in any stack of the estate, or twice in this run: refused). --apply
+    refuses an update that is not accepted with --accept-update KEY, an
+    absent guest that is not accepted with --accept-absent KEY, and any plan
+    that creates, replaces or deletes. The import id is only ever in a
+    temporary program, never in the real one."""
+    s = _settings(ctx)
+    pairs: dict[str, str] = {}
+    for pair in ids:
+        key, sep, rid = pair.partition("=")
+        if not sep or not key or not rid:
+            raise click.ClickException(f"--id takes KEY=ID, not {pair!r}")
+        pairs[key] = rid
+
+    def sink(e: dict) -> None:  # stdout carries the report only
+        if e["kind"] == "log":
+            click.echo(f"  {e['stage']:>6} | {e['line']}", err=True)
+        elif e["kind"] in ("diagnostic", "error", "failed-step"):
+            rest = {k: v for k, v in e.items() if k not in ("ts", "stage", "kind", "trace")}
+            click.secho(f"[{e['stage']}] {e['kind']} {json.dumps(rest)}", fg="red", err=True)
+
+    ev = Emitter(sink)
+    try:
+        with _signals(ev):
+            report = adoption.run(s, estate, ev, list(stacks) or None, list(resources), pairs,
+                                  list(accept_update), apply_, list(accept_absent))
+    except Cancelled as e:
+        raise _cancelled(e)
+    except KeyboardInterrupt:
+        ev.cancel()
+        raise click.ClickException("interrupted")
+    except Exception as e:  # noqa: BLE001 - shown as the command's error
+        if ev.cancelled:
+            raise click.ClickException(ev.redact(f"cancelled ({type(e).__name__}: {e})"))
+        raise click.ClickException(ev.redact(f"{type(e).__name__}: {e}"))
+    if as_json:
+        click.echo(json.dumps(report, indent=1))
+    else:
+        for line in adoption.text(report):
+            click.echo(line)
+    if not report["ok"]:
+        ctx.exit(1)
+
+
+@cli.command("forget")
+@click.argument("estate")
+@click.argument("stack")
+@click.argument("urn")
+@click.option("--apply", "apply_", is_flag=True, help="Remove it. Without it: the checks and the report only.")
+@click.option("--json", "as_json", is_flag=True, help="The report as one JSON document on stdout.")
+@click.pass_context
+def forget_cmd(ctx: click.Context, estate: str, stack: str, urn: str, apply_: bool, as_json: bool) -> None:
+    """Drop one resource from a stack's state (`pulumi state delete`); nothing real is touched.
+
+    For a resource the stack's program no longer declares and the state still
+    holds, protected, so that every preview fails on it (a retired guest).
+    Refused unless the URN is absent from the rendered program and present in
+    state; a Proxmox guest is refused unless its vmid is absent from the
+    cluster the stack's provider points at. --apply unprotects and deletes it.
+    The engine's refusal of a resource others depend on stands."""
+    s = _settings(ctx)
+
+    def sink(e: dict) -> None:  # stdout carries the report only
+        if e["kind"] == "log":
+            click.echo(f"  {e['stage']:>6} | {e['line']}", err=True)
+        elif e["kind"] in ("diagnostic", "error", "failed-step"):
+            rest = {k: v for k, v in e.items() if k not in ("ts", "stage", "kind", "trace")}
+            click.secho(f"[{e['stage']}] {e['kind']} {json.dumps(rest)}", fg="red", err=True)
+
+    ev = Emitter(sink)
+    try:
+        with _signals(ev):
+            report = forgetting.run(s, estate, stack, urn, ev, apply_)
+    except Cancelled as e:
+        raise _cancelled(e)
+    except KeyboardInterrupt:
+        ev.cancel()
+        raise click.ClickException("interrupted")
+    except Exception as e:  # noqa: BLE001 - shown as the command's error
+        if ev.cancelled:
+            raise click.ClickException(ev.redact(f"cancelled ({type(e).__name__}: {e})"))
+        known = isinstance(e, (forgetting.ForgetError, render.RenderError))
+        raise click.ClickException(ev.redact(str(e) if known else f"{type(e).__name__}: {e}"))
+    if as_json:
+        click.echo(json.dumps(report, indent=1))
+    else:
+        for line in forgetting.text(report):
+            click.echo(line)
+
+
+@cli.command()
+@click.option("--repo", envvar="FLEETKIT_REPO",
+              help="GitOps: the estate repo's git URL; each deploy runs from a checkout of its commit.")
+@click.option("--listen", default="127.0.0.1:8740", show_default=True, help="host:port")
+@click.option("--token-file", envvar="FLEETKIT_API_TOKEN_FILE", help="File holding the bearer token.")
+@click.option("--tokens-file", envvar="FLEETKIT_API_TOKENS_FILE",
+              help="JSON file of named, scoped tokens (tokens.py; docs/pulumi.md, \"Scoped tokens\").")
+@click.option("--no-auth", is_flag=True, help="No token; allowed only on a loopback address.")
+@click.option("--workers", default=4, show_default=True, help="Estates deploying at once.")
+@click.pass_context
+def serve(ctx: click.Context, repo: str | None, listen: str, token_file: str | None,
+          tokens_file: str | None, no_auth: bool, workers: int) -> None:
+    """Serve deploys over HTTP (see `fleetkit serve --help` and api.py)."""
+    import uvicorn
+
+    from . import tokens
+    from .api import create_app
+    from .jobs import JobManager
+
+    host, _, port = listen.rpartition(":")
+    token = os.environ.get("FLEETKIT_API_TOKEN")
+    if token_file:
+        token = Path(token_file).read_text().strip()
+    if token_file and not token and not no_auth:
+        raise click.ClickException(f"the token file {token_file} is empty")
+    if no_auth:
+        if host not in ("127.0.0.1", "::1", "localhost"):
+            raise click.ClickException("--no-auth is only allowed on a loopback address")
+        if tokens_file:
+            raise click.ClickException("--no-auth and a tokens file (FLEETKIT_API_TOKENS_FILE): without auth "
+                                       "every request may do everything, so the scopes would mean nothing")
+        token = None
+    token = token or None
+    # A tokens file that cannot be used as written stops the server here: it
+    # never runs with fewer tokens than were configured.
+    try:
+        scoped = tokens.load(tokens_file) if tokens_file else []
+        tokens.Authenticator(token, scoped)
+    except tokens.TokenError as e:
+        raise click.ClickException(str(e))
+    if not no_auth and not token and not scoped:
+        raise click.ClickException("no token: set FLEETKIT_API_TOKEN(_FILE) or pass --token-file, or name "
+                                   "scoped tokens in FLEETKIT_API_TOKENS_FILE")
+    try:
+        s = Settings.from_env(ctx.obj["flake"], ctx.obj["state_dir"], repo)
+    except SettingsError as e:
+        raise click.ClickException(str(e))
+    gitops = None
+    if s.git is None:
+        def runner(req, ev):
+            if req.rev:
+                raise ValueError("rev needs a server with a repo (--repo / FLEETKIT_REPO)")
+            return pipeline.run(s, req, ev)
+        manager = JobManager(s.state_dir, runner, workers)
+    else:
+        from .gitops import GitOps, Repo, make_runner
+
+        git = Repo(s)
+
+        runner = make_runner(s, git)
+
+        manager = JobManager(s.state_dir, runner, workers)
+        gitops = GitOps(s, git, manager)
+        gitops.start_polling()
+    uvicorn.run(create_app(manager, s, token, gitops, scoped), host=host or "127.0.0.1", port=int(port),
+                log_level="info")
+
+
+@cli.group("tailnet")
+def tailnet_group() -> None:
+    """Tailnets declared in fleetkit.toml ([[tailnets]]); see tailnet.py."""
+
+
+@tailnet_group.command("versions")
+@click.option("--format", "fmt", type=click.Choice(["table", "markdown", "json"]), default="table",
+              help="What is printed on stdout.")
+@click.option("--summary-file", type=click.Path(path_type=Path),
+              help="Also append the Markdown report to this file (GITHUB_STEP_SUMMARY).")
+@click.option("--json-file", type=click.Path(path_type=Path), help="Also write the JSON report here.")
+@click.option("--only", multiple=True, help="Only this tailnet (repeat).")
+@click.option("--fleet-host", "fleet_hosts", multiple=True,
+              help="A fleet host name, instead of asking nix for .#nixosConfigurations (repeat).")
+@click.option("--fail-on-stale-fleet", is_flag=True, help="Exit 1 when a fleet NixOS host is stale.")
+@click.option("--set-auto-update-default", is_flag=True,
+              help="Turn on the Tailscale cloud tailnet-wide default for device auto-update "
+                   "(PATCH /api/v2/tailnet/-/settings devicesAutoUpdatesOn). Changes the tailnet.")
+@click.pass_context
+def tailnet_versions(ctx: click.Context, fmt: str, summary_file: Path | None, json_file: Path | None,
+                     only: tuple[str, ...], fleet_hosts: tuple[str, ...], fail_on_stale_fleet: bool,
+                     set_auto_update_default: bool) -> None:
+    """The Tailscale client version of every node, asked of the control servers.
+
+    Exit 0 whatever the report says; --fail-on-stale-fleet exits 1 when a
+    NixOS host of the fleet is behind the version of the package flake."""
+    from . import tailnet as tn
+
+    repo = Path(ctx.obj["flake"] or os.getcwd()).resolve()
+    sops = os.environ.get("FLEETKIT_SOPS", "sops")
+    try:
+        nets, latest_cfg = tn.load_config(repo)
+        nets = [t for t in nets if not only or t.name in only]
+        if not nets:
+            raise tn.TailnetError("no tailnet matches --only")
+        latest = tn.package_latest(latest_cfg)
+        root = os.environ.get("FLEETKIT_SECRETS_ROOT") or latest_cfg.get("secrets_root")
+        sroot = (repo / root).resolve() if root else None
+        hosts = {h.lower() for h in fleet_hosts} or tn.fleet_hosts_from_flake(repo, os.environ.get("FLEETKIT_NIX", "nix"))
+        rep = tn.collect(nets, latest, tn.upstream_latest(), hosts, lambda t: tn.resolve_secret(repo, t.secret, sops, sroot),
+                         set_auto=set_auto_update_default)
+    except tn.TailnetError as e:
+        raise click.ClickException(str(e))
+    click.echo({"table": tn.render_text, "markdown": tn.render_markdown,
+                "json": lambda r: json.dumps(r.to_json(), indent=2)}[fmt](rep))
+    if summary_file:
+        with summary_file.open("a") as f:
+            f.write(tn.render_markdown(rep))
+    if json_file:
+        json_file.write_text(json.dumps(rep.to_json(), indent=2) + "\n")
+    if fail_on_stale_fleet and rep.stale_fleet():
+        sys.exit(1)
+
+
+@cli.command("tools", add_help_option=False,
+             context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@click.pass_context
+def tools_cmd(ctx: click.Context, args: tuple[str, ...]) -> None:
+    """The custom tools of the repo: `tools list`, `tools check`, `tools NAME ...`.
+
+    Each folder of the tools directory is a tool (docs/tools.md). They run in a
+    venv built from their requirements.txt files."""
+    from . import tools_env, tools_main
+
+    repo = Path(ctx.obj["flake"] or os.getcwd()).resolve()
+    tdir = tools_env.tools_dir(repo, ctx.obj["tools_dir"])
+    if list(args) == ["list"]:  # needs no packages: no venv
+        for line in tools_main.listing(tdir):
+            click.echo(line)
+        return
+    try:
+        tools_env.run(repo, tdir, list(args))
+    except RuntimeError as e:
+        raise click.ClickException(str(e))
+
+
+def main() -> None:
+    cli(prog_name="fleetkit")
+
+
+if __name__ == "__main__":
+    sys.exit(main())

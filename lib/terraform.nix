@@ -7,13 +7,27 @@
 #   } -> { terraform; provider; data; resource; locals; }
 #
 # Resource address: <resource type>.<guest name>. Only `managed` guests are
-# rendered; the rest are listed under locals.fleet_unmanaged. Credentials are
+# rendered; the rest are listed under locals.fleet_unmanaged. An image with a
+# `source` that a managed guest uses is uploaded by
+# proxmox_virtual_environment_file.<image name>, and the guest depends on it,
+# as a clone does on the template it names when that is a managed guest of
+# this estate. Credentials are
 # never literals: api_token reads placement.tokenRef, or the provider's
 # tokenRef when that is null, through data.sops_file.<file alias of the ref>
 # (<estate>_<alias> when the file is another estate's). The provider is
 # placement.provider, or the one site's provider the guests are on.
-# Companions (lxc_extra_conf) are not rendered yet; the guests that have any
-# are listed under locals.fleet_unrendered_companions.
+# Companions (lxc_extra_conf) are not rendered, here or in the Pulumi program
+# compiled from this: the raw lxc.conf lines of such a guest are applied by
+# nothing the kit renders. The guests that have any are listed under
+# locals.fleet_unrendered_companions (the Pulumi program's outputs).
+#
+# Add-ons (fleet.estates.<e>.addons, modules/addons.nix) add their providers
+# and resources only when the estate switches them on; an estate that does not
+# renders exactly as without them. Ansible (lib/ansible.nix):
+# ansible_playbook.<playbook name>, after its guest. A playbook's name must not
+# be the name of another resource of the render: the Pulumi program keys
+# resources by name (lib/pulumi.nix), and a shared name would change the key
+# of the guest.
 {
   lib,
   fleet,
@@ -33,8 +47,8 @@ let
 
   provOf = site: fleet.sites.${site}.providers.proxmox;
 
-  where = "mkTerraform: fleet.estates.${estate}";
-  sopsRef = import ./sops-ref.nix { inherit fleet estate where; };
+  where = "mkPulumi: fleet.estates.${estate}";
+  sopsRef = import ./secrets/sops-ref.nix { inherit fleet estate where; };
 
   # One provider. With a placement it is placement.provider; without one it is
   # the proxmox provider of the one site the managed guests and pools are on.
@@ -90,13 +104,53 @@ let
       api_token = token.expr;
     };
 
+  lastSeg = s: lib.last (lib.splitString "/" s);
+
+  # The uploads: every image with a source a managed guest uses. Their site is
+  # the provider's (an image is of its guest's site, checked by the model).
+  uploads = lib.unique (lib.concatMap (n: views.${n}.dependsOn.images) (lib.attrNames managed));
+  imageOf =
+    id: fleet.sites.${siteOf id}.images.${lastSeg id};
+  fileResources = lib.listToAttrs (
+    map (
+      id:
+      let
+        img = imageOf id;
+      in
+      lib.nameValuePair (lastSeg id) {
+        node_name = lastSeg img.node;
+        datastore_id = lastSeg img.datastore;
+        content_type = img.contentType;
+        source_file = {
+          # The path as text: the program is written to the store by
+          # builtins.toFile, which takes no reference to a build output.
+          # Evaluation does not build the image; the deploy's host must have it.
+          path = builtins.unsafeDiscardStringContext (toString img.source);
+          file_name = img.fileName;
+        };
+      }
+    ) uploads
+  );
+
+  # A guest's dependencies, as Terraform addresses: the uploads of its images,
+  # and the template it clones when this render creates that too.
+  dependsOn =
+    name:
+    let
+      d = views.${name}.dependsOn;
+      tmpl = map lastSeg (lib.filter (id: lib.hasPrefix "${estate}/" id && managed ? ${lastSeg id}) d.guests);
+    in
+    map (id: "proxmox_virtual_environment_file.${lastSeg id}") d.images
+    ++ map (n: "${views.${n}.resource}.${n}") tmpl;
+
   renderGuest =
     name:
     let
       v = views.${name};
     in
     v.args
-    // lib.optionalAttrs (v.lifecycle != { }) { inherit (v) lifecycle; };
+    // lib.optionalAttrs (v.lifecycle != { }) { inherit (v) lifecycle; }
+    // lib.optionalAttrs (dependsOn name != [ ]) { depends_on = dependsOn name; };
 
   byType = lib.foldl' (
     acc: name:
@@ -111,7 +165,21 @@ let
     }
   ) { } (lib.attrNames managed);
 
-  poolResources = lib.mapAttrs (name: _: { pool_id = name; }) pools;
+  poolResources = lib.mapAttrs (
+    name: pool: { pool_id = name; } // lib.optionalAttrs (pool.comment != null) { inherit (pool) comment; }
+  ) pools;
+
+  ansible = import ./ansible.nix { inherit lib fleet estate; };
+  others = lib.concatMap lib.attrNames (lib.attrValues byType ++ [
+    pools
+    fileResources
+  ]);
+  shared = lib.intersectLists (lib.attrNames ansible.resources) others;
+  playbooks =
+    if shared != [ ] then
+      throw "${where}.addons.ansible.playbooks: ${lib.concatStringsSep ", " shared}: also the name of a guest, pool or upload of the estate; a playbook needs a name of its own"
+    else
+      ansible.resources;
 
   withCompanions = lib.attrNames (
     lib.filterAttrs (n: _: (views.${n}.companions or { }) != { }) guests
@@ -127,7 +195,8 @@ in
       source = "carlpett/sops";
       version = "1.4.1";
     };
-  };
+  }
+  // ansible.requiredProviders;
 
   provider.proxmox = builtins.seq checked provider;
 
@@ -137,6 +206,12 @@ in
     byType
     // lib.optionalAttrs (pools != { }) {
       proxmox_virtual_environment_pool = poolResources;
+    }
+    // lib.optionalAttrs (fileResources != { }) {
+      proxmox_virtual_environment_file = fileResources;
+    }
+    // lib.optionalAttrs (playbooks != { }) {
+      ansible_playbook = playbooks;
     };
 
   locals = {

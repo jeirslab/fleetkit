@@ -1,0 +1,134 @@
+name: fleetkit deploy
+description: >
+  Preview or deploy estates through a fleetkit deploy server (fleetkit serve --repo):
+  optionally join a tailnet (Tailscale or Headscale) to reach it, start one job per estate
+  at this commit, stream its events into the log, write a step summary, and comment the
+  result on the pull request.
+inputs:
+  api-url:
+    description: The deploy server's URL, e.g. http://deploy.tail1234.ts.net:8740 (reachable once on the tailnet).
+    required: true
+  api-token:
+    description: The server's bearer token (FLEETKIT_API_TOKEN).
+    required: true
+  estates:
+    description: Estates to run, comma- or space-separated.
+    required: true
+  mode:
+    description: >
+      auto (pull_request previews, push deploys), preview or deploy. The server deploys only
+      commits on its deploy branch; anything else must be a preview.
+    default: auto
+  rev:
+    description: Commit to run. Default the pull request's head on pull_request, else github.sha.
+    default: ''
+  goal:
+    description: colmena apply goal for a deploy (switch, test, boot, dry-activate).
+    default: switch
+  hive:
+    description: Hive name (default the estate).
+    default: ''
+  stacks:
+    description: Pulumi stacks to run, comma-separated (default every stack of the estate).
+    default: ''
+  infra:
+    description: Run the Pulumi stage.
+    default: 'true'
+  nixos:
+    description: Run the Colmena stage.
+    default: 'true'
+  allow-replace:
+    description: >
+      Guests (comma-separated) this deploy may replace: destroy and recreate. A name is
+      <stack>/<key>, a URN, or a resource key that only one stack of the estate has.
+      The server refuses a deploy whose plan replaces a guest that is not named.
+    default: ''
+  allow-delete:
+    description: Guests (comma-separated, <stack>/<key>) this deploy may delete.
+    default: ''
+  allow-update:
+    description: Guests (comma-separated, <stack>/<key>) this deploy may update in place (a reboot).
+    default: ''
+  allow-create:
+    description: >
+      Guests (comma-separated, <stack>/<key>) this deploy may create although the stack declares them
+      as already existing (they have an adoption id and are not in state), and HA resources it may create.
+    default: ''
+  timeout:
+    description: Seconds to wait for each estate (including waiting while it is busy).
+    default: '3600'
+  comment:
+    description: Comment the result on the pull request (needs pull-requests write).
+    default: 'true'
+  github-token:
+    description: Token for the pull request comment.
+    default: ${{ github.token }}
+  tailscale-authkey:
+    description: >
+      Auth key to join the tailnet the server is on (an ephemeral, pre-authorised key is best).
+      Empty: no tailnet, the server is reachable directly.
+    default: ''
+  tailscale-login-server:
+    description: Control server URL for Headscale (tailscale up --login-server). Empty for Tailscale's.
+    default: ''
+  tailscale-hostname:
+    description: This runner's name on the tailnet. Default gh-<repo>-<run id>.
+    default: ''
+  tailscale-args:
+    description: Extra arguments to tailscale up, e.g. --accept-dns=false --advertise-tags=tag:ci.
+    default: ''
+outputs:
+  result:
+    description: success or failure.
+    value: ${{ steps.run.outputs.result }}
+  jobs:
+    description: JSON object, estate -> job record.
+    value: ${{ steps.run.outputs.jobs }}
+runs:
+  using: composite
+  steps:
+    - name: join the tailnet
+      if: inputs.tailscale-authkey != ''
+      shell: bash
+      env:
+        TS_AUTHKEY: ${{ inputs.tailscale-authkey }}
+        TS_LOGIN_SERVER: ${{ inputs.tailscale-login-server }}
+        TS_HOSTNAME: ${{ inputs.tailscale-hostname }}
+        TS_ARGS: ${{ inputs.tailscale-args }}
+      run: |
+        set -euo pipefail
+        if ! command -v tailscale >/dev/null; then
+          curl -fsSL https://tailscale.com/install.sh | sh
+        fi
+        host="${TS_HOSTNAME:-gh-${GITHUB_REPOSITORY#*/}-${GITHUB_RUN_ID}}"
+        args=(--authkey="$TS_AUTHKEY" --hostname="$host" --accept-routes --timeout=120s)
+        [ -n "$TS_LOGIN_SERVER" ] && args+=(--login-server="$TS_LOGIN_SERVER")
+        # shellcheck disable=SC2086 # extra arguments are split on purpose
+        sudo tailscale up "${args[@]}" $TS_ARGS
+        tailscale status --peers=false
+    - name: preview or deploy
+      id: run
+      shell: bash
+      env:
+        FLEETKIT_API_URL: ${{ inputs.api-url }}
+        FLEETKIT_API_TOKEN: ${{ inputs.api-token }}
+        FLEETKIT_ESTATES: ${{ inputs.estates }}
+        FLEETKIT_MODE: ${{ inputs.mode }}
+        FLEETKIT_REV: ${{ inputs.rev }}
+        FLEETKIT_GOAL: ${{ inputs.goal }}
+        FLEETKIT_HIVE: ${{ inputs.hive }}
+        FLEETKIT_STACKS: ${{ inputs.stacks }}
+        FLEETKIT_INFRA: ${{ inputs.infra }}
+        FLEETKIT_NIXOS: ${{ inputs.nixos }}
+        FLEETKIT_ALLOW_REPLACE: ${{ inputs.allow-replace }}
+        FLEETKIT_ALLOW_DELETE: ${{ inputs.allow-delete }}
+        FLEETKIT_ALLOW_UPDATE: ${{ inputs.allow-update }}
+        FLEETKIT_ALLOW_CREATE: ${{ inputs.allow-create }}
+        FLEETKIT_TIMEOUT: ${{ inputs.timeout }}
+        FLEETKIT_COMMENT: ${{ inputs.comment }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: python3 "$GITHUB_ACTION_PATH/fleetkit_remote.py"
+    - name: leave the tailnet
+      if: always() && inputs.tailscale-authkey != ''
+      shell: bash
+      run: sudo tailscale logout || true

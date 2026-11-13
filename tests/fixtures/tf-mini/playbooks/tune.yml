@@ -1,0 +1,7 @@
+# The fixture's second playbook (estate "addon"): a single file. Nothing runs it.
+- name: Tune
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Ping
+      ansible.builtin.ping:

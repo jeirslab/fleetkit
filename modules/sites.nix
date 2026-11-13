@@ -30,6 +30,14 @@ let
     "import"
   ];
 
+  # What an image with a source can be uploaded as
+  # (proxmox_virtual_environment_file, through the API's upload).
+  uploadKinds = [
+    "iso"
+    "vztmpl"
+    "import"
+  ];
+
   req = type: mkOption { inherit type; };
   opt =
     type: default:
@@ -103,7 +111,14 @@ let
       {
         options = {
           id = h.mkId (h.qualify site name);
+          # The network the bridge carries untagged (a VLAN-aware bridge: its
+          # native VLAN).
           network = req types.str;
+          # A VLAN-aware bridge: network NAME of the site -> the 802.1Q tag it
+          # carries that network with. A guest interface on one of these
+          # networks gets the tag (networkInterfaces.*.vlanId, filled in when
+          # unset).
+          vlans = opt (types.attrsOf (types.ints.between 1 4094)) { };
           nodes = opt (types.listOf types.str) [ ];
         };
       }
@@ -119,6 +134,12 @@ let
           kind = req (types.enum [ "gpu" ]);
           name = req types.str;
           pci = nullable pciAddr;
+          # The cluster resource mapping (Datacenter > Resource Mappings > PCI)
+          # that names this device. A VM's hostpci of it renders
+          # hostpci.mapping = <name> and no hostpci.id: only root@pam may set a
+          # raw device, an API token only a mapped one. The mapping itself is
+          # made on the cluster.
+          mapping = nullable types.str;
         };
       }
     );
@@ -133,11 +154,14 @@ let
       {
         options = {
           id = h.mkId id;
+          # windows: a machine the model records (address, keys) without building or deploying it.
           osType = req (types.enum [
             "debian-pve"
             "nixos"
+            "windows"
           ]);
           address = req ipv4;
+          hostKeys.age = nullable (types.strMatching "age1[02-9ac-hj-np-z]{58}");
           hostKeys.ed25519 = nullable (types.strMatching "ssh-ed25519 AAAA[A-Za-z0-9+/]+={0,2}( [^\n]*)?");
           pcie = opt (types.attrsOf (pcieType id)) { };
           nixos.module = mkOption {
@@ -257,11 +281,20 @@ let
           contentType = req (types.enum contentKinds);
           fileName = req types.str;
           node = nullable types.str;
-          build = req (
-            types.submodule {
-              options.method = req (types.enum [ "nix" ]);
-            }
-          );
+          source = mkOption {
+            type = types.nullOr types.path;
+            default = null;
+            description = "The file to upload, normally a Nix store path of the built image (a derivation, or its out path). Set: the estate whose managed guests use the image renders a proxmox_virtual_environment_file that uploads it to datastore on node, as fileName (source_file.path; evaluation does not build it, the deploy's host must have it), and those guests depend on it. null = the image is on the datastore already. A new source is a new fileName: a changed fileName replaces the upload.";
+          };
+          build = mkOption {
+            type = types.nullOr (
+              types.submodule {
+                options.method = req (types.enum [ "nix" ]);
+              }
+            );
+            default = null;
+            description = "How the image is made, when this lab makes it (method nix). null = the image is not built here (a template Proxmox ships, or one already on the datastore).";
+          };
           volumeId = mkOption {
             type = types.str;
             readOnly = true;
@@ -367,6 +400,16 @@ let
             kind = "node";
             ids = siteNodes;
           } b.nodes
+          ++ lib.mapAttrsToList (
+            net: _:
+            check "${p}.bridges.${bname}.vlans.${net}" (site.networks ? ${net} && site.networks.${net}.id != b.network)
+              "\"${net}\" is not a network of site ${sname} other than the bridge's untagged one (known: ${lib.concatStringsSep ", " (lib.attrNames site.networks)})"
+          ) b.vlans
+          ++ [
+            (check "${p}.bridges.${bname}.vlans"
+              (lib.length (lib.unique (lib.attrValues b.vlans)) == lib.length (lib.attrValues b.vlans))
+              "two networks with the same tag")
+          ]
         ) site.bridges
       );
 
@@ -480,6 +523,13 @@ let
             kind = "node";
             ids = siteNodes;
           } img.node
+          # An upload goes to one node, through the Proxmox API, which takes
+          # these content types only.
+          ++ lib.optionals (img.source != null) [
+            (check "${ip}.node" (img.node != null) "an image with a source is uploaded to one node; set node")
+            (check "${ip}.contentType" (builtins.elem img.contentType uploadKinds)
+              "an image with a source is uploaded as ${lib.concatStringsSep ", " uploadKinds}, not \"${img.contentType}\"")
+          ]
         ) site.images
       );
     in
