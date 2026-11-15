@@ -1,0 +1,690 @@
+{
+ "bridge": "1.4.0",
+ "dataSources": {},
+ "package": "google",
+ "provider": {
+  "access_approval_custom_endpoint": {
+   "n": "accessApprovalCustomEndpoint"
+  },
+  "access_context_manager_custom_endpoint": {
+   "n": "accessContextManagerCustomEndpoint"
+  },
+  "access_token": {
+   "n": "accessToken"
+  },
+  "active_directory_custom_endpoint": {
+   "n": "activeDirectoryCustomEndpoint"
+  },
+  "add_terraform_attribution_label": {
+   "n": "addTerraformAttributionLabel"
+  },
+  "agent_identity_custom_endpoint": {
+   "n": "agentIdentityCustomEndpoint"
+  },
+  "agent_registry_custom_endpoint": {
+   "n": "agentRegistryCustomEndpoint"
+  },
+  "agentic_applications_custom_endpoint": {
+   "n": "agenticApplicationsCustomEndpoint"
+  },
+  "alloydb_custom_endpoint": {
+   "n": "alloydbCustomEndpoint"
+  },
+  "apigee_custom_endpoint": {
+   "n": "apigeeCustomEndpoint"
+  },
+  "apihub_custom_endpoint": {
+   "n": "apihubCustomEndpoint"
+  },
+  "apikeys_custom_endpoint": {
+   "n": "apikeysCustomEndpoint"
+  },
+  "app_engine_custom_endpoint": {
+   "n": "appEngineCustomEndpoint"
+  },
+  "apphub_custom_endpoint": {
+   "n": "apphubCustomEndpoint"
+  },
+  "artifact_registry_custom_endpoint": {
+   "n": "artifactRegistryCustomEndpoint"
+  },
+  "assured_workloads_custom_endpoint": {
+   "n": "assuredWorkloadsCustomEndpoint"
+  },
+  "backup_dr_custom_endpoint": {
+   "n": "backupDrCustomEndpoint"
+  },
+  "batching": {
+   "arr": true,
+   "f": {
+    "enable_batching": {
+     "n": "enableBatching"
+    },
+    "send_after": {
+     "n": "sendAfter"
+    }
+   },
+   "n": "batchings"
+  },
+  "beyondcorp_custom_endpoint": {
+   "n": "beyondcorpCustomEndpoint"
+  },
+  "big_query_custom_endpoint": {
+   "n": "bigQueryCustomEndpoint"
+  },
+  "biglake_custom_endpoint": {
+   "n": "biglakeCustomEndpoint"
+  },
+  "biglake_hive_custom_endpoint": {
+   "n": "biglakeHiveCustomEndpoint"
+  },
+  "biglake_iceberg_custom_endpoint": {
+   "n": "biglakeIcebergCustomEndpoint"
+  },
+  "bigquery_analytics_hub_custom_endpoint": {
+   "n": "bigqueryAnalyticsHubCustomEndpoint"
+  },
+  "bigquery_connection_custom_endpoint": {
+   "n": "bigqueryConnectionCustomEndpoint"
+  },
+  "bigquery_data_transfer_custom_endpoint": {
+   "n": "bigqueryDataTransferCustomEndpoint"
+  },
+  "bigquery_datapolicy_custom_endpoint": {
+   "n": "bigqueryDatapolicyCustomEndpoint"
+  },
+  "bigquery_datapolicyv2_custom_endpoint": {
+   "n": "bigqueryDatapolicyv2CustomEndpoint"
+  },
+  "bigquery_reservation_custom_endpoint": {
+   "n": "bigqueryReservationCustomEndpoint"
+  },
+  "bigtable_custom_endpoint": {
+   "n": "bigtableCustomEndpoint"
+  },
+  "billing_budgets_custom_endpoint": {
+   "n": "billingBudgetsCustomEndpoint"
+  },
+  "billing_custom_endpoint": {
+   "n": "billingCustomEndpoint"
+  },
+  "billing_project": {
+   "n": "billingProject"
+  },
+  "binary_authorization_custom_endpoint": {
+   "n": "binaryAuthorizationCustomEndpoint"
+  },
+  "blockchain_node_engine_custom_endpoint": {
+   "n": "blockchainNodeEngineCustomEndpoint"
+  },
+  "certificate_manager_custom_endpoint": {
+   "n": "certificateManagerCustomEndpoint"
+  },
+  "ces_custom_endpoint": {
+   "n": "cesCustomEndpoint"
+  },
+  "chronicle_custom_endpoint": {
+   "n": "chronicleCustomEndpoint"
+  },
+  "cloud_asset_custom_endpoint": {
+   "n": "cloudAssetCustomEndpoint"
+  },
+  "cloud_billing_custom_endpoint": {
+   "n": "cloudBillingCustomEndpoint"
+  },
+  "cloud_build_custom_endpoint": {
+   "n": "cloudBuildCustomEndpoint"
+  },
+  "cloud_functions_custom_endpoint": {
+   "n": "cloudFunctionsCustomEndpoint"
+  },
+  "cloud_identity_custom_endpoint": {
+   "n": "cloudIdentityCustomEndpoint"
+  },
+  "cloud_ids_custom_endpoint": {
+   "n": "cloudIdsCustomEndpoint"
+  },
+  "cloud_quotas_custom_endpoint": {
+   "n": "cloudQuotasCustomEndpoint"
+  },
+  "cloud_resource_manager_custom_endpoint": {
+   "n": "cloudResourceManagerCustomEndpoint"
+  },
+  "cloud_run_custom_endpoint": {
+   "n": "cloudRunCustomEndpoint"
+  },
+  "cloud_run_v2_custom_endpoint": {
+   "n": "cloudRunV2CustomEndpoint"
+  },
+  "cloud_scheduler_custom_endpoint": {
+   "n": "cloudSchedulerCustomEndpoint"
+  },
+  "cloud_security_compliance_custom_endpoint": {
+   "n": "cloudSecurityComplianceCustomEndpoint"
+  },
+  "cloud_support_custom_endpoint": {
+   "n": "cloudSupportCustomEndpoint"
+  },
+  "cloud_tasks_custom_endpoint": {
+   "n": "cloudTasksCustomEndpoint"
+  },
+  "cloudbuildv2_custom_endpoint": {
+   "n": "cloudbuildv2CustomEndpoint"
+  },
+  "clouddeploy_custom_endpoint": {
+   "n": "clouddeployCustomEndpoint"
+  },
+  "clouddomains_custom_endpoint": {
+   "n": "clouddomainsCustomEndpoint"
+  },
+  "cloudfunctions2_custom_endpoint": {
+   "n": "cloudfunctions2CustomEndpoint"
+  },
+  "colab_custom_endpoint": {
+   "n": "colabCustomEndpoint"
+  },
+  "composer_custom_endpoint": {
+   "n": "composerCustomEndpoint"
+  },
+  "compute_custom_endpoint": {
+   "n": "computeCustomEndpoint"
+  },
+  "config_custom_endpoint": {
+   "n": "configCustomEndpoint"
+  },
+  "contact_center_insights_custom_endpoint": {
+   "n": "contactCenterInsightsCustomEndpoint"
+  },
+  "container_analysis_custom_endpoint": {
+   "n": "containerAnalysisCustomEndpoint"
+  },
+  "container_attached_custom_endpoint": {
+   "n": "containerAttachedCustomEndpoint"
+  },
+  "container_aws_custom_endpoint": {
+   "n": "containerAwsCustomEndpoint"
+  },
+  "container_azure_custom_endpoint": {
+   "n": "containerAzureCustomEndpoint"
+  },
+  "container_custom_endpoint": {
+   "n": "containerCustomEndpoint"
+  },
+  "core_billing_custom_endpoint": {
+   "n": "coreBillingCustomEndpoint"
+  },
+  "credentials": {
+   "n": "credentials"
+  },
+  "data_catalog_custom_endpoint": {
+   "n": "dataCatalogCustomEndpoint"
+  },
+  "data_fusion_custom_endpoint": {
+   "n": "dataFusionCustomEndpoint"
+  },
+  "data_lineage_custom_endpoint": {
+   "n": "dataLineageCustomEndpoint"
+  },
+  "data_loss_prevention_custom_endpoint": {
+   "n": "dataLossPreventionCustomEndpoint"
+  },
+  "data_pipeline_custom_endpoint": {
+   "n": "dataPipelineCustomEndpoint"
+  },
+  "database_migration_service_custom_endpoint": {
+   "n": "databaseMigrationServiceCustomEndpoint"
+  },
+  "dataflow_custom_endpoint": {
+   "n": "dataflowCustomEndpoint"
+  },
+  "dataform_custom_endpoint": {
+   "n": "dataformCustomEndpoint"
+  },
+  "dataplex_custom_endpoint": {
+   "n": "dataplexCustomEndpoint"
+  },
+  "dataproc_custom_endpoint": {
+   "n": "dataprocCustomEndpoint"
+  },
+  "dataproc_gdc_custom_endpoint": {
+   "n": "dataprocGdcCustomEndpoint"
+  },
+  "dataproc_metastore_custom_endpoint": {
+   "n": "dataprocMetastoreCustomEndpoint"
+  },
+  "datastream_custom_endpoint": {
+   "n": "datastreamCustomEndpoint"
+  },
+  "default_labels": {
+   "map": true,
+   "n": "defaultLabels"
+  },
+  "deletion_policy": {
+   "n": "deletionPolicy"
+  },
+  "deployment_manager_custom_endpoint": {
+   "n": "deploymentManagerCustomEndpoint"
+  },
+  "developer_connect_custom_endpoint": {
+   "n": "developerConnectCustomEndpoint"
+  },
+  "dialogflow_custom_endpoint": {
+   "n": "dialogflowCustomEndpoint"
+  },
+  "dialogflow_cx_custom_endpoint": {
+   "n": "dialogflowCxCustomEndpoint"
+  },
+  "discovery_engine_custom_endpoint": {
+   "n": "discoveryEngineCustomEndpoint"
+  },
+  "dns_custom_endpoint": {
+   "n": "dnsCustomEndpoint"
+  },
+  "document_ai_custom_endpoint": {
+   "n": "documentAiCustomEndpoint"
+  },
+  "document_ai_warehouse_custom_endpoint": {
+   "n": "documentAiWarehouseCustomEndpoint"
+  },
+  "edgecontainer_custom_endpoint": {
+   "n": "edgecontainerCustomEndpoint"
+  },
+  "edgenetwork_custom_endpoint": {
+   "n": "edgenetworkCustomEndpoint"
+  },
+  "essential_contacts_custom_endpoint": {
+   "n": "essentialContactsCustomEndpoint"
+  },
+  "eventarc_custom_endpoint": {
+   "n": "eventarcCustomEndpoint"
+  },
+  "external_credentials": {
+   "arr": true,
+   "f": {
+    "audience": {
+     "n": "audience"
+    },
+    "identity_token": {
+     "n": "identityToken"
+    },
+    "service_account_email": {
+     "n": "serviceAccountEmail"
+    }
+   },
+   "n": "externalCredentials"
+  },
+  "filestore_custom_endpoint": {
+   "n": "filestoreCustomEndpoint"
+  },
+  "firebase_app_check_custom_endpoint": {
+   "n": "firebaseAppCheckCustomEndpoint"
+  },
+  "firebase_app_hosting_custom_endpoint": {
+   "n": "firebaseAppHostingCustomEndpoint"
+  },
+  "firebase_data_connect_custom_endpoint": {
+   "n": "firebaseDataConnectCustomEndpoint"
+  },
+  "firebase_remote_config_custom_endpoint": {
+   "n": "firebaseRemoteConfigCustomEndpoint"
+  },
+  "firebaserules_custom_endpoint": {
+   "n": "firebaserulesCustomEndpoint"
+  },
+  "firestore_custom_endpoint": {
+   "n": "firestoreCustomEndpoint"
+  },
+  "gemini_custom_endpoint": {
+   "n": "geminiCustomEndpoint"
+  },
+  "gemini_data_analytics_custom_endpoint": {
+   "n": "geminiDataAnalyticsCustomEndpoint"
+  },
+  "gke_backup_custom_endpoint": {
+   "n": "gkeBackupCustomEndpoint"
+  },
+  "gke_hub2_custom_endpoint": {
+   "n": "gkeHub2CustomEndpoint"
+  },
+  "gke_hub_custom_endpoint": {
+   "n": "gkeHubCustomEndpoint"
+  },
+  "gkeonprem_custom_endpoint": {
+   "n": "gkeonpremCustomEndpoint"
+  },
+  "healthcare_custom_endpoint": {
+   "n": "healthcareCustomEndpoint"
+  },
+  "hypercomputecluster_custom_endpoint": {
+   "n": "hypercomputeclusterCustomEndpoint"
+  },
+  "iam2_custom_endpoint": {
+   "n": "iam2CustomEndpoint"
+  },
+  "iam3_custom_endpoint": {
+   "n": "iam3CustomEndpoint"
+  },
+  "iam_beta_custom_endpoint": {
+   "n": "iamBetaCustomEndpoint"
+  },
+  "iam_credentials_custom_endpoint": {
+   "n": "iamCredentialsCustomEndpoint"
+  },
+  "iam_custom_endpoint": {
+   "n": "iamCustomEndpoint"
+  },
+  "iam_workforce_pool_custom_endpoint": {
+   "n": "iamWorkforcePoolCustomEndpoint"
+  },
+  "iap_custom_endpoint": {
+   "n": "iapCustomEndpoint"
+  },
+  "identity_platform_custom_endpoint": {
+   "n": "identityPlatformCustomEndpoint"
+  },
+  "impersonate_service_account": {
+   "n": "impersonateServiceAccount"
+  },
+  "impersonate_service_account_delegates": {
+   "arr": true,
+   "n": "impersonateServiceAccountDelegates"
+  },
+  "integration_connectors_custom_endpoint": {
+   "n": "integrationConnectorsCustomEndpoint"
+  },
+  "integrations_custom_endpoint": {
+   "n": "integrationsCustomEndpoint"
+  },
+  "kms_custom_endpoint": {
+   "n": "kmsCustomEndpoint"
+  },
+  "license_manager_custom_endpoint": {
+   "n": "licenseManagerCustomEndpoint"
+  },
+  "logging_custom_endpoint": {
+   "n": "loggingCustomEndpoint"
+  },
+  "looker_custom_endpoint": {
+   "n": "lookerCustomEndpoint"
+  },
+  "lustre_custom_endpoint": {
+   "n": "lustreCustomEndpoint"
+  },
+  "managed_kafka_custom_endpoint": {
+   "n": "managedKafkaCustomEndpoint"
+  },
+  "memcache_custom_endpoint": {
+   "n": "memcacheCustomEndpoint"
+  },
+  "memorystore_custom_endpoint": {
+   "n": "memorystoreCustomEndpoint"
+  },
+  "migration_center_custom_endpoint": {
+   "n": "migrationCenterCustomEndpoint"
+  },
+  "model_armor_custom_endpoint": {
+   "n": "modelArmorCustomEndpoint"
+  },
+  "model_armor_global_custom_endpoint": {
+   "n": "modelArmorGlobalCustomEndpoint"
+  },
+  "monitoring_custom_endpoint": {
+   "n": "monitoringCustomEndpoint"
+  },
+  "netapp_custom_endpoint": {
+   "n": "netappCustomEndpoint"
+  },
+  "network_connectivity_custom_endpoint": {
+   "n": "networkConnectivityCustomEndpoint"
+  },
+  "network_connectivityv1_custom_endpoint": {
+   "n": "networkConnectivityv1CustomEndpoint"
+  },
+  "network_management_custom_endpoint": {
+   "n": "networkManagementCustomEndpoint"
+  },
+  "network_managementv1_custom_endpoint": {
+   "n": "networkManagementv1CustomEndpoint"
+  },
+  "network_security_custom_endpoint": {
+   "n": "networkSecurityCustomEndpoint"
+  },
+  "network_services_custom_endpoint": {
+   "n": "networkServicesCustomEndpoint"
+  },
+  "observability_custom_endpoint": {
+   "n": "observabilityCustomEndpoint"
+  },
+  "oracle_database_custom_endpoint": {
+   "n": "oracleDatabaseCustomEndpoint"
+  },
+  "org_policy_custom_endpoint": {
+   "n": "orgPolicyCustomEndpoint"
+  },
+  "os_config_custom_endpoint": {
+   "n": "osConfigCustomEndpoint"
+  },
+  "os_config_v2_custom_endpoint": {
+   "n": "osConfigV2CustomEndpoint"
+  },
+  "os_login_custom_endpoint": {
+   "n": "osLoginCustomEndpoint"
+  },
+  "parallelstore_custom_endpoint": {
+   "n": "parallelstoreCustomEndpoint"
+  },
+  "parameter_manager_custom_endpoint": {
+   "n": "parameterManagerCustomEndpoint"
+  },
+  "parameter_manager_regional_custom_endpoint": {
+   "n": "parameterManagerRegionalCustomEndpoint"
+  },
+  "poll_interval": {
+   "n": "pollInterval"
+  },
+  "prefer_global_endpoints": {
+   "n": "preferGlobalEndpoints"
+  },
+  "prefer_regional_endpoints": {
+   "n": "preferRegionalEndpoints"
+  },
+  "privateca_custom_endpoint": {
+   "n": "privatecaCustomEndpoint"
+  },
+  "privileged_access_manager_custom_endpoint": {
+   "n": "privilegedAccessManagerCustomEndpoint"
+  },
+  "project": {
+   "n": "project"
+  },
+  "public_ca_custom_endpoint": {
+   "n": "publicCaCustomEndpoint"
+  },
+  "pubsub_custom_endpoint": {
+   "n": "pubsubCustomEndpoint"
+  },
+  "pubsub_lite_custom_endpoint": {
+   "n": "pubsubLiteCustomEndpoint"
+  },
+  "recaptcha_enterprise_custom_endpoint": {
+   "n": "recaptchaEnterpriseCustomEndpoint"
+  },
+  "redis_custom_endpoint": {
+   "n": "redisCustomEndpoint"
+  },
+  "region": {
+   "n": "region"
+  },
+  "request_reason": {
+   "n": "requestReason"
+  },
+  "request_timeout": {
+   "n": "requestTimeout"
+  },
+  "resource_manager3_custom_endpoint": {
+   "n": "resourceManager3CustomEndpoint"
+  },
+  "resource_manager_custom_endpoint": {
+   "n": "resourceManagerCustomEndpoint"
+  },
+  "resource_manager_v3_custom_endpoint": {
+   "n": "resourceManagerV3CustomEndpoint"
+  },
+  "scopes": {
+   "arr": true,
+   "n": "scopes"
+  },
+  "secret_manager_custom_endpoint": {
+   "n": "secretManagerCustomEndpoint"
+  },
+  "secret_manager_regional_custom_endpoint": {
+   "n": "secretManagerRegionalCustomEndpoint"
+  },
+  "secure_source_manager_custom_endpoint": {
+   "n": "secureSourceManagerCustomEndpoint"
+  },
+  "security_center_custom_endpoint": {
+   "n": "securityCenterCustomEndpoint"
+  },
+  "security_center_management_custom_endpoint": {
+   "n": "securityCenterManagementCustomEndpoint"
+  },
+  "security_center_v2_custom_endpoint": {
+   "n": "securityCenterV2CustomEndpoint"
+  },
+  "securityposture_custom_endpoint": {
+   "n": "securitypostureCustomEndpoint"
+  },
+  "service_directory_custom_endpoint": {
+   "n": "serviceDirectoryCustomEndpoint"
+  },
+  "service_management_custom_endpoint": {
+   "n": "serviceManagementCustomEndpoint"
+  },
+  "service_networking_custom_endpoint": {
+   "n": "serviceNetworkingCustomEndpoint"
+  },
+  "service_usage_custom_endpoint": {
+   "n": "serviceUsageCustomEndpoint"
+  },
+  "site_verification_custom_endpoint": {
+   "n": "siteVerificationCustomEndpoint"
+  },
+  "source_repo_custom_endpoint": {
+   "n": "sourceRepoCustomEndpoint"
+  },
+  "spanner_custom_endpoint": {
+   "n": "spannerCustomEndpoint"
+  },
+  "sql_custom_endpoint": {
+   "n": "sqlCustomEndpoint"
+  },
+  "storage_batch_operations_custom_endpoint": {
+   "n": "storageBatchOperationsCustomEndpoint"
+  },
+  "storage_control_custom_endpoint": {
+   "n": "storageControlCustomEndpoint"
+  },
+  "storage_custom_endpoint": {
+   "n": "storageCustomEndpoint"
+  },
+  "storage_ftp_custom_endpoint": {
+   "n": "storageFtpCustomEndpoint"
+  },
+  "storage_insights_custom_endpoint": {
+   "n": "storageInsightsCustomEndpoint"
+  },
+  "storage_transfer_custom_endpoint": {
+   "n": "storageTransferCustomEndpoint"
+  },
+  "tags_custom_endpoint": {
+   "n": "tagsCustomEndpoint"
+  },
+  "tags_location_custom_endpoint": {
+   "n": "tagsLocationCustomEndpoint"
+  },
+  "terraform_attribution_label_addition_strategy": {
+   "n": "terraformAttributionLabelAdditionStrategy"
+  },
+  "transcoder_custom_endpoint": {
+   "n": "transcoderCustomEndpoint"
+  },
+  "universe_domain": {
+   "n": "universeDomain"
+  },
+  "user_project_override": {
+   "n": "userProjectOverride"
+  },
+  "vector_search_custom_endpoint": {
+   "n": "vectorSearchCustomEndpoint"
+  },
+  "vertex_ai_custom_endpoint": {
+   "n": "vertexAiCustomEndpoint"
+  },
+  "vmwareengine_custom_endpoint": {
+   "n": "vmwareengineCustomEndpoint"
+  },
+  "vpc_access_custom_endpoint": {
+   "n": "vpcAccessCustomEndpoint"
+  },
+  "workbench_custom_endpoint": {
+   "n": "workbenchCustomEndpoint"
+  },
+  "workflows_custom_endpoint": {
+   "n": "workflowsCustomEndpoint"
+  },
+  "workload_identity_custom_endpoint": {
+   "n": "workloadIdentityCustomEndpoint"
+  },
+  "workstations_custom_endpoint": {
+   "n": "workstationsCustomEndpoint"
+  },
+  "zone": {
+   "n": "zone"
+  }
+ },
+ "resources": {
+  "google_project_service": {
+   "f": {
+    "deletion_policy": {
+     "n": "deletionPolicy"
+    },
+    "disable_dependent_services": {
+     "n": "disableDependentServices"
+    },
+    "disable_on_destroy": {
+     "n": "disableOnDestroy"
+    },
+    "id": {
+     "n": "projectServiceId"
+    },
+    "project": {
+     "n": "project"
+    },
+    "service": {
+     "n": "service"
+    },
+    "timeouts": {
+     "f": {
+      "create": {
+       "n": "create"
+      },
+      "delete": {
+       "n": "delete"
+      },
+      "read": {
+       "n": "read"
+      },
+      "update": {
+       "n": "update"
+      }
+     },
+     "n": "timeouts"
+    }
+   },
+   "token": "google:index/projectService:ProjectService"
+  }
+ },
+ "source": "hashicorp/google",
+ "version": "8.10.0"
+}

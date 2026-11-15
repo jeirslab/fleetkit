@@ -1,0 +1,2137 @@
+{
+  "name": "google",
+  "version": "8.10.0",
+  "description": "A Pulumi provider dynamically bridged from google.",
+  "attribution": "This Pulumi package is based on the [`google` Terraform Provider](https://github.com/hashicorp/terraform-provider-google).",
+  "repository": "https://github.com/hashicorp/terraform-provider-google",
+  "publisher": "hashicorp",
+  "meta": {
+    "moduleFormat": "(.*)(?:/[^/]*)"
+  },
+  "language": {
+    "csharp": {
+      "compatibility": "tfbridge20",
+      "liftSingleValueMethodReturns": true,
+      "respectSchemaVersion": true
+    },
+    "go": {
+      "importBasePath": "github.com/pulumi/pulumi-terraform-provider/sdks/go/google/v8/google",
+      "rootPackageName": "google",
+      "liftSingleValueMethodReturns": true,
+      "generateExtraInputTypes": true,
+      "respectSchemaVersion": true
+    },
+    "java": {
+      "basePackage": "",
+      "buildFiles": "",
+      "gradleNexusPublishPluginVersion": "",
+      "gradleTest": ""
+    },
+    "nodejs": {
+      "packageDescription": "A Pulumi provider dynamically bridged from google.",
+      "readme": "> This provider is a derived work of the [Terraform Provider](https://github.com/hashicorp/terraform-provider-google)\n> distributed under [MPL 2.0](https://www.mozilla.org/en-US/MPL/2.0/). If you encounter a bug or missing feature,\n> please consult the source [`terraform-provider-google` repo](https://github.com/hashicorp/terraform-provider-google/issues).",
+      "compatibility": "tfbridge20",
+      "disableUnionOutputTypes": true,
+      "liftSingleValueMethodReturns": true,
+      "respectSchemaVersion": true
+    },
+    "python": {
+      "readme": "> This provider is a derived work of the [Terraform Provider](https://github.com/hashicorp/terraform-provider-google)\n> distributed under [MPL 2.0](https://www.mozilla.org/en-US/MPL/2.0/). If you encounter a bug or missing feature,\n> please consult the source [`terraform-provider-google` repo](https://github.com/hashicorp/terraform-provider-google/issues).",
+      "compatibility": "tfbridge20",
+      "respectSchemaVersion": true,
+      "pyproject": {
+        "enabled": true
+      }
+    }
+  },
+  "config": {
+    "variables": {
+      "accessApprovalCustomEndpoint": {
+        "type": "string"
+      },
+      "accessContextManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "accessToken": {
+        "type": "string"
+      },
+      "activeDirectoryCustomEndpoint": {
+        "type": "string"
+      },
+      "addTerraformAttributionLabel": {
+        "type": "boolean"
+      },
+      "agentIdentityCustomEndpoint": {
+        "type": "string"
+      },
+      "agentRegistryCustomEndpoint": {
+        "type": "string"
+      },
+      "agenticApplicationsCustomEndpoint": {
+        "type": "string"
+      },
+      "alloydbCustomEndpoint": {
+        "type": "string"
+      },
+      "apigeeCustomEndpoint": {
+        "type": "string"
+      },
+      "apihubCustomEndpoint": {
+        "type": "string"
+      },
+      "apikeysCustomEndpoint": {
+        "type": "string"
+      },
+      "appEngineCustomEndpoint": {
+        "type": "string"
+      },
+      "apphubCustomEndpoint": {
+        "type": "string"
+      },
+      "artifactRegistryCustomEndpoint": {
+        "type": "string"
+      },
+      "assuredWorkloadsCustomEndpoint": {
+        "type": "string"
+      },
+      "backupDrCustomEndpoint": {
+        "type": "string"
+      },
+      "batchings": {
+        "type": "array",
+        "items": {
+          "$ref": "#/types/google:config/batchings:batchings"
+        }
+      },
+      "beyondcorpCustomEndpoint": {
+        "type": "string"
+      },
+      "bigQueryCustomEndpoint": {
+        "type": "string"
+      },
+      "biglakeCustomEndpoint": {
+        "type": "string"
+      },
+      "biglakeHiveCustomEndpoint": {
+        "type": "string"
+      },
+      "biglakeIcebergCustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryAnalyticsHubCustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryConnectionCustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryDataTransferCustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryDatapolicyCustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryDatapolicyv2CustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryReservationCustomEndpoint": {
+        "type": "string"
+      },
+      "bigtableCustomEndpoint": {
+        "type": "string"
+      },
+      "billingBudgetsCustomEndpoint": {
+        "type": "string"
+      },
+      "billingCustomEndpoint": {
+        "type": "string"
+      },
+      "billingProject": {
+        "type": "string"
+      },
+      "binaryAuthorizationCustomEndpoint": {
+        "type": "string"
+      },
+      "blockchainNodeEngineCustomEndpoint": {
+        "type": "string"
+      },
+      "certificateManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "cesCustomEndpoint": {
+        "type": "string"
+      },
+      "chronicleCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudAssetCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudBillingCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudBuildCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudFunctionsCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudIdentityCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudIdsCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudQuotasCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudResourceManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudRunCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudRunV2CustomEndpoint": {
+        "type": "string"
+      },
+      "cloudSchedulerCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudSecurityComplianceCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudSupportCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudTasksCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudbuildv2CustomEndpoint": {
+        "type": "string"
+      },
+      "clouddeployCustomEndpoint": {
+        "type": "string"
+      },
+      "clouddomainsCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudfunctions2CustomEndpoint": {
+        "type": "string"
+      },
+      "colabCustomEndpoint": {
+        "type": "string"
+      },
+      "composerCustomEndpoint": {
+        "type": "string"
+      },
+      "computeCustomEndpoint": {
+        "type": "string"
+      },
+      "configCustomEndpoint": {
+        "type": "string"
+      },
+      "contactCenterInsightsCustomEndpoint": {
+        "type": "string"
+      },
+      "containerAnalysisCustomEndpoint": {
+        "type": "string"
+      },
+      "containerAttachedCustomEndpoint": {
+        "type": "string"
+      },
+      "containerAwsCustomEndpoint": {
+        "type": "string"
+      },
+      "containerAzureCustomEndpoint": {
+        "type": "string"
+      },
+      "containerCustomEndpoint": {
+        "type": "string"
+      },
+      "coreBillingCustomEndpoint": {
+        "type": "string"
+      },
+      "credentials": {
+        "type": "string"
+      },
+      "dataCatalogCustomEndpoint": {
+        "type": "string"
+      },
+      "dataFusionCustomEndpoint": {
+        "type": "string"
+      },
+      "dataLineageCustomEndpoint": {
+        "type": "string"
+      },
+      "dataLossPreventionCustomEndpoint": {
+        "type": "string"
+      },
+      "dataPipelineCustomEndpoint": {
+        "type": "string"
+      },
+      "databaseMigrationServiceCustomEndpoint": {
+        "type": "string"
+      },
+      "dataflowCustomEndpoint": {
+        "type": "string"
+      },
+      "dataformCustomEndpoint": {
+        "type": "string"
+      },
+      "dataplexCustomEndpoint": {
+        "type": "string"
+      },
+      "dataprocCustomEndpoint": {
+        "type": "string"
+      },
+      "dataprocGdcCustomEndpoint": {
+        "type": "string"
+      },
+      "dataprocMetastoreCustomEndpoint": {
+        "type": "string"
+      },
+      "datastreamCustomEndpoint": {
+        "type": "string"
+      },
+      "defaultLabels": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "deletionPolicy": {
+        "type": "string"
+      },
+      "deploymentManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "developerConnectCustomEndpoint": {
+        "type": "string"
+      },
+      "dialogflowCustomEndpoint": {
+        "type": "string"
+      },
+      "dialogflowCxCustomEndpoint": {
+        "type": "string"
+      },
+      "discoveryEngineCustomEndpoint": {
+        "type": "string"
+      },
+      "dnsCustomEndpoint": {
+        "type": "string"
+      },
+      "documentAiCustomEndpoint": {
+        "type": "string"
+      },
+      "documentAiWarehouseCustomEndpoint": {
+        "type": "string"
+      },
+      "edgecontainerCustomEndpoint": {
+        "type": "string"
+      },
+      "edgenetworkCustomEndpoint": {
+        "type": "string"
+      },
+      "essentialContactsCustomEndpoint": {
+        "type": "string"
+      },
+      "eventarcCustomEndpoint": {
+        "type": "string"
+      },
+      "externalCredentials": {
+        "type": "array",
+        "items": {
+          "$ref": "#/types/google:config/externalCredentials:externalCredentials"
+        }
+      },
+      "filestoreCustomEndpoint": {
+        "type": "string"
+      },
+      "firebaseAppCheckCustomEndpoint": {
+        "type": "string"
+      },
+      "firebaseAppHostingCustomEndpoint": {
+        "type": "string"
+      },
+      "firebaseDataConnectCustomEndpoint": {
+        "type": "string"
+      },
+      "firebaseRemoteConfigCustomEndpoint": {
+        "type": "string"
+      },
+      "firebaserulesCustomEndpoint": {
+        "type": "string"
+      },
+      "firestoreCustomEndpoint": {
+        "type": "string"
+      },
+      "geminiCustomEndpoint": {
+        "type": "string"
+      },
+      "geminiDataAnalyticsCustomEndpoint": {
+        "type": "string"
+      },
+      "gkeBackupCustomEndpoint": {
+        "type": "string"
+      },
+      "gkeHub2CustomEndpoint": {
+        "type": "string"
+      },
+      "gkeHubCustomEndpoint": {
+        "type": "string"
+      },
+      "gkeonpremCustomEndpoint": {
+        "type": "string"
+      },
+      "healthcareCustomEndpoint": {
+        "type": "string"
+      },
+      "hypercomputeclusterCustomEndpoint": {
+        "type": "string"
+      },
+      "iam2CustomEndpoint": {
+        "type": "string"
+      },
+      "iam3CustomEndpoint": {
+        "type": "string"
+      },
+      "iamBetaCustomEndpoint": {
+        "type": "string"
+      },
+      "iamCredentialsCustomEndpoint": {
+        "type": "string"
+      },
+      "iamCustomEndpoint": {
+        "type": "string"
+      },
+      "iamWorkforcePoolCustomEndpoint": {
+        "type": "string"
+      },
+      "iapCustomEndpoint": {
+        "type": "string"
+      },
+      "identityPlatformCustomEndpoint": {
+        "type": "string"
+      },
+      "impersonateServiceAccount": {
+        "type": "string"
+      },
+      "impersonateServiceAccountDelegates": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "integrationConnectorsCustomEndpoint": {
+        "type": "string"
+      },
+      "integrationsCustomEndpoint": {
+        "type": "string"
+      },
+      "kmsCustomEndpoint": {
+        "type": "string"
+      },
+      "licenseManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "loggingCustomEndpoint": {
+        "type": "string"
+      },
+      "lookerCustomEndpoint": {
+        "type": "string"
+      },
+      "lustreCustomEndpoint": {
+        "type": "string"
+      },
+      "managedKafkaCustomEndpoint": {
+        "type": "string"
+      },
+      "memcacheCustomEndpoint": {
+        "type": "string"
+      },
+      "memorystoreCustomEndpoint": {
+        "type": "string"
+      },
+      "migrationCenterCustomEndpoint": {
+        "type": "string"
+      },
+      "modelArmorCustomEndpoint": {
+        "type": "string"
+      },
+      "modelArmorGlobalCustomEndpoint": {
+        "type": "string"
+      },
+      "monitoringCustomEndpoint": {
+        "type": "string"
+      },
+      "netappCustomEndpoint": {
+        "type": "string"
+      },
+      "networkConnectivityCustomEndpoint": {
+        "type": "string"
+      },
+      "networkConnectivityv1CustomEndpoint": {
+        "type": "string"
+      },
+      "networkManagementCustomEndpoint": {
+        "type": "string"
+      },
+      "networkManagementv1CustomEndpoint": {
+        "type": "string"
+      },
+      "networkSecurityCustomEndpoint": {
+        "type": "string"
+      },
+      "networkServicesCustomEndpoint": {
+        "type": "string"
+      },
+      "observabilityCustomEndpoint": {
+        "type": "string"
+      },
+      "oracleDatabaseCustomEndpoint": {
+        "type": "string"
+      },
+      "orgPolicyCustomEndpoint": {
+        "type": "string"
+      },
+      "osConfigCustomEndpoint": {
+        "type": "string"
+      },
+      "osConfigV2CustomEndpoint": {
+        "type": "string"
+      },
+      "osLoginCustomEndpoint": {
+        "type": "string"
+      },
+      "parallelstoreCustomEndpoint": {
+        "type": "string"
+      },
+      "parameterManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "parameterManagerRegionalCustomEndpoint": {
+        "type": "string"
+      },
+      "pollInterval": {
+        "type": "string"
+      },
+      "preferGlobalEndpoints": {
+        "type": "boolean"
+      },
+      "preferRegionalEndpoints": {
+        "type": "boolean"
+      },
+      "privatecaCustomEndpoint": {
+        "type": "string"
+      },
+      "privilegedAccessManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "project": {
+        "type": "string"
+      },
+      "publicCaCustomEndpoint": {
+        "type": "string"
+      },
+      "pubsubCustomEndpoint": {
+        "type": "string"
+      },
+      "pubsubLiteCustomEndpoint": {
+        "type": "string"
+      },
+      "recaptchaEnterpriseCustomEndpoint": {
+        "type": "string"
+      },
+      "redisCustomEndpoint": {
+        "type": "string"
+      },
+      "region": {
+        "type": "string"
+      },
+      "requestReason": {
+        "type": "string"
+      },
+      "requestTimeout": {
+        "type": "string"
+      },
+      "resourceManager3CustomEndpoint": {
+        "type": "string"
+      },
+      "resourceManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "resourceManagerV3CustomEndpoint": {
+        "type": "string"
+      },
+      "scopes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "secretManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "secretManagerRegionalCustomEndpoint": {
+        "type": "string"
+      },
+      "secureSourceManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "securityCenterCustomEndpoint": {
+        "type": "string"
+      },
+      "securityCenterManagementCustomEndpoint": {
+        "type": "string"
+      },
+      "securityCenterV2CustomEndpoint": {
+        "type": "string"
+      },
+      "securitypostureCustomEndpoint": {
+        "type": "string"
+      },
+      "serviceDirectoryCustomEndpoint": {
+        "type": "string"
+      },
+      "serviceManagementCustomEndpoint": {
+        "type": "string"
+      },
+      "serviceNetworkingCustomEndpoint": {
+        "type": "string"
+      },
+      "serviceUsageCustomEndpoint": {
+        "type": "string"
+      },
+      "siteVerificationCustomEndpoint": {
+        "type": "string"
+      },
+      "sourceRepoCustomEndpoint": {
+        "type": "string"
+      },
+      "spannerCustomEndpoint": {
+        "type": "string"
+      },
+      "sqlCustomEndpoint": {
+        "type": "string"
+      },
+      "storageBatchOperationsCustomEndpoint": {
+        "type": "string"
+      },
+      "storageControlCustomEndpoint": {
+        "type": "string"
+      },
+      "storageCustomEndpoint": {
+        "type": "string"
+      },
+      "storageFtpCustomEndpoint": {
+        "type": "string"
+      },
+      "storageInsightsCustomEndpoint": {
+        "type": "string"
+      },
+      "storageTransferCustomEndpoint": {
+        "type": "string"
+      },
+      "tagsCustomEndpoint": {
+        "type": "string"
+      },
+      "tagsLocationCustomEndpoint": {
+        "type": "string"
+      },
+      "terraformAttributionLabelAdditionStrategy": {
+        "type": "string"
+      },
+      "transcoderCustomEndpoint": {
+        "type": "string"
+      },
+      "universeDomain": {
+        "type": "string"
+      },
+      "userProjectOverride": {
+        "type": "boolean"
+      },
+      "vectorSearchCustomEndpoint": {
+        "type": "string"
+      },
+      "vertexAiCustomEndpoint": {
+        "type": "string"
+      },
+      "vmwareengineCustomEndpoint": {
+        "type": "string"
+      },
+      "vpcAccessCustomEndpoint": {
+        "type": "string"
+      },
+      "workbenchCustomEndpoint": {
+        "type": "string"
+      },
+      "workflowsCustomEndpoint": {
+        "type": "string"
+      },
+      "workloadIdentityCustomEndpoint": {
+        "type": "string"
+      },
+      "workstationsCustomEndpoint": {
+        "type": "string"
+      },
+      "zone": {
+        "type": "string"
+      }
+    }
+  },
+  "types": {
+    "google:config/batchings:batchings": {
+      "properties": {
+        "enableBatching": {
+          "type": "boolean"
+        },
+        "sendAfter": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "google:config/externalCredentials:externalCredentials": {
+      "properties": {
+        "audience": {
+          "type": "string"
+        },
+        "identityToken": {
+          "type": "string"
+        },
+        "serviceAccountEmail": {
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "required": [
+        "audience",
+        "identityToken",
+        "serviceAccountEmail"
+      ],
+      "language": {
+        "nodejs": {
+          "requiredInputs": []
+        }
+      }
+    },
+    "google:index/ProjectServiceTimeouts:ProjectServiceTimeouts": {
+      "properties": {
+        "create": {
+          "type": "string"
+        },
+        "delete": {
+          "type": "string"
+        },
+        "read": {
+          "type": "string"
+        },
+        "update": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "google:index/ProviderBatching:ProviderBatching": {
+      "properties": {
+        "enableBatching": {
+          "type": "boolean"
+        },
+        "sendAfter": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "google:index/ProviderExternalCredential:ProviderExternalCredential": {
+      "properties": {
+        "audience": {
+          "type": "string"
+        },
+        "identityToken": {
+          "type": "string"
+        },
+        "serviceAccountEmail": {
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "required": [
+        "audience",
+        "identityToken",
+        "serviceAccountEmail"
+      ],
+      "language": {
+        "nodejs": {
+          "requiredOutputs": []
+        }
+      }
+    }
+  },
+  "provider": {
+    "description": "The provider type for the google package. By default, resources use package-wide configuration\nsettings, however an explicit `Provider` instance may be created and passed during resource\nconstruction to achieve fine-grained programmatic control over provider settings. See the\n[documentation](https://www.pulumi.com/docs/reference/programming-model/#providers) for more information.\n",
+    "properties": {
+      "accessApprovalCustomEndpoint": {
+        "type": "string"
+      },
+      "accessContextManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "accessToken": {
+        "type": "string"
+      },
+      "activeDirectoryCustomEndpoint": {
+        "type": "string"
+      },
+      "addTerraformAttributionLabel": {
+        "type": "boolean"
+      },
+      "agentIdentityCustomEndpoint": {
+        "type": "string"
+      },
+      "agentRegistryCustomEndpoint": {
+        "type": "string"
+      },
+      "agenticApplicationsCustomEndpoint": {
+        "type": "string"
+      },
+      "alloydbCustomEndpoint": {
+        "type": "string"
+      },
+      "apigeeCustomEndpoint": {
+        "type": "string"
+      },
+      "apihubCustomEndpoint": {
+        "type": "string"
+      },
+      "apikeysCustomEndpoint": {
+        "type": "string"
+      },
+      "appEngineCustomEndpoint": {
+        "type": "string"
+      },
+      "apphubCustomEndpoint": {
+        "type": "string"
+      },
+      "artifactRegistryCustomEndpoint": {
+        "type": "string"
+      },
+      "assuredWorkloadsCustomEndpoint": {
+        "type": "string"
+      },
+      "backupDrCustomEndpoint": {
+        "type": "string"
+      },
+      "batchings": {
+        "type": "array",
+        "items": {
+          "$ref": "#/types/google:index/ProviderBatching:ProviderBatching"
+        }
+      },
+      "beyondcorpCustomEndpoint": {
+        "type": "string"
+      },
+      "bigQueryCustomEndpoint": {
+        "type": "string"
+      },
+      "biglakeCustomEndpoint": {
+        "type": "string"
+      },
+      "biglakeHiveCustomEndpoint": {
+        "type": "string"
+      },
+      "biglakeIcebergCustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryAnalyticsHubCustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryConnectionCustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryDataTransferCustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryDatapolicyCustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryDatapolicyv2CustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryReservationCustomEndpoint": {
+        "type": "string"
+      },
+      "bigtableCustomEndpoint": {
+        "type": "string"
+      },
+      "billingBudgetsCustomEndpoint": {
+        "type": "string"
+      },
+      "billingCustomEndpoint": {
+        "type": "string"
+      },
+      "billingProject": {
+        "type": "string"
+      },
+      "binaryAuthorizationCustomEndpoint": {
+        "type": "string"
+      },
+      "blockchainNodeEngineCustomEndpoint": {
+        "type": "string"
+      },
+      "certificateManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "cesCustomEndpoint": {
+        "type": "string"
+      },
+      "chronicleCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudAssetCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudBillingCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudBuildCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudFunctionsCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudIdentityCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudIdsCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudQuotasCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudResourceManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudRunCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudRunV2CustomEndpoint": {
+        "type": "string"
+      },
+      "cloudSchedulerCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudSecurityComplianceCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudSupportCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudTasksCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudbuildv2CustomEndpoint": {
+        "type": "string"
+      },
+      "clouddeployCustomEndpoint": {
+        "type": "string"
+      },
+      "clouddomainsCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudfunctions2CustomEndpoint": {
+        "type": "string"
+      },
+      "colabCustomEndpoint": {
+        "type": "string"
+      },
+      "composerCustomEndpoint": {
+        "type": "string"
+      },
+      "computeCustomEndpoint": {
+        "type": "string"
+      },
+      "configCustomEndpoint": {
+        "type": "string"
+      },
+      "contactCenterInsightsCustomEndpoint": {
+        "type": "string"
+      },
+      "containerAnalysisCustomEndpoint": {
+        "type": "string"
+      },
+      "containerAttachedCustomEndpoint": {
+        "type": "string"
+      },
+      "containerAwsCustomEndpoint": {
+        "type": "string"
+      },
+      "containerAzureCustomEndpoint": {
+        "type": "string"
+      },
+      "containerCustomEndpoint": {
+        "type": "string"
+      },
+      "coreBillingCustomEndpoint": {
+        "type": "string"
+      },
+      "credentials": {
+        "type": "string"
+      },
+      "dataCatalogCustomEndpoint": {
+        "type": "string"
+      },
+      "dataFusionCustomEndpoint": {
+        "type": "string"
+      },
+      "dataLineageCustomEndpoint": {
+        "type": "string"
+      },
+      "dataLossPreventionCustomEndpoint": {
+        "type": "string"
+      },
+      "dataPipelineCustomEndpoint": {
+        "type": "string"
+      },
+      "databaseMigrationServiceCustomEndpoint": {
+        "type": "string"
+      },
+      "dataflowCustomEndpoint": {
+        "type": "string"
+      },
+      "dataformCustomEndpoint": {
+        "type": "string"
+      },
+      "dataplexCustomEndpoint": {
+        "type": "string"
+      },
+      "dataprocCustomEndpoint": {
+        "type": "string"
+      },
+      "dataprocGdcCustomEndpoint": {
+        "type": "string"
+      },
+      "dataprocMetastoreCustomEndpoint": {
+        "type": "string"
+      },
+      "datastreamCustomEndpoint": {
+        "type": "string"
+      },
+      "defaultLabels": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "deletionPolicy": {
+        "type": "string"
+      },
+      "deploymentManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "developerConnectCustomEndpoint": {
+        "type": "string"
+      },
+      "dialogflowCustomEndpoint": {
+        "type": "string"
+      },
+      "dialogflowCxCustomEndpoint": {
+        "type": "string"
+      },
+      "discoveryEngineCustomEndpoint": {
+        "type": "string"
+      },
+      "dnsCustomEndpoint": {
+        "type": "string"
+      },
+      "documentAiCustomEndpoint": {
+        "type": "string"
+      },
+      "documentAiWarehouseCustomEndpoint": {
+        "type": "string"
+      },
+      "edgecontainerCustomEndpoint": {
+        "type": "string"
+      },
+      "edgenetworkCustomEndpoint": {
+        "type": "string"
+      },
+      "essentialContactsCustomEndpoint": {
+        "type": "string"
+      },
+      "eventarcCustomEndpoint": {
+        "type": "string"
+      },
+      "externalCredentials": {
+        "type": "array",
+        "items": {
+          "$ref": "#/types/google:index/ProviderExternalCredential:ProviderExternalCredential"
+        }
+      },
+      "filestoreCustomEndpoint": {
+        "type": "string"
+      },
+      "firebaseAppCheckCustomEndpoint": {
+        "type": "string"
+      },
+      "firebaseAppHostingCustomEndpoint": {
+        "type": "string"
+      },
+      "firebaseDataConnectCustomEndpoint": {
+        "type": "string"
+      },
+      "firebaseRemoteConfigCustomEndpoint": {
+        "type": "string"
+      },
+      "firebaserulesCustomEndpoint": {
+        "type": "string"
+      },
+      "firestoreCustomEndpoint": {
+        "type": "string"
+      },
+      "geminiCustomEndpoint": {
+        "type": "string"
+      },
+      "geminiDataAnalyticsCustomEndpoint": {
+        "type": "string"
+      },
+      "gkeBackupCustomEndpoint": {
+        "type": "string"
+      },
+      "gkeHub2CustomEndpoint": {
+        "type": "string"
+      },
+      "gkeHubCustomEndpoint": {
+        "type": "string"
+      },
+      "gkeonpremCustomEndpoint": {
+        "type": "string"
+      },
+      "healthcareCustomEndpoint": {
+        "type": "string"
+      },
+      "hypercomputeclusterCustomEndpoint": {
+        "type": "string"
+      },
+      "iam2CustomEndpoint": {
+        "type": "string"
+      },
+      "iam3CustomEndpoint": {
+        "type": "string"
+      },
+      "iamBetaCustomEndpoint": {
+        "type": "string"
+      },
+      "iamCredentialsCustomEndpoint": {
+        "type": "string"
+      },
+      "iamCustomEndpoint": {
+        "type": "string"
+      },
+      "iamWorkforcePoolCustomEndpoint": {
+        "type": "string"
+      },
+      "iapCustomEndpoint": {
+        "type": "string"
+      },
+      "identityPlatformCustomEndpoint": {
+        "type": "string"
+      },
+      "impersonateServiceAccount": {
+        "type": "string"
+      },
+      "impersonateServiceAccountDelegates": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "integrationConnectorsCustomEndpoint": {
+        "type": "string"
+      },
+      "integrationsCustomEndpoint": {
+        "type": "string"
+      },
+      "kmsCustomEndpoint": {
+        "type": "string"
+      },
+      "licenseManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "loggingCustomEndpoint": {
+        "type": "string"
+      },
+      "lookerCustomEndpoint": {
+        "type": "string"
+      },
+      "lustreCustomEndpoint": {
+        "type": "string"
+      },
+      "managedKafkaCustomEndpoint": {
+        "type": "string"
+      },
+      "memcacheCustomEndpoint": {
+        "type": "string"
+      },
+      "memorystoreCustomEndpoint": {
+        "type": "string"
+      },
+      "migrationCenterCustomEndpoint": {
+        "type": "string"
+      },
+      "modelArmorCustomEndpoint": {
+        "type": "string"
+      },
+      "modelArmorGlobalCustomEndpoint": {
+        "type": "string"
+      },
+      "monitoringCustomEndpoint": {
+        "type": "string"
+      },
+      "netappCustomEndpoint": {
+        "type": "string"
+      },
+      "networkConnectivityCustomEndpoint": {
+        "type": "string"
+      },
+      "networkConnectivityv1CustomEndpoint": {
+        "type": "string"
+      },
+      "networkManagementCustomEndpoint": {
+        "type": "string"
+      },
+      "networkManagementv1CustomEndpoint": {
+        "type": "string"
+      },
+      "networkSecurityCustomEndpoint": {
+        "type": "string"
+      },
+      "networkServicesCustomEndpoint": {
+        "type": "string"
+      },
+      "observabilityCustomEndpoint": {
+        "type": "string"
+      },
+      "oracleDatabaseCustomEndpoint": {
+        "type": "string"
+      },
+      "orgPolicyCustomEndpoint": {
+        "type": "string"
+      },
+      "osConfigCustomEndpoint": {
+        "type": "string"
+      },
+      "osConfigV2CustomEndpoint": {
+        "type": "string"
+      },
+      "osLoginCustomEndpoint": {
+        "type": "string"
+      },
+      "parallelstoreCustomEndpoint": {
+        "type": "string"
+      },
+      "parameterManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "parameterManagerRegionalCustomEndpoint": {
+        "type": "string"
+      },
+      "pollInterval": {
+        "type": "string"
+      },
+      "preferGlobalEndpoints": {
+        "type": "boolean"
+      },
+      "preferRegionalEndpoints": {
+        "type": "boolean"
+      },
+      "privatecaCustomEndpoint": {
+        "type": "string"
+      },
+      "privilegedAccessManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "project": {
+        "type": "string"
+      },
+      "publicCaCustomEndpoint": {
+        "type": "string"
+      },
+      "pubsubCustomEndpoint": {
+        "type": "string"
+      },
+      "pubsubLiteCustomEndpoint": {
+        "type": "string"
+      },
+      "recaptchaEnterpriseCustomEndpoint": {
+        "type": "string"
+      },
+      "redisCustomEndpoint": {
+        "type": "string"
+      },
+      "region": {
+        "type": "string"
+      },
+      "requestReason": {
+        "type": "string"
+      },
+      "requestTimeout": {
+        "type": "string"
+      },
+      "resourceManager3CustomEndpoint": {
+        "type": "string"
+      },
+      "resourceManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "resourceManagerV3CustomEndpoint": {
+        "type": "string"
+      },
+      "scopes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "secretManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "secretManagerRegionalCustomEndpoint": {
+        "type": "string"
+      },
+      "secureSourceManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "securityCenterCustomEndpoint": {
+        "type": "string"
+      },
+      "securityCenterManagementCustomEndpoint": {
+        "type": "string"
+      },
+      "securityCenterV2CustomEndpoint": {
+        "type": "string"
+      },
+      "securitypostureCustomEndpoint": {
+        "type": "string"
+      },
+      "serviceDirectoryCustomEndpoint": {
+        "type": "string"
+      },
+      "serviceManagementCustomEndpoint": {
+        "type": "string"
+      },
+      "serviceNetworkingCustomEndpoint": {
+        "type": "string"
+      },
+      "serviceUsageCustomEndpoint": {
+        "type": "string"
+      },
+      "siteVerificationCustomEndpoint": {
+        "type": "string"
+      },
+      "sourceRepoCustomEndpoint": {
+        "type": "string"
+      },
+      "spannerCustomEndpoint": {
+        "type": "string"
+      },
+      "sqlCustomEndpoint": {
+        "type": "string"
+      },
+      "storageBatchOperationsCustomEndpoint": {
+        "type": "string"
+      },
+      "storageControlCustomEndpoint": {
+        "type": "string"
+      },
+      "storageCustomEndpoint": {
+        "type": "string"
+      },
+      "storageFtpCustomEndpoint": {
+        "type": "string"
+      },
+      "storageInsightsCustomEndpoint": {
+        "type": "string"
+      },
+      "storageTransferCustomEndpoint": {
+        "type": "string"
+      },
+      "tagsCustomEndpoint": {
+        "type": "string"
+      },
+      "tagsLocationCustomEndpoint": {
+        "type": "string"
+      },
+      "terraformAttributionLabelAdditionStrategy": {
+        "type": "string"
+      },
+      "transcoderCustomEndpoint": {
+        "type": "string"
+      },
+      "universeDomain": {
+        "type": "string"
+      },
+      "userProjectOverride": {
+        "type": "boolean"
+      },
+      "vectorSearchCustomEndpoint": {
+        "type": "string"
+      },
+      "vertexAiCustomEndpoint": {
+        "type": "string"
+      },
+      "vmwareengineCustomEndpoint": {
+        "type": "string"
+      },
+      "vpcAccessCustomEndpoint": {
+        "type": "string"
+      },
+      "workbenchCustomEndpoint": {
+        "type": "string"
+      },
+      "workflowsCustomEndpoint": {
+        "type": "string"
+      },
+      "workloadIdentityCustomEndpoint": {
+        "type": "string"
+      },
+      "workstationsCustomEndpoint": {
+        "type": "string"
+      },
+      "zone": {
+        "type": "string"
+      }
+    },
+    "inputProperties": {
+      "accessApprovalCustomEndpoint": {
+        "type": "string"
+      },
+      "accessContextManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "accessToken": {
+        "type": "string"
+      },
+      "activeDirectoryCustomEndpoint": {
+        "type": "string"
+      },
+      "addTerraformAttributionLabel": {
+        "type": "boolean"
+      },
+      "agentIdentityCustomEndpoint": {
+        "type": "string"
+      },
+      "agentRegistryCustomEndpoint": {
+        "type": "string"
+      },
+      "agenticApplicationsCustomEndpoint": {
+        "type": "string"
+      },
+      "alloydbCustomEndpoint": {
+        "type": "string"
+      },
+      "apigeeCustomEndpoint": {
+        "type": "string"
+      },
+      "apihubCustomEndpoint": {
+        "type": "string"
+      },
+      "apikeysCustomEndpoint": {
+        "type": "string"
+      },
+      "appEngineCustomEndpoint": {
+        "type": "string"
+      },
+      "apphubCustomEndpoint": {
+        "type": "string"
+      },
+      "artifactRegistryCustomEndpoint": {
+        "type": "string"
+      },
+      "assuredWorkloadsCustomEndpoint": {
+        "type": "string"
+      },
+      "backupDrCustomEndpoint": {
+        "type": "string"
+      },
+      "batchings": {
+        "type": "array",
+        "items": {
+          "$ref": "#/types/google:index/ProviderBatching:ProviderBatching"
+        }
+      },
+      "beyondcorpCustomEndpoint": {
+        "type": "string"
+      },
+      "bigQueryCustomEndpoint": {
+        "type": "string"
+      },
+      "biglakeCustomEndpoint": {
+        "type": "string"
+      },
+      "biglakeHiveCustomEndpoint": {
+        "type": "string"
+      },
+      "biglakeIcebergCustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryAnalyticsHubCustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryConnectionCustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryDataTransferCustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryDatapolicyCustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryDatapolicyv2CustomEndpoint": {
+        "type": "string"
+      },
+      "bigqueryReservationCustomEndpoint": {
+        "type": "string"
+      },
+      "bigtableCustomEndpoint": {
+        "type": "string"
+      },
+      "billingBudgetsCustomEndpoint": {
+        "type": "string"
+      },
+      "billingCustomEndpoint": {
+        "type": "string"
+      },
+      "billingProject": {
+        "type": "string"
+      },
+      "binaryAuthorizationCustomEndpoint": {
+        "type": "string"
+      },
+      "blockchainNodeEngineCustomEndpoint": {
+        "type": "string"
+      },
+      "certificateManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "cesCustomEndpoint": {
+        "type": "string"
+      },
+      "chronicleCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudAssetCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudBillingCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudBuildCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudFunctionsCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudIdentityCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudIdsCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudQuotasCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudResourceManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudRunCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudRunV2CustomEndpoint": {
+        "type": "string"
+      },
+      "cloudSchedulerCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudSecurityComplianceCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudSupportCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudTasksCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudbuildv2CustomEndpoint": {
+        "type": "string"
+      },
+      "clouddeployCustomEndpoint": {
+        "type": "string"
+      },
+      "clouddomainsCustomEndpoint": {
+        "type": "string"
+      },
+      "cloudfunctions2CustomEndpoint": {
+        "type": "string"
+      },
+      "colabCustomEndpoint": {
+        "type": "string"
+      },
+      "composerCustomEndpoint": {
+        "type": "string"
+      },
+      "computeCustomEndpoint": {
+        "type": "string"
+      },
+      "configCustomEndpoint": {
+        "type": "string"
+      },
+      "contactCenterInsightsCustomEndpoint": {
+        "type": "string"
+      },
+      "containerAnalysisCustomEndpoint": {
+        "type": "string"
+      },
+      "containerAttachedCustomEndpoint": {
+        "type": "string"
+      },
+      "containerAwsCustomEndpoint": {
+        "type": "string"
+      },
+      "containerAzureCustomEndpoint": {
+        "type": "string"
+      },
+      "containerCustomEndpoint": {
+        "type": "string"
+      },
+      "coreBillingCustomEndpoint": {
+        "type": "string"
+      },
+      "credentials": {
+        "type": "string"
+      },
+      "dataCatalogCustomEndpoint": {
+        "type": "string"
+      },
+      "dataFusionCustomEndpoint": {
+        "type": "string"
+      },
+      "dataLineageCustomEndpoint": {
+        "type": "string"
+      },
+      "dataLossPreventionCustomEndpoint": {
+        "type": "string"
+      },
+      "dataPipelineCustomEndpoint": {
+        "type": "string"
+      },
+      "databaseMigrationServiceCustomEndpoint": {
+        "type": "string"
+      },
+      "dataflowCustomEndpoint": {
+        "type": "string"
+      },
+      "dataformCustomEndpoint": {
+        "type": "string"
+      },
+      "dataplexCustomEndpoint": {
+        "type": "string"
+      },
+      "dataprocCustomEndpoint": {
+        "type": "string"
+      },
+      "dataprocGdcCustomEndpoint": {
+        "type": "string"
+      },
+      "dataprocMetastoreCustomEndpoint": {
+        "type": "string"
+      },
+      "datastreamCustomEndpoint": {
+        "type": "string"
+      },
+      "defaultLabels": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "deletionPolicy": {
+        "type": "string"
+      },
+      "deploymentManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "developerConnectCustomEndpoint": {
+        "type": "string"
+      },
+      "dialogflowCustomEndpoint": {
+        "type": "string"
+      },
+      "dialogflowCxCustomEndpoint": {
+        "type": "string"
+      },
+      "discoveryEngineCustomEndpoint": {
+        "type": "string"
+      },
+      "dnsCustomEndpoint": {
+        "type": "string"
+      },
+      "documentAiCustomEndpoint": {
+        "type": "string"
+      },
+      "documentAiWarehouseCustomEndpoint": {
+        "type": "string"
+      },
+      "edgecontainerCustomEndpoint": {
+        "type": "string"
+      },
+      "edgenetworkCustomEndpoint": {
+        "type": "string"
+      },
+      "essentialContactsCustomEndpoint": {
+        "type": "string"
+      },
+      "eventarcCustomEndpoint": {
+        "type": "string"
+      },
+      "externalCredentials": {
+        "type": "array",
+        "items": {
+          "$ref": "#/types/google:index/ProviderExternalCredential:ProviderExternalCredential"
+        }
+      },
+      "filestoreCustomEndpoint": {
+        "type": "string"
+      },
+      "firebaseAppCheckCustomEndpoint": {
+        "type": "string"
+      },
+      "firebaseAppHostingCustomEndpoint": {
+        "type": "string"
+      },
+      "firebaseDataConnectCustomEndpoint": {
+        "type": "string"
+      },
+      "firebaseRemoteConfigCustomEndpoint": {
+        "type": "string"
+      },
+      "firebaserulesCustomEndpoint": {
+        "type": "string"
+      },
+      "firestoreCustomEndpoint": {
+        "type": "string"
+      },
+      "geminiCustomEndpoint": {
+        "type": "string"
+      },
+      "geminiDataAnalyticsCustomEndpoint": {
+        "type": "string"
+      },
+      "gkeBackupCustomEndpoint": {
+        "type": "string"
+      },
+      "gkeHub2CustomEndpoint": {
+        "type": "string"
+      },
+      "gkeHubCustomEndpoint": {
+        "type": "string"
+      },
+      "gkeonpremCustomEndpoint": {
+        "type": "string"
+      },
+      "healthcareCustomEndpoint": {
+        "type": "string"
+      },
+      "hypercomputeclusterCustomEndpoint": {
+        "type": "string"
+      },
+      "iam2CustomEndpoint": {
+        "type": "string"
+      },
+      "iam3CustomEndpoint": {
+        "type": "string"
+      },
+      "iamBetaCustomEndpoint": {
+        "type": "string"
+      },
+      "iamCredentialsCustomEndpoint": {
+        "type": "string"
+      },
+      "iamCustomEndpoint": {
+        "type": "string"
+      },
+      "iamWorkforcePoolCustomEndpoint": {
+        "type": "string"
+      },
+      "iapCustomEndpoint": {
+        "type": "string"
+      },
+      "identityPlatformCustomEndpoint": {
+        "type": "string"
+      },
+      "impersonateServiceAccount": {
+        "type": "string"
+      },
+      "impersonateServiceAccountDelegates": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "integrationConnectorsCustomEndpoint": {
+        "type": "string"
+      },
+      "integrationsCustomEndpoint": {
+        "type": "string"
+      },
+      "kmsCustomEndpoint": {
+        "type": "string"
+      },
+      "licenseManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "loggingCustomEndpoint": {
+        "type": "string"
+      },
+      "lookerCustomEndpoint": {
+        "type": "string"
+      },
+      "lustreCustomEndpoint": {
+        "type": "string"
+      },
+      "managedKafkaCustomEndpoint": {
+        "type": "string"
+      },
+      "memcacheCustomEndpoint": {
+        "type": "string"
+      },
+      "memorystoreCustomEndpoint": {
+        "type": "string"
+      },
+      "migrationCenterCustomEndpoint": {
+        "type": "string"
+      },
+      "modelArmorCustomEndpoint": {
+        "type": "string"
+      },
+      "modelArmorGlobalCustomEndpoint": {
+        "type": "string"
+      },
+      "monitoringCustomEndpoint": {
+        "type": "string"
+      },
+      "netappCustomEndpoint": {
+        "type": "string"
+      },
+      "networkConnectivityCustomEndpoint": {
+        "type": "string"
+      },
+      "networkConnectivityv1CustomEndpoint": {
+        "type": "string"
+      },
+      "networkManagementCustomEndpoint": {
+        "type": "string"
+      },
+      "networkManagementv1CustomEndpoint": {
+        "type": "string"
+      },
+      "networkSecurityCustomEndpoint": {
+        "type": "string"
+      },
+      "networkServicesCustomEndpoint": {
+        "type": "string"
+      },
+      "observabilityCustomEndpoint": {
+        "type": "string"
+      },
+      "oracleDatabaseCustomEndpoint": {
+        "type": "string"
+      },
+      "orgPolicyCustomEndpoint": {
+        "type": "string"
+      },
+      "osConfigCustomEndpoint": {
+        "type": "string"
+      },
+      "osConfigV2CustomEndpoint": {
+        "type": "string"
+      },
+      "osLoginCustomEndpoint": {
+        "type": "string"
+      },
+      "parallelstoreCustomEndpoint": {
+        "type": "string"
+      },
+      "parameterManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "parameterManagerRegionalCustomEndpoint": {
+        "type": "string"
+      },
+      "pollInterval": {
+        "type": "string"
+      },
+      "preferGlobalEndpoints": {
+        "type": "boolean"
+      },
+      "preferRegionalEndpoints": {
+        "type": "boolean"
+      },
+      "privatecaCustomEndpoint": {
+        "type": "string"
+      },
+      "privilegedAccessManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "project": {
+        "type": "string"
+      },
+      "publicCaCustomEndpoint": {
+        "type": "string"
+      },
+      "pubsubCustomEndpoint": {
+        "type": "string"
+      },
+      "pubsubLiteCustomEndpoint": {
+        "type": "string"
+      },
+      "recaptchaEnterpriseCustomEndpoint": {
+        "type": "string"
+      },
+      "redisCustomEndpoint": {
+        "type": "string"
+      },
+      "region": {
+        "type": "string"
+      },
+      "requestReason": {
+        "type": "string"
+      },
+      "requestTimeout": {
+        "type": "string"
+      },
+      "resourceManager3CustomEndpoint": {
+        "type": "string"
+      },
+      "resourceManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "resourceManagerV3CustomEndpoint": {
+        "type": "string"
+      },
+      "scopes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "secretManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "secretManagerRegionalCustomEndpoint": {
+        "type": "string"
+      },
+      "secureSourceManagerCustomEndpoint": {
+        "type": "string"
+      },
+      "securityCenterCustomEndpoint": {
+        "type": "string"
+      },
+      "securityCenterManagementCustomEndpoint": {
+        "type": "string"
+      },
+      "securityCenterV2CustomEndpoint": {
+        "type": "string"
+      },
+      "securitypostureCustomEndpoint": {
+        "type": "string"
+      },
+      "serviceDirectoryCustomEndpoint": {
+        "type": "string"
+      },
+      "serviceManagementCustomEndpoint": {
+        "type": "string"
+      },
+      "serviceNetworkingCustomEndpoint": {
+        "type": "string"
+      },
+      "serviceUsageCustomEndpoint": {
+        "type": "string"
+      },
+      "siteVerificationCustomEndpoint": {
+        "type": "string"
+      },
+      "sourceRepoCustomEndpoint": {
+        "type": "string"
+      },
+      "spannerCustomEndpoint": {
+        "type": "string"
+      },
+      "sqlCustomEndpoint": {
+        "type": "string"
+      },
+      "storageBatchOperationsCustomEndpoint": {
+        "type": "string"
+      },
+      "storageControlCustomEndpoint": {
+        "type": "string"
+      },
+      "storageCustomEndpoint": {
+        "type": "string"
+      },
+      "storageFtpCustomEndpoint": {
+        "type": "string"
+      },
+      "storageInsightsCustomEndpoint": {
+        "type": "string"
+      },
+      "storageTransferCustomEndpoint": {
+        "type": "string"
+      },
+      "tagsCustomEndpoint": {
+        "type": "string"
+      },
+      "tagsLocationCustomEndpoint": {
+        "type": "string"
+      },
+      "terraformAttributionLabelAdditionStrategy": {
+        "type": "string"
+      },
+      "transcoderCustomEndpoint": {
+        "type": "string"
+      },
+      "universeDomain": {
+        "type": "string"
+      },
+      "userProjectOverride": {
+        "type": "boolean"
+      },
+      "vectorSearchCustomEndpoint": {
+        "type": "string"
+      },
+      "vertexAiCustomEndpoint": {
+        "type": "string"
+      },
+      "vmwareengineCustomEndpoint": {
+        "type": "string"
+      },
+      "vpcAccessCustomEndpoint": {
+        "type": "string"
+      },
+      "workbenchCustomEndpoint": {
+        "type": "string"
+      },
+      "workflowsCustomEndpoint": {
+        "type": "string"
+      },
+      "workloadIdentityCustomEndpoint": {
+        "type": "string"
+      },
+      "workstationsCustomEndpoint": {
+        "type": "string"
+      },
+      "zone": {
+        "type": "string"
+      }
+    },
+    "methods": {
+      "terraformConfig": "pulumi:providers:google/terraformConfig"
+    }
+  },
+  "resources": {
+    "google:index/projectService:ProjectService": {
+      "properties": {
+        "deletionPolicy": {
+          "type": "string",
+          "description": "Whether Terraform will be prevented from destroying the instance. Defaults to \"DELETE\".\nWhen a 'terraform destroy' or 'terraform apply' would delete the instance,\nthe command will fail if this field is set to \"PREVENT\" in Terraform state.\nWhen set to \"ABANDON\", the command will remove the resource from Terraform\nmanagement without updating or deleting the resource in the API.\nWhen set to \"DELETE\", deleting the resource is allowed."
+        },
+        "disableDependentServices": {
+          "type": "boolean"
+        },
+        "disableOnDestroy": {
+          "type": "boolean"
+        },
+        "project": {
+          "type": "string"
+        },
+        "projectServiceId": {
+          "type": "string"
+        },
+        "service": {
+          "type": "string"
+        },
+        "timeouts": {
+          "$ref": "#/types/google:index/ProjectServiceTimeouts:ProjectServiceTimeouts"
+        }
+      },
+      "required": [
+        "deletionPolicy",
+        "projectServiceId",
+        "project",
+        "service"
+      ],
+      "inputProperties": {
+        "deletionPolicy": {
+          "type": "string",
+          "description": "Whether Terraform will be prevented from destroying the instance. Defaults to \"DELETE\".\nWhen a 'terraform destroy' or 'terraform apply' would delete the instance,\nthe command will fail if this field is set to \"PREVENT\" in Terraform state.\nWhen set to \"ABANDON\", the command will remove the resource from Terraform\nmanagement without updating or deleting the resource in the API.\nWhen set to \"DELETE\", deleting the resource is allowed."
+        },
+        "disableDependentServices": {
+          "type": "boolean"
+        },
+        "disableOnDestroy": {
+          "type": "boolean"
+        },
+        "project": {
+          "type": "string"
+        },
+        "projectServiceId": {
+          "type": "string"
+        },
+        "service": {
+          "type": "string"
+        },
+        "timeouts": {
+          "$ref": "#/types/google:index/ProjectServiceTimeouts:ProjectServiceTimeouts"
+        }
+      },
+      "requiredInputs": [
+        "service"
+      ],
+      "stateInputs": {
+        "description": "Input properties used for looking up and filtering ProjectService resources.\n",
+        "properties": {
+          "deletionPolicy": {
+            "type": "string",
+            "description": "Whether Terraform will be prevented from destroying the instance. Defaults to \"DELETE\".\nWhen a 'terraform destroy' or 'terraform apply' would delete the instance,\nthe command will fail if this field is set to \"PREVENT\" in Terraform state.\nWhen set to \"ABANDON\", the command will remove the resource from Terraform\nmanagement without updating or deleting the resource in the API.\nWhen set to \"DELETE\", deleting the resource is allowed."
+          },
+          "disableDependentServices": {
+            "type": "boolean"
+          },
+          "disableOnDestroy": {
+            "type": "boolean"
+          },
+          "project": {
+            "type": "string"
+          },
+          "projectServiceId": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          },
+          "timeouts": {
+            "$ref": "#/types/google:index/ProjectServiceTimeouts:ProjectServiceTimeouts"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "functions": {},
+  "parameterization": {
+    "baseProvider": {
+      "name": "terraform-provider",
+      "version": "1.4.0"
+    },
+    "parameter": "eyJyZW1vdGUiOnsidXJsIjoicmVnaXN0cnkub3BlbnRvZnUub3JnL2hhc2hpY29ycC9nb29nbGUiLCJ2ZXJzaW9uIjoiOC4xMC4wIn19"
+  }
+}

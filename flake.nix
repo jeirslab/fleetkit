@@ -124,6 +124,8 @@
           guests = args: import ./lib/terraform.nix ({ inherit (nixpkgs) lib; } // args);
           # { fleet; estate; } -> the GitHub organisation and repositories.
           github = args: import ./lib/github.nix ({ inherit (nixpkgs) lib; } // args);
+          # { fleet; estate; } -> the estate's Google Cloud API enablement.
+          google = args: import ./lib/google.nix ({ inherit (nixpkgs) lib; } // args);
         };
         # Pulumi YAML programs (builtins.toJSON into Pulumi.yaml) through
         # Pulumi's terraform-provider bridge at the pinned provider versions;
@@ -163,6 +165,16 @@
             inherit tf;
             project = "${args.estate}-github";
             adopt = nixpkgs.lib.optionalAttrs adopt (adoptRules.github tf);
+          };
+        # { fleet; estate; } -> the estate's Google Cloud API enablement
+        # (addons.google, docs/addons.md) as a Pulumi program, the stack
+        # <estate>-google. Refused when the estate does not switch the add-on on.
+        mkGooglePulumi =
+          args:
+          import ./lib/pulumi.nix {
+            inherit (nixpkgs) lib;
+            tf = import ./lib/google.nix ({ inherit (nixpkgs) lib; } // args);
+            project = "${args.estate}-google";
           };
         # The same two stages under their Terraform-era names: tests written
         # against unstable (tests/github.sh, tests/terraform.sh) read these.

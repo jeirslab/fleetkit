@@ -8,7 +8,60 @@ program or its stack (`tests/addons.sh` checks this for every other estate of
 the fixture). `addons` is tenant-owned (`lib/default.nix`, `tenantOwned`): a
 tenant switches add-ons on for its own estate, as it declares its guests.
 
-There is one add-on so far, `ansible`.
+There are two so far, `ansible` and `google`.
+
+## The Google add-on
+
+It declares which Google Cloud APIs are enabled on an estate's projects, as
+`google_project_service` resources of the `hashicorp/google` provider (8.10.0,
+pinned in `providers/` like the others), in a stack of its own,
+`<estate>-google`: the guests stack neither gains nor loses anything, and an
+estate that does not switch it on has no such stack
+(`lib.pulumi.fromModel { estate; google = true; }` adds nothing for it, and
+`lib.mkGooglePulumi` refuses it). The stack lives in the estate's backend,
+like the guests stack.
+
+```nix
+fleet.estates.lab.addons.google = {
+  enable = true;
+  # A service account key (the JSON) that may enable services on the projects.
+  credentialRef = "sops:lab/hosts#integrations/google/personal/deployer_key";
+  projects.personal = {
+    projectId = "example-project-123456";
+    services = [ "drive.googleapis.com" "calendar-json.googleapis.com" ];
+    # disableOnDestroy = false;   # the default: a service dropped here stays enabled
+  };
+};
+```
+
+| Option (`fleet.estates.<estate>.addons.google`) | Type | Default | |
+|---|---|---|---|
+| `enable` | bool | `false` | switches the add-on on; projects declared while it is off are refused |
+| `credentialRef` | null or sops ref | `null` | `sops:<estate>/<file>#<key>`, the service account key; required when `enable` |
+| `projects.<name>.projectId` | string | | the project ID (6 to 30 characters), not its number or display name |
+| `projects.<name>.services` | list of strings | `[ ]` | `<name>.googleapis.com`, each once |
+| `projects.<name>.disableOnDestroy` | bool | `false` | whether dropping a service from the list disables the API |
+
+Rendered (`lib/google.nix`, `tests/google.sh`): `terraform.required_providers`
+`hashicorp/google` and `carlpett/sops`; `provider.google.credentials` the
+`data.sops_file` reference to the key (never a literal; a value pasted where
+the ref goes is refused without being echoed); one
+`google_project_service.<project>-<service without .googleapis.com>` per
+service, with `project`, `service` and `disable_on_destroy`. The provider
+schemas under `providers/` hold this one resource only
+(`tests/slim_provider.py`: the full ones are 10 MB and 22 MB); a further
+resource is added to the list there and the maps regenerated.
+
+Things to know:
+
+- The service account needs `roles/serviceusage.serviceUsageAdmin` and its
+  project needs `serviceusage.googleapis.com` and
+  `cloudresourcemanager.googleapis.com` already enabled; the first `up` cannot
+  enable the API it calls through.
+- A service already enabled by hand is not an error: the first `up` enables it
+  again and records it. Nothing is adopted (no `adopt` rule).
+- What the API does not do is not declared: the OAuth consent screen and
+  desktop OAuth clients are made in the console.
 
 ## The Ansible add-on
 

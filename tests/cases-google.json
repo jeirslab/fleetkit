@@ -1,0 +1,81 @@
+{
+  "negative": [
+    {
+      "name": "projects-while-off",
+      "description": "projects declared while the add-on is off",
+      "expect": "fleet\\.estates\\.gcp\\.addons\\.google\\.projects: main, side declared, but addons\\.google\\.enable is false",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.estates.gcp.addons.google.enable = lib.mkForce false;",
+        "}"
+      ]
+    },
+    {
+      "name": "no-credential",
+      "description": "enabled without a credential",
+      "expect": "fleet\\.estates\\.gcp\\.addons\\.google\\.credentialRef: null, and addons\\.google\\.enable is true",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.estates.gcp.addons.google.credentialRef = lib.mkForce null;",
+        "}"
+      ]
+    },
+    {
+      "name": "credential-not-a-ref",
+      "description": "a credential that is not a sops ref (a value pasted in)",
+      "expect": "addons\\.google\\.credentialRef: not a sops reference",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.estates.gcp.addons.google.credentialRef = lib.mkForce \"{\\\"type\\\": \\\"service_account\\\"}\";",
+        "}"
+      ]
+    },
+    {
+      "name": "credential-undeclared-file",
+      "description": "a credential in a secrets file the estate does not declare",
+      "expect": "fleet\\.estates\\.gcp\\.secrets\\.files has no \"nope\"",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.estates.gcp.addons.google.credentialRef = lib.mkForce \"sops:gcp/nope#key\";",
+        "}"
+      ]
+    },
+    {
+      "name": "bad-service",
+      "description": "a service that is not <name>.googleapis.com",
+      "expect": "fleet\\.estates\\.gcp\\.addons\\.google\\.projects\\.main\\.services: Drive: not a service name",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.estates.gcp.addons.google.projects.main.services = lib.mkForce [ \"Drive\" ];",
+        "}"
+      ]
+    },
+    {
+      "name": "duplicate-service",
+      "description": "a service listed twice",
+      "expect": "fleet\\.estates\\.gcp\\.addons\\.google\\.projects\\.main\\.services: drive\\.googleapis\\.com listed twice",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.estates.gcp.addons.google.projects.main.services = lib.mkForce [ \"drive.googleapis.com\" \"drive.googleapis.com\" ];",
+        "}"
+      ]
+    },
+    {
+      "name": "bad-project-id",
+      "description": "a project that is named by its display name",
+      "expect": "fleet\\.estates\\.gcp\\.addons\\.google\\.projects\\.main\\.projectId: \"My Project\" is not a project ID",
+      "module": [
+        "{ lib, ... }:",
+        "{",
+        "  fleet.estates.gcp.addons.google.projects.main.projectId = lib.mkForce \"My Project\";",
+        "}"
+      ]
+    }
+  ]
+}
