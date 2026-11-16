@@ -65,9 +65,13 @@ class Tracker:
     def __init__(self):
         self.states, self.comments, self.links, self.labels = {}, [], [], {}
 
+    down = False
+
     def get(self, key):
+        if self.down:
+            raise RuntimeError("503")
         if key == "NOPE-1":
-            raise RuntimeError("404")
+            return None
         return {"key": key, "labels": self.labels.get(key, [])}
 
     def comment(self, key, text):
@@ -122,7 +126,7 @@ def env(tmp_path):
     e.forge, e.tracker, e.runner, e.deployer, e.clock, e.alerts = Forge(), Tracker(), Runner(), Deployer(), Clock(), []
     e.repo = Repo(e.s)
     e.p = Pipeline(e.s.state_dir, REPO, "unstable", ["nj", "github"], e.forge, e.tracker, e.runner, e.deployer,
-                   e.repo, required=CHECKS, protect=("*/btc-mainnet*",), nixos_on=("@verified",), timeout=1800,
+                   e.repo, required=CHECKS, protect=("*/btc-mainnet*",), nixos_on=("web-1",), timeout=1800,
                    spawn=lambda f: f(), clock=e.clock, alert=e.alerts.append)
     return e
 
@@ -186,12 +190,20 @@ def test_a_replayed_older_merge_is_refused(env):
     b = merge(env, 2, "b\n", "INFRA-2")
     env.p.trigger(REPO, b, "test")  # queued behind a
     calls = len(env.deployer.calls)
-    # a again while it is deployed and under review: not newer than what runs.
-    assert "not newer" in env.p.trigger(REPO, a, "replay")["refused"]
+    # a again while it is under review: the same run, not a new one.
+    assert "already queued or running" in env.p.trigger(REPO, a, "replay")["ignored"]
     env.p.verdict(only(env.p, "reviewing")["id"], "pass", "ok", "reviewer")
     git("update-ref", "refs/heads/stable", a, cwd=env.origin)  # what the fast-forward did
+    env.p.verdict(only(env.p, "reviewing")["id"], "pass", "ok", "reviewer")  # b's run
+    git("update-ref", "refs/heads/stable", b, cwd=env.origin)
     assert "not ahead of stable" in env.p.trigger(REPO, a, "replay")["refused"]
     assert {x[1] for x in env.deployer.calls[calls:]} == {b}
+    # Older than the last deployed commit, though ahead of stable: refused too.
+    c = merge(env, 3, "c\n", "INFRA-3")
+    env.p.trigger(REPO, c, "test")
+    env.p.verdict(only(env.p, "reviewing")["id"], "fail", "bad", "reviewer")
+    env.p.resolve(only(env.p, "reverting")["id"], "revert merged by hand elsewhere", "operator")
+    assert "not newer" in env.p.trigger(REPO, c, "replay")["refused"]
 
 
 # ── a run, and the queue ─────────────────────────────────────────────────
@@ -199,7 +211,7 @@ def test_green_merge_previews_deploys_and_asks_for_review(env):
     sha = merge(env, 1, "two\n")
     env.p.trigger(REPO, sha, "test")
     r = only(env.p, "reviewing")
-    on = ("@verified",)
+    on = ("web-1",)
     assert env.deployer.calls == [("nj", sha, True, on), ("github", sha, True, on), ("nj", sha, False, on),
                                   ("github", sha, False, on)]
     assert r["base"] == env.base and r["tickets"] == ["INFRA-1"]  # not ADR-167, not SHA-256
@@ -213,7 +225,7 @@ def test_one_run_per_repo_and_the_newest_queued_merge_runs_next(env):
     b = merge(env, 2, "b\n", "INFRA-2")
     c = merge(env, 3, "c\n", "INFRA-3")
     assert env.p.trigger(REPO, c, "test")["started"] is None
-    assert env.p.trigger(REPO, b, "test")["started"] is None  # older: does not replace c
+    assert "ignored" in env.p.trigger(REPO, b, "test")  # older: does not replace c
     assert len(env.deployer.calls) == 4  # only the first run's
     env.p.verdict(only(env.p, "reviewing")["id"], "pass", "looks right", "reviewer")
     nxt = only(env.p, "reviewing")
@@ -265,7 +277,7 @@ def test_fail_redeploys_stable_opens_a_revert_and_hands_back(env):
     env.deployer.calls.clear()
     r = env.p.verdict(rid, "fail", "port 443 refused", "reviewer")
     assert r["state"] == "reverting"
-    on = ("@verified",)
+    on = ("web-1",)
     assert env.deployer.calls == [("nj", env.base, True, on), ("github", env.base, True, on),
                                   ("nj", env.base, False, on), ("github", env.base, False, on)]
     assert env.forge.moved == []  # stable stays
@@ -289,6 +301,80 @@ def test_fail_redeploys_stable_opens_a_revert_and_hands_back(env):
     env.forge.merge(rev, r["revert_pr"])
     assert env.p.trigger(REPO, rev, "test")["started"]
     assert env.p.get(rid)["state"] == "failed"
+    # The next run reviews INFRA-2, not the ticket whose work was reverted.
+    assert only(env.p, "reviewing")["tickets"] == ["INFRA-2"]
+
+
+def test_a_merged_revert_alone_returns_stable_to_its_own_tree_without_closing_the_ticket(env):
+    env.p.trigger(REPO, merge(env, 1, "two\n"), "test")
+    r = env.p.verdict(only(env.p, "reviewing")["id"], "fail", "bad", "reviewer")
+    rev = commit(env.origin, "one\n", "INFRA-1: Revert (merge)")
+    env.forge.merge(rev, r["revert_pr"])
+    env.p.trigger(REPO, rev, "test")
+    assert only(env.p, "passed")["sha"] == rev and env.forge.moved == [("stable", rev)]
+    assert env.tracker.states == {"INFRA-1": "To Do"}
+
+
+def test_a_tracker_that_cannot_answer_holds_the_revert(env):
+    env.p.trigger(REPO, merge(env, 1, "two\n"), "test")
+    env.tracker.down = True
+    env.deployer.calls.clear()
+    r = env.p.verdict(only(env.p, "reviewing")["id"], "fail", "bad", "reviewer")
+    assert r["state"] == "needs-operator" and "unreadable" in r["log"][-1]["msg"]
+    assert env.deployer.calls == [] and env.forge.opened == []
+
+
+def test_stable_moves_only_to_what_the_estates_run(env):
+    env.p.trigger(REPO, merge(env, 1, "two\n"), "test")
+    r = env.p.verdict(only(env.p, "reviewing")["id"], "fail", "bad", "reviewer")
+    with pytest.raises(ValueError, match="not what the estates run"):
+        env.p.resolve(r["id"], "x", "operator", stable=True)  # the reviewer failed it; it was rolled back
+    env.p.resolve(r["id"], "revert merged by hand", "operator")
+    stopped = merge(env, 3, "y\n", "INFRA-3")
+    env.deployer.plans[stopped] = {"nj-guests": [{"op": "delete", "key": "a", "type": "proxmoxve:VM"}]}
+    env.p.trigger(REPO, stopped, "test")
+    run = only(env.p, "needs-operator")  # stopped before anything was applied
+    with pytest.raises(ValueError, match="not what the estates run"):
+        env.p.resolve(run["id"], "x", "operator", stable=True)
+
+
+def test_the_same_merge_twice_is_one_run(env):
+    sha = merge(env, 1, "two\n")
+    env.p.trigger(REPO, sha, "webhook")
+    assert "already queued or running" in env.p.trigger(REPO, sha, "workflow")["ignored"]
+    env.p.verdict(only(env.p, "reviewing")["id"], "pass", "ok", "reviewer")
+    assert env.p.list("needs-operator") == [] and env.p.list("reviewing") == []
+
+
+def test_accept_retries_a_run_that_had_deployed(env, monkeypatch):
+    sha = merge(env, 1, "two\n")
+    flaky = {"n": 0}
+    real = env.deployer.deploy
+
+    def deploy(estate, s, preview, on):
+        out = real(estate, s, preview, on)
+        if not preview and estate == "github" and not flaky["n"]:
+            flaky["n"] = 1
+            return {**out, "state": "failed", "error": "network"}
+        return out
+
+    monkeypatch.setattr(env.deployer, "deploy", deploy)
+    env.p.trigger(REPO, sha, "test")
+    r = only(env.p, "needs-operator")
+    env.p.resolve(r["id"], "network back", "operator", accept=True)
+    assert only(env.p, "reviewing")["sha"] == sha
+
+
+def test_tick_starts_a_queued_merge_whose_start_failed(env, monkeypatch):
+    sha = merge(env, 1, "two\n")
+    env.p.state["queued"] = {"sha": sha, "pr": 1, "at": 0, "source": "test"}
+    head = env.repo.head
+    monkeypatch.setattr(env.repo, "head", lambda b: (_ for _ in ()).throw(RuntimeError("fetch failed")))
+    env.p.tick()
+    assert env.p.list() == []
+    monkeypatch.setattr(env.repo, "head", head)
+    env.p.tick()
+    assert only(env.p, "reviewing")["sha"] == sha
 
 
 def test_the_way_back_passes_the_same_gate(env):
@@ -435,6 +521,9 @@ def test_pipeline_settings_refuse_a_protected_node_in_the_selector(tmp_path, mon
                  "FLEETKIT_PROTECT": "*/btc-mainnet*", "FLEETKIT_VERIFIED_ON": "web-1,btc-mainnet-1"}.items():
         monkeypatch.setenv(k, v)
     with pytest.raises(ValueError, match="protected nodes"):
+        adapters.pipeline(s, None, None)
+    monkeypatch.setenv("FLEETKIT_VERIFIED_ON", "@verified")
+    with pytest.raises(ValueError, match="not @tags"):
         adapters.pipeline(s, None, None)
     monkeypatch.delenv("FLEETKIT_PROTECT")
     with pytest.raises(ValueError, match="FLEETKIT_PROTECT"):

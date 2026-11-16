@@ -135,14 +135,19 @@ class Repo:
         """The commits the branch itself moved through in base..sha (merges and pushes, not a PR's own)."""
         return _git("--git-dir", str(self.mirror), "rev-list", "--first-parent", f"{base}..{sha}").split()
 
-    def subjects(self, base: str, sha: str) -> list[str]:
-        """Every commit subject of base..sha (where ticket keys are found)."""
-        return _git("--git-dir", str(self.mirror), "log", "--format=%s", f"{base}..{sha}").splitlines()
+    def log(self, base: str, sha: str) -> list[tuple[str, str]]:
+        """(sha, subject) of every commit of base..sha (where ticket keys are found)."""
+        out = _git("--git-dir", str(self.mirror), "log", "--format=%H %s", f"{base}..{sha}")
+        return [(line[:40], line[41:]) for line in out.splitlines()]
 
-    def revert(self, base: str, sha: str, branch: str, message: str) -> None:
+    def same_tree(self, a: str, b: str) -> bool:
+        tree = lambda c: _git("--git-dir", str(self.mirror), "rev-parse", f"{c}^{{tree}}")  # noqa: E731
+        return tree(a) == tree(b)
+
+    def revert(self, base: str, sha: str, branch: str, message: str) -> str:
         """Push `branch`: one commit on the deploy branch's head that undoes
-        base..sha (merges included, so not `git revert`). GitError when it
-        does not apply cleanly."""
+        base..sha (merges included, so not `git revert`). -> its sha. GitError
+        when it does not apply cleanly."""
         head = self.fetch()
         with tempfile.TemporaryDirectory() as t:
             _git("clone", "--quiet", "--shared", "--no-checkout", str(self.mirror), t)
@@ -159,6 +164,7 @@ class Repo:
             _git("-c", "user.name=fleetkit", "-c", "user.email=fleetkit@localhost", "commit", "--quiet",
                  "-m", message, cwd=Path(t))
             _git("push", "--quiet", self.g.url, f"HEAD:refs/heads/{branch}", cwd=Path(t))
+            return _git("rev-parse", "HEAD", cwd=Path(t))
 
     def checkout(self, sha: str) -> Path:
         """The checkout of `sha`, made if need be. Only the newest few are

@@ -6,6 +6,7 @@ issue comments on the repo. stdlib only.
 from __future__ import annotations
 
 import json
+import time
 import urllib.request
 from typing import Any
 
@@ -62,10 +63,14 @@ class GitHub:
     def merged_pr(self, repo: str, sha: str) -> dict[str, Any] | None:
         """The merged pull request whose merge commit is `sha`, else None.
         GitHub lists merged pull requests for a commit only once it is on the
-        default branch: the deploy branch must be the repository's default."""
-        for pr in self._req("GET", f"/repos/{repo}/commits/{sha}/pulls") or []:
-            if pr.get("merged_at") and pr.get("merge_commit_sha") == sha:
-                return pr
+        default branch: the deploy branch must be the repository's default.
+        Right after a merge the link can lag: asked again a few times."""
+        for wait in (2, 5, 10, None):
+            for pr in self._req("GET", f"/repos/{repo}/commits/{sha}/pulls") or []:
+                if pr.get("merged_at") and pr.get("merge_commit_sha") == sha:
+                    return pr
+            if wait:
+                time.sleep(wait)
         return None
 
     def checks(self, repo: str, sha: str) -> dict[str, str]:

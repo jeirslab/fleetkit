@@ -1051,7 +1051,8 @@ runs one repository, `FLEETKIT_GITHUB_REPO`.
   anything runs. Rebase merges are refused for the same reason (only their last
   commit is the PR's merge commit).
 - **One run per repository.** Merges that arrive during a run queue; the next
-  run takes the newest (an older arrival never replaces a newer one).
+  run takes the newest (an older arrival never replaces a newer one, and a
+  merge already queued or running, delivered twice, is ignored).
 - **Preview first, both ways.** Each estate (`FLEETKIT_DEPLOY_ON_PUSH`) is
   previewed; a delete, a replace, a guard refusal, or any change to a resource
   matching `FLEETKIT_PROTECT` (`<stack>/<key>` globs, required) stops the run as
@@ -1059,9 +1060,9 @@ runs one repository, `FLEETKIT_GITHUB_REPO`.
   passes the same gate.
 - **NixOS only where it is safe.** The gate reads the Pulumi plan, which says
   nothing of a NixOS change, so a run applies Colmena only to the nodes
-  `FLEETKIT_VERIFIED_ON` selects (a `--on` selector: names, `@tags`); unset, a
-  run has no NixOS stage. The server refuses to start when a selected name
-  matches `FLEETKIT_PROTECT`; a tag must not cover a protected node either.
+  `FLEETKIT_VERIFIED_ON` names (node names; `@tags` are refused, they cannot
+  be checked); unset, a run has no NixOS stage. The server refuses to start
+  when a named node matches `FLEETKIT_PROTECT`.
 - **Deploy, then review.** Every estate is deployed, then `review.requested`
   goes to the runner adapter with the range and the ticket keys that prefix its
   commit subjects (`KEY-1: ...`).
@@ -1073,16 +1074,19 @@ runs one repository, `FLEETKIT_GITHUB_REPO`.
   dispatches `work.requested`. The queue waits until the revert PR's merge
   arrives; a person or an agent merges it, its checks gate it like any merge,
   and a revert left unmerged past the timeout is alerted. A ticket labelled
-  `no-auto-revert`, a revert that does not apply, or a rollback the gate stops
-  waits for a person instead.
+  `no-auto-revert` (or one the tracker cannot read: it might be), a revert that
+  does not apply, or a rollback the gate stops waits for a person instead. The
+  run after a merged revert does not review the reverted tickets; when it
+  deploys stable's own tree and nothing else, it passes by itself.
 - **Timeout.** No verdict within `FLEETKIT_REVIEW_TIMEOUT` seconds (1800):
   `timed-out`, alerted, the queue stops. Nothing is reverted.
 - **A person decides.** `POST /v1/runs/{id}/resolve {note, accept, stable}`
   moves a stopped queue on: `accept` vouches for the run's range (the commits
-  the guard refused) and queues its commit again; `stable` fast-forwards stable
-  to the run's commit (verified by hand). A destructive change is applied by
-  the operator with `POST /v1/deploys` and its `allow_*` names, then resolved
-  with `stable`. `POST /v1/runs/{id}/review` asks for a verdict again (a
+  the guard refused, or a run cut off part way) and queues its commit again;
+  `stable` fast-forwards stable to the run's commit (verified by hand), only
+  when every estate runs that commit (not after a rollback, not before an
+  apply). A destructive change is applied by the operator with
+  `POST /v1/deploys` and its `allow_*` names, then resolved with `stable`. `POST /v1/runs/{id}/review` asks for a verdict again (a
   timed-out run too). `GET /v1/runs?state=` lists.
 
 Tokens: the trigger and `resolve` take the unscoped token; reading runs,
