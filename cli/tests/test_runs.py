@@ -8,11 +8,13 @@ import hashlib
 import hmac
 import json
 import subprocess
+import sys
 
 import pytest
 from fastapi.testclient import TestClient
 
-from fleetkit_cli import adapters
+from fleetkit_cli import adapters, nixos
+from fleetkit_cli.events import Emitter
 from fleetkit_cli.api import create_app
 from fleetkit_cli.github import GitHub
 from fleetkit_cli.gitops import GitOps, Repo
@@ -94,12 +96,15 @@ class Runner:
 
 class Deployer:
     def __init__(self):
-        self.calls, self.plans = [], {}
+        self.calls, self.plans, self.nixos = [], {}, {}
 
     def deploy(self, estate, sha, preview, on):
         self.calls.append((estate, sha, preview, on))
-        return {"state": "succeeded", "job": f"j{len(self.calls)}",
-                "result": {"plan": self.plans.get(sha, {}) if preview else {}, "refused": {}}}
+        result = {"plan": self.plans.get(sha, {}) if preview else {}, "refused": {}}
+        if preview and on:  # the compare a JobDeployer asks for (nixos.changes); unchanged by default
+            same = {n: {"built": "/nix/store/a-system", "live": "/nix/store/a-system", "tags": []} for n in on}
+            result["nixos_changes"] = {**same, **self.nixos.get(sha, {})}
+        return {"state": "succeeded", "job": f"j{len(self.calls)}", "result": result}
 
 
 class Clock:
@@ -247,6 +252,93 @@ def test_change_to_a_protected_guest_stops(env):
     env.p.trigger(REPO, sha, "test")
     assert "(protected)" in only(env.p, "needs-operator")["log"][-1]["msg"]
     assert applied(env) == []
+
+
+def test_a_protected_node_whose_toplevel_changes_stops(env):
+    env.p.nixos_on = ("web-1", "btc-mainnet-1", "node-7")
+    sha = merge(env, 1, "two\n")
+    env.deployer.nixos[sha] = {
+        "web-1": {"built": "/nix/store/b-system", "live": "/nix/store/a-system", "tags": []},  # not protected
+        "btc-mainnet-1": {"built": "/nix/store/b-system", "live": "/nix/store/a-system", "tags": []},
+        "node-7": {"built": "/nix/store/b-system", "live": "/nix/store/a-system", "tags": ["mainnet"]}}
+    env.p.trigger(REPO, sha, "test")
+    r = only(env.p, "needs-operator")
+    msg = r["log"][-1]["msg"]
+    assert "NixOS btc-mainnet-1: /nix/store/a-system -> /nix/store/b-system (protected)" in msg
+    assert "NixOS node-7:" in msg and "web-1" not in msg and "nothing deployed" in msg
+    assert any("toplevels change on btc-mainnet-1, node-7, web-1" in x["msg"] for x in r["log"])
+    assert applied(env) == [] and env.alerts
+
+
+def test_a_protected_node_that_does_not_change_is_never_touched(env):
+    env.p.nixos_on = ("web-1", "btc-mainnet-1")
+    sha = merge(env, 1, "two\n")
+    env.deployer.nixos[sha] = {"web-1": {"built": "/nix/store/b-system", "live": "/nix/store/a-system", "tags": []}}
+    env.p.trigger(REPO, sha, "test")
+    r = only(env.p, "reviewing")
+    # Left out of the apply: a hand deploy between preview and apply is not undone.
+    assert {c[3] for c in applied(env)} == {("web-1",)} and r["skip_nodes"] == ["btc-mainnet-1"]
+    assert any("not applied to btc-mainnet-1" in x["msg"] for x in r["log"])
+    # The rollback previews afresh: the skip list is its own.
+    env.deployer.calls.clear()
+    env.p.verdict(r["id"], "fail", "bad", "reviewer")
+    assert {c[3] for c in applied(env)} == {("web-1",)}
+
+
+def test_the_job_deployer_asks_a_preview_to_compare():
+    class Job:
+        state, id, result, error, events = "succeeded", "j1", {}, None, []
+
+    class Manager:
+        jobs, active, reqs = {}, {}, []
+
+        def submit(self, req, by):
+            self.reqs.append(req)
+            return Job()
+
+    m = Manager()
+    d = adapters.JobDeployer(m)
+    d.deploy("nj", "abc", True, ("web-1",))
+    d.deploy("nj", "abc", False, ("web-1",))
+    d.deploy("nj", "abc", True, ())
+    assert [(q.compare, q.nixos, q.on) for q in m.reqs] == [(True, True, ["web-1"]), (False, True, ["web-1"]),
+                                                          (False, False, [])]
+
+
+def test_a_scoped_token_may_not_compare():
+    from fleetkit_cli import tokens
+    from fleetkit_cli.pipeline import DeployRequest
+    p = tokens.Principal("tenant", tokens.Scope(estates=("t",), hives=("t",), nixos="apply", allow=True))
+    with pytest.raises(tokens.Refused) as e:
+        tokens.check(p, DeployRequest(estate="t", infra=False, preview=True, on=["n"], compare=True))
+    assert e.value.field == "compare"
+
+
+def test_toplevels_that_cannot_be_compared_fail_closed(env):
+    env.p.nixos_on = ("web-1", "btc-mainnet-1")
+    sha = merge(env, 1, "two\n")
+    env.deployer.nixos[sha] = {"web-1": {"built": "/nix/store/b-system", "live": None, "tags": []},
+                               "btc-mainnet-1": {"built": "/nix/store/a-system", "live": None, "tags": []}}
+    env.p.trigger(REPO, sha, "test")
+    msg = only(env.p, "needs-operator")["log"][-1]["msg"]
+    assert "btc-mainnet-1: the live system could not be read (protected)" in msg and "web-1" not in msg
+    # A preview that did not compare at all (no nixos_changes) stops too.
+    assert env.p.needs_operator({"plan": {}, "refused": {}}) == [
+        "the NixOS toplevels were not compared with the live ones"]
+    assert applied(env) == []
+
+
+def test_the_way_back_stops_on_a_protected_node_too(env):
+    env.p.nixos_on = ("web-1", "btc-mainnet-1")
+    sha = merge(env, 1, "two\n")
+    env.p.trigger(REPO, sha, "test")
+    # Someone moved the mainnet node meanwhile: the rollback would change it.
+    env.deployer.nixos[env.base] = {
+        "btc-mainnet-1": {"built": "/nix/store/a-system", "live": "/nix/store/c-system", "tags": []}}
+    env.deployer.calls.clear()
+    r = env.p.verdict(only(env.p, "reviewing")["id"], "fail", "bad", "reviewer")
+    assert r["state"] == "needs-operator" and "rollback of nj needs a person: NixOS btc-mainnet-1" in r["log"][-1]["msg"]
+    assert applied(env) == [] and env.forge.opened == []
 
 
 def test_a_queue_that_cannot_read_stable_is_left_as_it_was(env, monkeypatch):
@@ -515,14 +607,14 @@ def test_github_checks_red_wins_and_pages(monkeypatch):
     assert out["legacy"] == "success" and out["build 99"] == "success"
 
 
-def test_pipeline_settings_refuse_a_protected_node_in_the_selector(tmp_path, monkeypatch):
+def test_pipeline_settings_take_a_protected_node_but_no_tag_or_glob(tmp_path, monkeypatch):
     s = Settings(flake=None, state_dir=tmp_path, passphrase="p",
                  git=GitSettings(url="x", branch="unstable", github_token="t", trigger="verified"))
     for k, v in {"FLEETKIT_REQUIRED_CHECKS": "flake checks", "FLEETKIT_GITHUB_REPO": REPO,
                  "FLEETKIT_PROTECT": "*/btc-mainnet*", "FLEETKIT_VERIFIED_ON": "web-1,btc-mainnet-1"}.items():
         monkeypatch.setenv(k, v)
-    with pytest.raises(ValueError, match="protected nodes"):
-        adapters.pipeline(s, None, None)
+    # The toplevel compare guards it now (runs.needs_operator).
+    assert adapters.pipeline(s, None, None).nixos_on == ("web-1", "btc-mainnet-1")
     for sel in ("@verified", "btc-*", "*"):
         monkeypatch.setenv("FLEETKIT_VERIFIED_ON", sel)
         with pytest.raises(ValueError, match="not @tags or globs"):
@@ -604,3 +696,51 @@ def test_accept_does_not_rerun_a_failed_review_and_stable_does_not_take_it(env):
     r = env.p.verdict(only(env.p, "reviewing")["id"], "fail", "bad", "reviewer")
     with pytest.raises(ValueError, match="failed review"):
         env.p.resolve(r["id"], "x", "operator", stable=True)
+
+
+def test_nixos_changes_reads_built_and_live_toplevels(tmp_path, monkeypatch):
+    """nixos.changes against a fake colmena that prints what 0.4.0 prints."""
+    fake = tmp_path / "colmena"
+    fake.write_text(f"""#!{sys.executable}
+import json, os, sys
+a = sys.argv[1:]
+open(os.environ["CALLS"], "a").write(json.dumps(a) + "\\n")
+if a[0] == "eval":
+    names = json.load(open(a[-1].split("builtins.readFile ")[1].split(")")[0].strip('"')))
+    if "boom" in names:
+        sys.exit("error: attribute missing")
+    print(json.dumps({{n: {{"built": "/nix/store/b-system", "tags": ["mainnet"] if "btc" in n else []}}
+                      for n in names if n in ("web-1", "btc-mainnet-1", "dup-3", "slow-4")}}))
+elif "slow-4" in " ".join(a):
+    sys.stderr.write("        slow-4 | /nix/store/a-system\\n")
+    sys.stderr.flush()
+    import time; time.sleep(30)
+else:
+    sys.stderr.write("[INFO ] Selected 3 nodes.\\n        web-1 | /nix/store/a-system\\n"
+                     "btc-mainnet-1 | \\nbtc-mainnet-1 | Failed: ssh timed out\\n"
+                     "        dup-3 | /nix/store/x-system\\n        dup-3 | /nix/store/y-system\\n"
+                     "        other | /nix/store/z-system\\n")
+    sys.exit(1)
+""")
+    fake.chmod(0o755)
+    calls = tmp_path / "calls"
+    monkeypatch.setenv("CALLS", str(calls))
+    s = Settings(flake=tmp_path, state_dir=tmp_path / "state", passphrase="p", colmena=str(fake))
+    events = []
+    evil = "${throw (builtins.readFile /etc/hostname)}"
+    out = nixos.changes(s, "nj", Emitter(events.append), ["web-1", "btc-mainnet-1", "dup-3", "gone-9", evil],
+                        tmp_path)
+    assert out == {"web-1": {"built": "/nix/store/b-system", "live": "/nix/store/a-system", "tags": []},
+                   "btc-mainnet-1": {"built": "/nix/store/b-system", "live": None, "tags": ["mainnet"]},
+                   "dup-3": {"built": "/nix/store/b-system", "live": None, "tags": []}}
+    ev, ex = [json.loads(x) for x in calls.read_text().splitlines()]
+    # The names are data in a file, never code in the expression.
+    assert ev[0] == "eval" and "${throw" not in ev[-1] and "web-1" not in ev[-1]
+    assert ex[:1] == ["exec"] and ex[ex.index("--on") + 1] == "web-1,btc-mainnet-1,dup-3"
+    assert ex[-3:] == ["readlink", "-e", "/run/current-system"]
+    assert [e["node"] for e in events if e["kind"] == "compare"] == ["web-1", "btc-mainnet-1", "dup-3"]
+    with pytest.raises(nixos.NixosError, match="colmena eval"):
+        nixos.changes(s, "nj", Emitter(events.append), ["boom"], tmp_path)
+    # A node that answered before the timeout counts; one that did not stays unknown.
+    out = nixos.changes(s, "nj", Emitter(events.append), ["slow-4", "web-1"], tmp_path, timeout=2)
+    assert out["slow-4"]["live"] == "/nix/store/a-system" and out["web-1"]["live"] is None
