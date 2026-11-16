@@ -5,7 +5,7 @@ the environment. stdlib only.
   FLEETKIT_STABLE_BRANCH      the last verified commit (default stable)
   FLEETKIT_REQUIRED_CHECKS    check-run names (a job's own name) a merged PR's head must have green
   FLEETKIT_PROTECT            fnmatch patterns of <stack>/<key>: any change stops the run (required)
-  FLEETKIT_VERIFIED_ON        Colmena node names (no @tags) a run applies NixOS to;
+  FLEETKIT_VERIFIED_ON        Colmena node names (no @tags, no globs) a run applies NixOS to;
                               unset: no NixOS stage. Never a protected node: the Pulumi plan,
                               which the gate reads, says nothing of a NixOS change
   FLEETKIT_REVIEW_TIMEOUT     seconds a verdict may take (default 1800)
@@ -162,9 +162,9 @@ def pipeline(s: Settings, repo: Any, manager: JobManager) -> Any:
     protect, on = split("FLEETKIT_PROTECT"), split("FLEETKIT_VERIFIED_ON")
     if not protect:
         raise ValueError("FLEETKIT_TRIGGER=verified needs FLEETKIT_PROTECT: what no run may change unattended")
-    if any(n.startswith("@") for n in on):
-        raise ValueError("FLEETKIT_VERIFIED_ON takes node names, not @tags: a tag cannot be checked against "
-                         "FLEETKIT_PROTECT")
+    if any(n.startswith("@") or any(c in n for c in "*?[") for n in on):
+        raise ValueError("FLEETKIT_VERIFIED_ON takes plain node names, not @tags or globs: those cannot be "
+                         "checked against FLEETKIT_PROTECT")
     hit = [n for n in on if any(fnmatch.fnmatch(n, p.rsplit("/", 1)[-1]) for p in protect)]
     if hit:
         raise ValueError(f"FLEETKIT_VERIFIED_ON names protected nodes ({', '.join(hit)}): a run would change "

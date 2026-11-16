@@ -126,6 +126,9 @@ class Pipeline:
         self.green: list[str] = self.state.setdefault("green", [])
         # Commits a failed run reverted, and its revert: their keys are not a later run's tickets.
         self.reverted: list[str] = self.state.setdefault("reverted", [])
+        # Revert PR number -> the commits it undoes; they count as reverted once it merges.
+        self.pending: dict[str, list[str]] = self.state.setdefault("pending_reverts", {})
+        self._resume_error: Optional[str] = None
         for r in self.runs.values():
             # Cut off by a restart in the middle of a step: a person looks at it.
             if r["state"] in ("previewing", "deploying", "passing", "rolling-back"):
@@ -136,9 +139,13 @@ class Pipeline:
     def resume(self) -> Optional[str]:
         """Start the queued merge if nothing blocks it. -> the run started."""
         try:
-            return self._advance()
-        except Exception as e:  # noqa: BLE001 - alerted; the next tick tries again
-            self.alert(f"fleetkit: the queued run could not start: {e}")
+            started = self._advance()
+            self._resume_error = None
+            return started
+        except Exception as e:  # noqa: BLE001 - alerted once per cause; the next tick tries again
+            if str(e) != self._resume_error:
+                self.alert(f"fleetkit: the queued run could not start: {e}")
+            self._resume_error = str(e)
             return None
 
     # ── bookkeeping (state is read and written under the lock) ───────────
@@ -229,11 +236,19 @@ class Pipeline:
             return {"refused": why, "run": self.get(r["id"])}
         self._green([sha])
         with self.lock:
-            # The merge of a failed run's revert lets the queue move again.
+            # A revert PR merged: what it undoes, and its merge, are reverted now
+            # (whatever became of its run), and its run's queue moves again.
+            undone = self.pending.pop(str(pr), None)
+            if undone is not None:
+                self._remember(self.reverted, [*undone, sha])
             for r in self.runs.values():
                 if r["state"] == "reverting" and r.get("revert_pr") == pr:
-                    self._remember(self.reverted, [sha])
                     self._set(r, "failed", f"the revert (#{pr}) is merged")
+            # Checked again under the lock: two deliveries of one merge race.
+            dup = self._duplicate(sha)
+            if dup:
+                self._save()
+                return {"ignored": dup}
             q = self.state.get("queued")
             # An older arrival never replaces a newer queued merge.
             if not (q and self.git.is_ancestor(sha, q["sha"])):
@@ -265,16 +280,16 @@ class Pipeline:
             return f"#{n} has required checks that are not green ({', '.join(bad)})", n
         return None, n
 
-    def _order(self, sha: str, base: Optional[str] = None, exclude: tuple[str, ...] = ()) -> Optional[str]:
+    def _order(self, sha: str, base: Optional[str] = None, retry: bool = False) -> Optional[str]:
         """Why `sha` is not a step forward: it must descend from stable, differ
-        from it, and be newer than the last commit a run deployed (unless that
-        run is in `exclude`: the run itself, or the one a person retries)."""
+        from it, and be newer than the last commit a run deployed (or be that
+        very commit, when a person retries it)."""
         base = base or self.git.head(self.stable)
         if sha == base or not self.git.is_ancestor(base, sha):
             return f"{sha[:12]} is not ahead of {self.stable} {base[:12]} (an old or replayed merge?)"
         with self.lock:
             last = self.state.get("last_deployed")
-        if last and last["run"] not in exclude and self.git.is_ancestor(sha, last["sha"]):
+        if last and not (retry and sha == last["sha"]) and self.git.is_ancestor(sha, last["sha"]):
             return f"{sha[:12]} is not newer than {last['sha'][:12]}, deployed by run {last['run']}"
         return None
 
@@ -291,7 +306,8 @@ class Pipeline:
         return None
 
     def _advance(self) -> Optional[str]:
-        with self.lock:
+        dropped = None
+        with self.lock:  # one decision at a time: two callers never start two runs
             if any(r["state"] in BLOCKING for r in self.runs.values()):
                 return None
             q = self.state.get("queued")
@@ -301,10 +317,18 @@ class Pipeline:
             base = self.git.head(self.stable)
             del self.state["queued"]
             if q["sha"] == base or not self.git.is_ancestor(base, q["sha"]):
-                self._save()  # stable moved past it (a resolve, a duplicate): nothing to run
-                return None
-            r = self._new(q["sha"], q["pr"], "previewing", base=base, retry_of=q.get("retry_of"))
-            self._update(r, f"range {base[:12]}..{q['sha'][:12]} ({q['source']})")
+                self._save()
+                # Stable passed it (a pass, a resolve), unless someone moved stable by hand.
+                if not self.git.is_ancestor(q["sha"], base):
+                    dropped = f"fleetkit: queued {q['sha'][:12]} dropped: not ahead of {self.stable} {base[:12]}"
+                r = None
+            else:
+                r = self._new(q["sha"], q["pr"], "previewing", base=base, retry_of=q.get("retry_of"))
+                self._update(r, f"range {base[:12]}..{q['sha'][:12]} ({q['source']})")
+        if r is None:
+            if dropped:
+                self.alert(dropped)
+            return None
         self.spawn(lambda: self._guarded(r, self._go))
         return r["id"]
 
@@ -329,6 +353,8 @@ class Pipeline:
         return None
 
     def _apply(self, r: dict[str, Any], sha: str, what: str) -> Optional[str]:
+        # From the first estate on, the estates no longer all run one commit.
+        self._update(r, None, applied=None)
         for e in self.estates:
             out = self.deployer.deploy(e, sha, preview=False, on=self.nixos_on)
             # What is where: each estate's outcome is in the run's log.
@@ -344,7 +370,7 @@ class Pipeline:
         return None
 
     def _go(self, r: dict[str, Any]) -> None:
-        why = (self._order(r["sha"], r["base"], exclude=(r["id"], r.get("retry_of") or ""))
+        why = (self._order(r["sha"], r["base"], retry=bool(r.get("retry_of")))
                or self._range_refusal(r["base"], r["sha"]) or self._gate(r, r["sha"], "deploy"))
         if why:
             self._set(r, "needs-operator", f"{why}; nothing deployed", True)
@@ -441,9 +467,9 @@ class Pipeline:
         self.resume()
 
     def _no_auto_revert(self, r: dict[str, Any]) -> list[str]:
-        """Tickets that forbid an automatic revert. A ticket that does not
-        exist forbids nothing; one that cannot be read (the tracker is down)
-        might, so it holds the run too."""
+        """Tickets that forbid an automatic revert, or might: one the tracker
+        cannot read (down, or a 404, which is also what a ticket the account
+        may not see answers) holds the run too."""
         held = []
         for k in r.get("tickets", []):
             try:
@@ -452,7 +478,7 @@ class Pipeline:
                 held.append(f"{k} (unreadable: {e})")
                 continue
             if t is None:
-                self._update(r, f"ticket {k} does not exist")
+                held.append(f"{k} (not found)")
             elif "no-auto-revert" in (t.get("labels") or []):
                 held.append(k)
         return held
@@ -479,8 +505,9 @@ class Pipeline:
         except Exception as e:  # noqa: BLE001 - a conflict or a refused push: a person decides
             self._set(r, "needs-operator", f"failed review; the revert could not be opened: {e}", True)
             return
-        self._remember(self.reverted, [*self.git.first_parents(r["base"], r["sha"]),
-                                       *(c for c, _ in self.git.log(r["base"], r["sha"])), commit])
+        with self.lock:
+            self.pending[str(pr.get("number"))] = [c for c, _ in self.git.log(r["base"], r["sha"])] + [commit]
+            self._save()
         note = f"Failed live review ({self.url(r)}); the estates are back at {self.stable} {r['base'][:12]} " \
                f"and {pr.get('html_url')} reverts the change.\n\n{r['verdict']['evidence']}"
         self._update(r, f"revert #{pr.get('number')} opened; the queue waits for its merge",
@@ -528,6 +555,10 @@ class Pipeline:
                 raise ValueError(f"run {rid} is {r['state']}; nothing to resolve")
             if stable and accept:
                 raise ValueError("accept runs the commit again; stable says it is verified: one or the other")
+            if accept and r["state"] == "reverting":
+                raise ValueError(f"run {rid} failed review and is being reverted; it is not run again")
+            if stable and (r.get("verdict") or {}).get("verdict") == "fail":
+                raise ValueError(f"run {rid} failed review; stable does not move to it")
             # Only a commit every estate runs (and no rollback undid) can be called verified.
             if stable and (r["state"] == "reverting" or r.get("applied") != r["sha"]):
                 raise ValueError(f"run {rid}'s commit is not what the estates run; stable cannot move to it")
@@ -538,7 +569,8 @@ class Pipeline:
             with self.lock:
                 if not self.state.get("queued"):
                     self.state["queued"] = {"sha": r["sha"], "pr": r["pr"], "at": self.clock(),
-                                            "source": f"accepted by {by}", "retry_of": r["id"]}
+                                            "source": f"accepted by {by}",
+                                            "retry_of": r.get("retry_of") or r["id"]}
         self._set(r, "resolved", f"resolved by {by}{' (accepted)' if accept else ''}"
                                  f"{f', {self.stable} moved' if stable else ''}: {note}")
         self.resume()

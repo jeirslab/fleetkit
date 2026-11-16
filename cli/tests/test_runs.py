@@ -327,7 +327,7 @@ def test_a_tracker_that_cannot_answer_holds_the_revert(env):
 def test_stable_moves_only_to_what_the_estates_run(env):
     env.p.trigger(REPO, merge(env, 1, "two\n"), "test")
     r = env.p.verdict(only(env.p, "reviewing")["id"], "fail", "bad", "reviewer")
-    with pytest.raises(ValueError, match="not what the estates run"):
+    with pytest.raises(ValueError, match="failed review"):
         env.p.resolve(r["id"], "x", "operator", stable=True)  # the reviewer failed it; it was rolled back
     env.p.resolve(r["id"], "revert merged by hand", "operator")
     stopped = merge(env, 3, "y\n", "INFRA-3")
@@ -395,10 +395,11 @@ def test_fail_of_a_no_auto_revert_ticket_stops_for_a_person(env):
     assert r["state"] == "needs-operator" and env.deployer.calls == [] and env.forge.opened == []
 
 
-def test_an_unknown_ticket_does_not_hold_the_rollback(env):
+def test_a_ticket_the_tracker_does_not_find_holds_the_revert(env):
+    # A 404 is also what a ticket the account may not see answers.
     env.p.trigger(REPO, merge(env, 1, "two\n", "NOPE-1"), "test")
     r = env.p.verdict(only(env.p, "reviewing")["id"], "fail", "bad", "reviewer")
-    assert r["state"] == "reverting"
+    assert r["state"] == "needs-operator" and "not found" in r["log"][-1]["msg"]
 
 
 def test_conflicting_revert_stops_for_a_person(env):
@@ -522,9 +523,10 @@ def test_pipeline_settings_refuse_a_protected_node_in_the_selector(tmp_path, mon
         monkeypatch.setenv(k, v)
     with pytest.raises(ValueError, match="protected nodes"):
         adapters.pipeline(s, None, None)
-    monkeypatch.setenv("FLEETKIT_VERIFIED_ON", "@verified")
-    with pytest.raises(ValueError, match="not @tags"):
-        adapters.pipeline(s, None, None)
+    for sel in ("@verified", "btc-*", "*"):
+        monkeypatch.setenv("FLEETKIT_VERIFIED_ON", sel)
+        with pytest.raises(ValueError, match="not @tags or globs"):
+            adapters.pipeline(s, None, None)
     monkeypatch.delenv("FLEETKIT_PROTECT")
     with pytest.raises(ValueError, match="FLEETKIT_PROTECT"):
         adapters.pipeline(s, None, None)
@@ -535,3 +537,70 @@ def test_exec_runner_passes_no_server_secrets(monkeypatch):
     monkeypatch.setenv("REVIEW_HOST", "h")
     r = adapters.ExecRunner("true", ("REVIEW_HOST",))
     assert "FLEETKIT_JIRA_TOKEN" not in r.env and r.env["REVIEW_HOST"] == "h"
+
+
+class Flaky:
+    """The fake deployer, failing the calls `fail` names (estate, preview) once each."""
+
+    def __init__(self, env, *fail):
+        self.real, self.fail = env.deployer.deploy, list(fail)
+
+    def __call__(self, estate, sha, preview, on):
+        out = self.real(estate, sha, preview, on)
+        if (estate, preview) in self.fail:
+            self.fail.remove((estate, preview))
+            return {**out, "state": "failed", "error": "transient"}
+        return out
+
+
+def test_stable_never_moves_to_a_commit_some_estates_rolled_back_from(env, monkeypatch):
+    env.p.trigger(REPO, merge(env, 1, "two\n"), "test")
+    monkeypatch.setattr(env.deployer, "deploy", Flaky(env, ("github", False)))
+    r = env.p.verdict(only(env.p, "reviewing")["id"], "fail", "bad", "reviewer")
+    assert r["state"] == "needs-operator"  # nj is back at base, github is not
+    with pytest.raises(ValueError):
+        env.p.resolve(r["id"], "x", "operator", stable=True)
+    assert env.forge.moved == []
+
+
+def test_a_retry_of_a_retry_runs(env, monkeypatch):
+    sha = merge(env, 1, "two\n")
+    monkeypatch.setattr(env.deployer, "deploy", Flaky(env, ("github", False)))
+    env.p.trigger(REPO, sha, "test")
+    r1 = only(env.p, "needs-operator")  # nj deployed, github did not
+    monkeypatch.setattr(env.deployer, "deploy", Flaky(env, ("nj", True)))
+    env.p.resolve(r1["id"], "retry", "operator", accept=True)
+    r2 = only(env.p, "needs-operator")  # its preview failed
+    env.p.resolve(r2["id"], "retry again", "operator", accept=True)
+    assert only(env.p, "reviewing")["sha"] == sha
+
+
+def test_a_revert_closed_unmerged_leaves_the_ticket_in_the_next_review(env):
+    env.p.trigger(REPO, merge(env, 1, "two\n"), "test")
+    r = env.p.verdict(only(env.p, "reviewing")["id"], "fail", "bad", "reviewer")
+    env.p.resolve(r["id"], "revert closed; fixing forward", "operator")
+    env.p.trigger(REPO, merge(env, 2, "fixed\n", "INFRA-2"), "test")
+    assert only(env.p, "reviewing")["tickets"] == ["INFRA-1", "INFRA-2"]
+
+
+def test_a_revert_merged_after_its_run_was_resolved_still_counts(env):
+    env.p.trigger(REPO, merge(env, 1, "two\n"), "test")
+    r = env.p.verdict(only(env.p, "reviewing")["id"], "fail", "bad", "reviewer")
+    env.p.resolve(r["id"], "will merge the revert later", "operator")
+    with pytest.raises(ValueError):
+        env.p.resolve(r["id"], "x", "operator", accept=True)  # resolved: nothing to resolve
+    rev = commit(env.origin, "one\n", "INFRA-1: Revert (squash)")
+    env.forge.merge(rev, r["revert_pr"])
+    later = merge(env, 3, "three\n", "INFRA-3")
+    env.p.trigger(REPO, rev, "test")
+    env.p.trigger(REPO, later, "test")
+    run = only(env.p, "reviewing")
+    assert run["tickets"] == ["INFRA-3"], run
+
+
+def test_accept_does_not_rerun_a_failed_review_and_stable_does_not_take_it(env):
+    env.tracker.labels["INFRA-1"] = ["no-auto-revert"]
+    env.p.trigger(REPO, merge(env, 1, "two\n"), "test")
+    r = env.p.verdict(only(env.p, "reviewing")["id"], "fail", "bad", "reviewer")
+    with pytest.raises(ValueError, match="failed review"):
+        env.p.resolve(r["id"], "x", "operator", stable=True)
