@@ -1,32 +1,42 @@
 """Deploy on merge, verified live by a reviewer (FLEETKIT_TRIGGER=verified;
-docs/pipeline.md, "Verified runs").
+docs/pulumi.md, "Verified runs").
 
 The deploy branch (FLEETKIT_BRANCH, e.g. unstable) deploys; FLEETKIT_STABLE_BRANCH
 (default stable) records the last commit a reviewer passed, and is what a
-failed run returns the estates to.
+failed run returns the estates to. One repository (FLEETKIT_GITHUB_REPO).
 
   trigger   a merged pull request (webhook) or POST /v1/runs {repo, sha}. Refused,
             and alerted, unless `sha` is the merge commit of a pull request into
-            the deploy branch whose required checks (FLEETKIT_REQUIRED_CHECKS) are
-            green on its head: a direct push never deploys.
+            the deploy branch whose required checks (FLEETKIT_REQUIRED_CHECKS,
+            check-run names) are green on its head, descends from stable, and is
+            newer than the last commit a run deployed.
   queue     one run per repository. Merges that arrive meanwhile queue; the next
-            run takes the newest and covers the whole range stable..sha.
+            run takes the newest and covers the whole range stable..sha. Every
+            first-parent commit of that range must pass the same guard: a direct
+            push folded into a later merge stops the run for a person.
   run       preview every estate; a delete or replace, a guard refusal, or any
             change to a resource matching FLEETKIT_PROTECT stops the run
             (needs-operator) before anything is applied. Then deploy every
             estate, then dispatch review.requested to the runner adapter.
+            Colmena applies only to the nodes FLEETKIT_VERIFIED_ON selects
+            (none by default): the Pulumi plan says nothing of a NixOS change,
+            so a protected node must never be selected.
   verdict   POST /v1/runs/{id}/verdict. pass: fast-forward stable to the run's
             commit, comment the evidence on each ticket, set it done. fail:
-            redeploy the stable commit, open a pull request reverting the range
-            on the deploy branch, reopen each ticket with the findings, dispatch
-            work.requested; the queue waits until that revert is merged. A ticket
-            labelled no-auto-revert, a revert that conflicts, or a failed
-            redeploy stops the queue for a person instead.
+            preview and redeploy the stable commit (the same gate as a run),
+            open a pull request reverting the range on the deploy branch, reopen
+            each ticket with the findings, dispatch work.requested; the queue
+            waits until that revert is merged (by a person or an agent; its
+            checks gate it like any merge). A ticket labelled no-auto-revert, a
+            revert that conflicts, or a rollback the gate stops waits for a
+            person instead.
   timeout   no verdict within FLEETKIT_REVIEW_TIMEOUT seconds (default 1800):
-            the run is timed-out and the queue stops. Nothing is reverted.
+            the run is timed-out and the queue stops. Nothing is reverted. A
+            revert pull request left unmerged that long is alerted.
 
-A stopped queue (needs-operator, timed-out) moves again with POST
-/v1/runs/{id}/resolve (a person decided) or /review (ask for a verdict again).
+A stopped queue moves again with POST /v1/runs/{id}/resolve (a person decided;
+`accept` vouches for a range the guard refused, `stable` moves stable to the
+run's commit) or /review (ask for a verdict again).
 
 The adapters are interfaces: Forge (GitHub), Tracker (Jira), Runner (exec, http),
 Deployer (the server's JobManager), Git (the server's mirror); adapters.py has
@@ -34,6 +44,7 @@ the real ones, tests/test_runs.py fakes them.
 """
 from __future__ import annotations
 
+import copy
 import fnmatch
 import json
 import re
@@ -52,6 +63,7 @@ BLOCKING = ("previewing", "deploying", "reviewing", "passing", "rolling-back", "
 DONE = ("passed", "failed", "refused", "resolved")
 OK_CHECK = ("success", "neutral", "skipped")
 KEEP = 500  # finished runs kept in runs.json
+GREEN_KEEP = 2000  # commits known to have passed the guard
 
 
 class Forge(Protocol):
@@ -75,59 +87,80 @@ class Runner(Protocol):
 
 
 class Deployer(Protocol):
-    def deploy(self, estate: str, sha: str, preview: bool) -> dict[str, Any]:
-        """-> {"state": job state, "job": id, "result": ..., "error": ...}; waits for the end."""
+    def deploy(self, estate: str, sha: str, preview: bool, on: tuple[str, ...]) -> dict[str, Any]:
+        """-> {"state": job state, "job": id, "result": ..., "error": ...}; waits for the end.
+        `on`: the Colmena nodes (empty: no NixOS stage)."""
         ...
 
 
 class Git(Protocol):
     def head(self, branch: str) -> str: ...
-    def messages(self, base: str, sha: str) -> str: ...
+    def is_ancestor(self, a: str, b: str) -> bool: ...
+    def first_parents(self, base: str, sha: str) -> list[str]: ...
+    def subjects(self, base: str, sha: str) -> list[str]: ...
     def revert(self, base: str, sha: str, branch: str, message: str) -> None: ...
 
 
 class Pipeline:
-    def __init__(self, state_dir: Path, branch: str, estates: list[str], forge: Forge, tracker: Optional[Tracker],
-                 runner: Optional[Runner], deployer: Deployer, git: Git, *, stable: str = "stable",
-                 required: tuple[str, ...] = (), protect: tuple[str, ...] = (), timeout: float = 1800,
-                 done_state: str = "Done", reopen_state: str = "To Do", public_url: Optional[str] = None,
+    def __init__(self, state_dir: Path, repo: str, branch: str, estates: list[str], forge: Forge,
+                 tracker: Optional[Tracker], runner: Optional[Runner], deployer: Deployer, git: Git, *,
+                 stable: str = "stable", required: tuple[str, ...] = (), protect: tuple[str, ...] = (),
+                 nixos_on: tuple[str, ...] = (), timeout: float = 1800, done_state: str = "Done",
+                 reopen_state: str = "To Do", public_url: Optional[str] = None,
                  alert: Callable[[str], None] = lambda msg: None,
                  spawn: Optional[Callable[[Callable[[], None]], None]] = None,
                  clock: Callable[[], float] = time.time):
         self.file = state_dir / "runs.json"
-        self.branch, self.stable, self.estates = branch, stable, estates
+        self.repo, self.branch, self.stable, self.estates = repo, branch, stable, estates
         self.forge, self.tracker, self.runner, self.deployer, self.git = forge, tracker, runner, deployer, git
-        self.required, self.protect, self.timeout = required, protect, timeout
+        self.required, self.protect, self.nixos_on, self.timeout = required, protect, nixos_on, timeout
         self.done_state, self.reopen_state, self.public_url = done_state, reopen_state, public_url
         self._alert, self.clock = alert, clock
         self.spawn = spawn or (lambda f: threading.Thread(target=f, name="run", daemon=True).start())
         self.lock = threading.RLock()
         self.state: dict[str, Any] = json.loads(self.file.read_text()) if self.file.exists() else {}
         self.runs: dict[str, dict[str, Any]] = self.state.setdefault("runs", {})
-        self.queued: dict[str, dict[str, Any]] = self.state.setdefault("queued", {})
+        self.green: list[str] = self.state.setdefault("green", [])
         for r in self.runs.values():
-            # Cut off by a restart in the middle of a deploy: a person looks at it.
+            # Cut off by a restart in the middle of a step: a person looks at it.
             if r["state"] in ("previewing", "deploying", "passing", "rolling-back"):
                 self._log(r, f"the server stopped while {r['state']}")
                 r["state"] = "needs-operator"
         self._save()
 
-    # ── bookkeeping ──────────────────────────────────────────────────────
+    def resume(self) -> None:
+        """Start the queued merge if nothing blocks it (after a restart, a pass, a resolve)."""
+        try:
+            self._advance()
+        except Exception as e:  # noqa: BLE001 - alerted; the next trigger tries again
+            self.alert(f"fleetkit: the queued run could not start: {e}")
+
+    # ── bookkeeping (state is read and written under the lock) ───────────
     def _save(self) -> None:
-        self.file.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.file.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.state, indent=1))
-        tmp.replace(self.file)
+        with self.lock:
+            self.file.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.file.with_suffix(".tmp")
+            tmp.write_text(json.dumps(self.state, indent=1))
+            tmp.replace(self.file)
 
     def _log(self, r: dict[str, Any], msg: str) -> None:
         r.setdefault("log", []).append({"at": self.clock(), "msg": msg})
 
-    def _set(self, r: dict[str, Any], state: str, msg: str, alert: bool = False) -> None:
+    def _update(self, r: dict[str, Any], msg: Optional[str] = None, **fields: Any) -> None:
         with self.lock:
-            r["state"] = state
+            r.update(fields)
             r["updated"] = self.clock()
-            self._log(r, msg)
+            if msg:
+                self._log(r, msg)
             self._save()
+
+    def _set(self, r: dict[str, Any], state: str, msg: str, alert: bool = False,
+             expect: Optional[tuple[str, ...]] = None) -> None:
+        """Nothing changes when the run is no longer in `expect`."""
+        with self.lock:
+            if expect is not None and r["state"] not in expect:
+                return
+            self._update(r, msg, state=state)
         if alert:
             self.alert(f"fleetkit run {r['id']} ({r['repo']} {r.get('sha', '')[:10]}): {state}: {msg}")
 
@@ -141,66 +174,110 @@ class Pipeline:
         return f"{self.public_url.rstrip('/')}/v1/runs/{r['id']}" if self.public_url else f"run {r['id']}"
 
     def get(self, rid: str) -> Optional[dict[str, Any]]:
-        return self.runs.get(rid)
+        with self.lock:
+            return copy.deepcopy(self.runs.get(rid))
 
     def list(self, state: Optional[str] = None) -> list[dict[str, Any]]:
-        rs = sorted(self.runs.values(), key=lambda r: r["created"], reverse=True)
-        return [r for r in rs if state is None or r["state"] == state]
+        with self.lock:
+            rs = sorted(self.runs.values(), key=lambda r: r["created"], reverse=True)
+            return [copy.deepcopy(r) for r in rs if state is None or r["state"] == state]
 
-    def _new(self, repo: str, sha: str, pr: Optional[int], state: str) -> dict[str, Any]:
-        now = self.clock()
-        r = {"id": uuid.uuid4().hex[:12], "repo": repo, "sha": sha, "pr": pr, "state": state,
-             "created": now, "updated": now, "log": []}
-        self.runs[r["id"]] = r
-        # The record stays bounded: the oldest finished runs go first.
-        for old in sorted((x for x in self.runs.values() if x["state"] in DONE), key=lambda x: x["created"])[:-KEEP]:
-            del self.runs[old["id"]]
-        return r
+    def _new(self, sha: str, pr: Optional[int], state: str, **fields: Any) -> dict[str, Any]:
+        with self.lock:
+            now = self.clock()
+            r = {"id": uuid.uuid4().hex[:12], "repo": self.repo, "sha": sha, "pr": pr, "state": state,
+                 "created": now, "updated": now, "log": [], **fields}
+            self.runs[r["id"]] = r
+            # The record stays bounded: the oldest finished runs go first.
+            done = sorted((x for x in self.runs.values() if x["state"] in DONE), key=lambda x: x["created"])
+            for old in done[:-KEEP]:
+                del self.runs[old["id"]]
+            return r
 
-    # ── trigger and queue ────────────────────────────────────────────────
+    def _green(self, shas: list[str]) -> None:
+        with self.lock:
+            self.green.extend(s for s in shas if s not in self.green)
+            del self.green[:-GREEN_KEEP]
+            self._save()
+
+    # ── trigger, guard and queue ─────────────────────────────────────────
     def trigger(self, repo: str, sha: str, source: str) -> dict[str, Any]:
         """A merge reached the deploy branch. -> the refused run, or the queue."""
-        why, pr = self._refusal(repo, sha)
+        if repo.lower() != self.repo.lower():
+            raise ValueError(f"this server runs {self.repo}, not {repo}")
+        try:
+            why, pr = self._refusal(sha)
+            why = why or self._order(sha)
+        except Exception as e:
+            self.alert(f"fleetkit: {source}: {sha[:12]} could not be checked, nothing queued: {e}")
+            raise
         if why:
-            with self.lock:
-                r = self._new(repo, sha, pr, "refused")
+            r = self._new(sha, pr, "refused")
             self._set(r, "refused", f"{source}: {why}; nothing deploys", alert=True)
-            return {"refused": why, "run": r}
+            return {"refused": why, "run": self.get(r["id"])}
+        self._green([sha])
         with self.lock:
             # The merge of a failed run's revert lets the queue move again.
             for r in self.runs.values():
-                if r["repo"] == repo and r["state"] == "reverting" and r.get("revert_pr") == pr:
+                if r["state"] == "reverting" and r.get("revert_pr") == pr:
                     self._set(r, "failed", f"the revert (#{pr}) is merged")
-            self.queued[repo] = {"sha": sha, "pr": pr, "at": self.clock(), "source": source}
+            q = self.state.get("queued")
+            # An older arrival never replaces a newer queued merge.
+            if not (q and self.git.is_ancestor(sha, q["sha"])):
+                self.state["queued"] = {"sha": sha, "pr": pr, "at": self.clock(), "source": source}
             self._save()
-        started = self._advance(repo)
-        return {"queued": sha, "started": started}
+        return {"queued": sha, "started": self._advance()}
 
-    def _refusal(self, repo: str, sha: str) -> tuple[Optional[str], Optional[int]]:
-        pr = self.forge.merged_pr(repo, sha)
+    def _refusal(self, sha: str) -> tuple[Optional[str], Optional[int]]:
+        pr = self.forge.merged_pr(self.repo, sha)
         if not pr:
             return f"{sha[:12]} is not the merge commit of a pull request (a direct push?)", None
         n = pr.get("number")
         if (pr.get("base") or {}).get("ref") != self.branch:
             return f"#{n} was merged into {(pr.get('base') or {}).get('ref')}, not {self.branch}", n
-        checks = self.forge.checks(repo, (pr.get("head") or {}).get("sha", ""))
+        checks = self.forge.checks(self.repo, (pr.get("head") or {}).get("sha", ""))
         bad = [f"{c}: {checks.get(c, 'missing')}" for c in self.required if checks.get(c) not in OK_CHECK]
         if bad:
             return f"#{n} has required checks that are not green ({', '.join(bad)})", n
         return None, n
 
-    def _advance(self, repo: str) -> Optional[str]:
+    def _order(self, sha: str, base: Optional[str] = None, exclude: Optional[str] = None) -> Optional[str]:
+        """Why `sha` is not a step forward: it must descend from stable, differ
+        from it, and be newer than the last commit a run deployed."""
+        base = base or self.git.head(self.stable)
+        if sha == base or not self.git.is_ancestor(base, sha):
+            return f"{sha[:12]} is not ahead of {self.stable} {base[:12]} (an old or replayed merge?)"
         with self.lock:
-            if any(r["repo"] == repo and r["state"] in BLOCKING for r in self.runs.values()):
+            last = max((r for r in self.runs.values() if r.get("deployed") and r["id"] != exclude),
+                       key=lambda r: r["created"], default=None)
+        if last and self.git.is_ancestor(sha, last["sha"]):
+            return f"{sha[:12]} is not newer than {last['sha'][:12]}, deployed by run {last['id']}"
+        return None
+
+    def _range_refusal(self, base: str, sha: str) -> Optional[str]:
+        """Every first-parent commit of the range passed the guard (or a person accepted it)."""
+        for c in self.git.first_parents(base, sha):
+            with self.lock:
+                if c in self.green:
+                    continue
+            why, _ = self._refusal(c)
+            if why:
+                return f"the range {base[:12]}..{sha[:12]} holds {c[:12]}: {why}"
+            self._green([c])
+        return None
+
+    def _advance(self) -> Optional[str]:
+        with self.lock:
+            if any(r["state"] in BLOCKING for r in self.runs.values()):
                 return None
-            q = self.queued.pop(repo, None)
+            q = self.state.get("queued")
             if q is None:
-                self._save()
                 return None
-            r = self._new(repo, q["sha"], q["pr"], "previewing")
-            r["base"] = self.git.head(self.stable)
-            self._log(r, f"range {r['base'][:12]}..{q['sha'][:12]} ({q['source']})")
-            self._save()
+            # Read before the queue is touched: a fetch that fails leaves it as it was.
+            base = self.git.head(self.stable)
+            del self.state["queued"]
+            r = self._new(q["sha"], q["pr"], "previewing", base=base)
+            self._update(r, f"range {base[:12]}..{q['sha'][:12]} ({q['source']})")
         self.spawn(lambda: self._guarded(r, self._go))
         return r["id"]
 
@@ -212,32 +289,48 @@ class Pipeline:
             self._set(r, "needs-operator", f"{type(e).__name__}: {e}", alert=True)
 
     # ── a run ────────────────────────────────────────────────────────────
-    def _go(self, r: dict[str, Any]) -> None:
-        jobs = r.setdefault("jobs", {})
+    def _gate(self, r: dict[str, Any], sha: str, what: str) -> Optional[str]:
+        """Preview every estate at `sha`: -> why a person is needed, else None."""
         for e in self.estates:
-            out = self.deployer.deploy(e, r["sha"], preview=True)
-            jobs[f"preview:{e}"] = out.get("job")
+            out = self.deployer.deploy(e, sha, preview=True, on=self.nixos_on)
+            self._update(r, None, jobs={**r.get("jobs", {}), f"{what}-preview:{e}": out.get("job")})
             if out["state"] != "succeeded":
-                return self._set(r, "needs-operator", f"preview of {e} {out['state']}: {out.get('error')}", True)
+                return f"{what} preview of {e} {out['state']}: {out.get('error')}"
             hits = self.needs_operator(out.get("result") or {})
             if hits:
-                return self._set(r, "needs-operator", f"{e} needs a person: {'; '.join(hits)}", True)
-        self._set(r, "deploying", "previews clean")
+                return f"{what} of {e} needs a person: {'; '.join(hits)}"
+        return None
+
+    def _apply(self, r: dict[str, Any], sha: str, what: str) -> Optional[str]:
         for e in self.estates:
-            out = self.deployer.deploy(e, r["sha"], preview=False)
-            jobs[f"deploy:{e}"] = out.get("job")
+            out = self.deployer.deploy(e, sha, preview=False, on=self.nixos_on)
+            # What is where: each estate's outcome is in the run's log.
+            self._update(r, f"{what} {e} at {sha[:12]}: {out['state']}", deployed=True,
+                         jobs={**r.get("jobs", {}), f"{what}:{e}": out.get("job")})
             if out["state"] != "succeeded":
-                return self._set(r, "needs-operator", f"deploy of {e} {out['state']}: {out.get('error')}", True)
-        r["tickets"] = self.tickets(r)
-        r["deadline"] = self.clock() + self.timeout
-        self._set(r, "reviewing", f"deployed; review of {', '.join(r['tickets']) or 'no tickets'} requested")
+                return f"{what} of {e} {out['state']}: {out.get('error')}"
+        return None
+
+    def _go(self, r: dict[str, Any]) -> None:
+        why = (self._order(r["sha"], r["base"], exclude=r["id"]) or self._range_refusal(r["base"], r["sha"])
+               or self._gate(r, r["sha"], "deploy"))
+        if why:
+            self._set(r, "needs-operator", f"{why}; nothing deployed", True)
+            return
+        self._set(r, "deploying", "previews clean")
+        why = self._apply(r, r["sha"], "deploy")
+        if why:
+            self._set(r, "needs-operator", why, True)
+            return
+        tickets = self.tickets(r)
+        self._update(r, f"deployed; review of {', '.join(tickets) or 'no tickets'} requested",
+                     tickets=tickets, deadline=self.clock() + self.timeout, state="reviewing")
         self._dispatch("review.requested", r)
 
     def needs_operator(self, result: dict[str, Any]) -> list[str]:
         """What in a preview's result stops a run: a refusal, a delete or
-        replace, a change to a protected resource.
-        shortcut: sees the Pulumi plan only, not what Colmena would change on a
-        protected node; compare toplevels before a protected node is in the hive."""
+        replace, a change to a protected resource (Pulumi plan; NixOS is kept
+        off protected nodes by FLEETKIT_VERIFIED_ON instead)."""
         hits = [f"refused {x['op']} {st}/{x['key']}" for st, xs in (result.get("refused") or {}).items() for x in xs]
         for st, changes in (result.get("plan") or {}).items():
             for c in changes:
@@ -249,10 +342,11 @@ class Pipeline:
         return hits
 
     def tickets(self, r: dict[str, Any]) -> list[str]:
+        """Keys that prefix a commit subject of the range (`KEY-1: ...`), not every mention."""
         if not self.tracker:
             return []
-        text = self.git.messages(r["base"], r["sha"])
-        return sorted(set(re.findall(self.tracker.pattern, text)))
+        pat = re.compile(rf"^({self.tracker.pattern}):")
+        return sorted({m.group(1) for s in self.git.subjects(r["base"], r["sha"]) if (m := pat.match(s))})
 
     def _dispatch(self, kind: str, r: dict[str, Any], **extra: Any) -> None:
         if not self.runner:
@@ -262,7 +356,8 @@ class Pipeline:
                                   "range": {"base": r.get("base"), "head": r["sha"]},
                                   "tickets": r.get("tickets", []), **extra})
         except Exception as e:  # noqa: BLE001 - recorded; /review asks again
-            self._set(r, r["state"], f"{kind} not dispatched: {e}", alert=True)
+            self._update(r, f"{kind} not dispatched: {e}")
+            self.alert(f"fleetkit run {r['id']}: {kind} not dispatched: {e}")
 
     def _each_ticket(self, r: dict[str, Any], f: Callable[[Tracker, str], None]) -> None:
         if not self.tracker:
@@ -271,7 +366,8 @@ class Pipeline:
             try:
                 f(self.tracker, t)
             except Exception as e:  # noqa: BLE001 - the run's outcome stands; the ticket is a person's fix
-                self._set(r, r["state"], f"ticket {t}: {e}", alert=True)
+                self._update(r, f"ticket {t}: {e}")
+                self.alert(f"fleetkit run {r['id']}: ticket {t}: {e}")
 
     # ── verdict, review, timeout, resolve ────────────────────────────────
     def verdict(self, rid: str, verdict: str, evidence: str, by: str) -> dict[str, Any]:
@@ -279,55 +375,67 @@ class Pipeline:
             r = self.runs[rid]
             if r["state"] != "reviewing":
                 raise ValueError(f"run {rid} is {r['state']}, not reviewing")
-            r["verdict"] = {"verdict": verdict, "evidence": evidence, "by": by, "at": self.clock()}
-            # Taken before the step runs, so a second verdict is refused.
-            r["state"] = "passing" if verdict == "pass" else "rolling-back"
-            self._save()
+            # Taken under the lock, so a second verdict (or the timeout) loses.
+            self._update(r, f"verdict {verdict} by {by}",
+                         verdict={"verdict": verdict, "evidence": evidence, "by": by, "at": self.clock()},
+                         state="passing" if verdict == "pass" else "rolling-back")
         if verdict == "pass":
             self._guarded(r, self._pass)
         else:
             self.spawn(lambda: self._guarded(r, self._fail))
-        return r
+        return self.get(rid) or {}
 
     def _pass(self, r: dict[str, Any]) -> None:
         try:
             self.forge.fast_forward(r["repo"], self.stable, r["sha"])
         except Exception as e:  # noqa: BLE001 - stable did not move: a person decides
-            return self._set(r, "needs-operator", f"passed, but {self.stable} did not move: {e}", True)
+            self._set(r, "needs-operator", f"passed, but {self.stable} did not move: {e}", True)
+            return
         note = f"Verified live by {r['verdict']['by']} ({self.url(r)}); {self.stable} is now {r['sha'][:12]}.\n\n" \
                f"{r['verdict']['evidence']}"
         self._each_ticket(r, lambda t, k: (t.comment(k, note), t.set_state(k, self.done_state)))
         self._set(r, "passed", f"{self.stable} fast-forwarded to {r['sha'][:12]}")
-        self._advance(r["repo"])
+        self.resume()
+
+    def _no_auto_revert(self, r: dict[str, Any]) -> list[str]:
+        held = []
+        for k in r.get("tickets", []):
+            try:
+                if "no-auto-revert" in (self.tracker.get(k).get("labels") or []):  # type: ignore[union-attr]
+                    held.append(k)
+            except Exception as e:  # noqa: BLE001 - an unknown key does not hold the rollback
+                self._update(r, f"ticket {k}: {e}")
+        return held
 
     def _fail(self, r: dict[str, Any]) -> None:
-        held = [k for k in r.get("tickets", []) if self.tracker and "no-auto-revert" in
-                (self.tracker.get(k).get("labels") or [])]
+        held = self._no_auto_revert(r) if self.tracker else []
         if held:
-            return self._set(r, "needs-operator", f"failed review; no-auto-revert on {', '.join(held)}", True)
-        # First the estates go back to the last verified commit, then the history.
-        for e in self.estates:
-            out = self.deployer.deploy(e, r["base"], preview=False)
-            r.setdefault("jobs", {})[f"rollback:{e}"] = out.get("job")
-            if out["state"] != "succeeded":
-                return self._set(r, "needs-operator",
-                                 f"failed review, and the redeploy of {r['base'][:12]} to {e} {out['state']}: "
-                                 f"{out.get('error')}", True)
-        self._set(r, "rolling-back", f"estates back at {self.stable} {r['base'][:12]}")
+            self._set(r, "needs-operator", f"failed review; no-auto-revert on {', '.join(held)}", True)
+            return
+        # The way back passes the same gate as the way forward.
+        why = self._gate(r, r["base"], "rollback") or self._apply(r, r["base"], "rollback")
+        if why:
+            self._set(r, "needs-operator", f"failed review; {why}", True)
+            return
+        self._update(r, f"estates back at {self.stable} {r['base'][:12]}")
         name = f"fleetkit/revert-{r['id']}"
-        title = f"Revert {r['base'][:10]}..{r['sha'][:10]}: failed live review (run {r['id']})"
+        keys = ", ".join(r.get("tickets", []))
+        title = f"{keys + ': ' if keys else ''}Revert {r['base'][:10]}..{r['sha'][:10]} " \
+                f"(failed live review, run {r['id']})"
         try:
             self.git.revert(r["base"], r["sha"], name, title)
             pr = self.forge.open_pr(r["repo"], name, self.branch, title,
                                     f"The reviewer failed run {self.url(r)}:\n\n{r['verdict']['evidence']}")
         except Exception as e:  # noqa: BLE001 - a conflict or a refused push: a person decides
-            return self._set(r, "needs-operator", f"failed review; the revert could not be opened: {e}", True)
-        r["revert_pr"], r["revert_url"] = pr.get("number"), pr.get("html_url")
+            self._set(r, "needs-operator", f"failed review; the revert could not be opened: {e}", True)
+            return
         note = f"Failed live review ({self.url(r)}); the estates are back at {self.stable} {r['base'][:12]} " \
                f"and {pr.get('html_url')} reverts the change.\n\n{r['verdict']['evidence']}"
+        self._update(r, f"revert #{pr.get('number')} opened; the queue waits for its merge",
+                     revert_pr=pr.get("number"), revert_url=pr.get("html_url"),
+                     deadline=self.clock() + self.timeout, state="reverting")
         self._each_ticket(r, lambda t, k: (t.comment(k, note), t.set_state(k, self.reopen_state),
                                            t.link(k, pr.get("html_url") or "", title)))
-        self._set(r, "reverting", f"revert #{pr.get('number')} opened; the queue waits for its merge")
         self._dispatch("work.requested", r, findings=r["verdict"]["evidence"], revert=pr.get("html_url"))
 
     def review(self, rid: str) -> dict[str, Any]:
@@ -336,31 +444,54 @@ class Pipeline:
             r = self.runs[rid]
             if r["state"] not in ("reviewing", "timed-out"):
                 raise ValueError(f"run {rid} is {r['state']}; only a deployed run is reviewed")
-            r["deadline"] = self.clock() + self.timeout
-        self._set(r, "reviewing", "review requested again")
+            self._update(r, "review requested again", deadline=self.clock() + self.timeout, state="reviewing")
         self._dispatch("review.requested", r)
-        return r
+        return self.get(rid) or {}
 
     def tick(self) -> None:
-        """Time out reviews. Never reverts: a reviewer outage must not undo good changes."""
-        for r in [r for r in self.runs.values() if r["state"] == "reviewing"]:
-            if self.clock() > r.get("deadline", float("inf")):
-                self._set(r, "timed-out", "no verdict in time; the queue stops (nothing reverted)", alert=True)
+        """Time out reviews; never revert (a reviewer outage must not undo good
+        changes). Alert once about a revert left unmerged."""
+        now = self.clock()
+        with self.lock:
+            late = [r for r in self.runs.values() if r["state"] in ("reviewing", "reverting")
+                    and now > r.get("deadline", float("inf")) and not r.get("late")]
+        for r in late:
+            if r["state"] == "reviewing":
+                self._set(r, "timed-out", "no verdict in time; the queue stops (nothing reverted)", alert=True,
+                          expect=("reviewing",))
+            else:
+                self._update(r, "the revert is still not merged", late=True)
+                self.alert(f"fleetkit run {r['id']}: revert {r.get('revert_url')} not merged; the queue waits")
 
-    def resolve(self, rid: str, note: str, by: str) -> dict[str, Any]:
-        """A person decided about a stopped run; the queue moves on."""
+    def resolve(self, rid: str, note: str, by: str, accept: bool = False, stable: bool = False) -> dict[str, Any]:
+        """A person decided about a stopped run; the queue moves on. `accept`:
+        the person vouches for the run's range (commits the guard refused) and
+        the run's commit is queued again. `stable`: stable moves to the run's
+        commit (the person verified it)."""
         with self.lock:
             r = self.runs[rid]
             if r["state"] not in ("needs-operator", "timed-out", "reverting"):
                 raise ValueError(f"run {rid} is {r['state']}; nothing to resolve")
-        self._set(r, "resolved", f"resolved by {by}: {note}")
-        self._advance(r["repo"])
-        return r
+        if stable:
+            self.forge.fast_forward(r["repo"], self.stable, r["sha"])
+        if accept:
+            self._green(self.git.first_parents(r["base"], r["sha"]))
+            with self.lock:
+                if not self.state.get("queued"):
+                    self.state["queued"] = {"sha": r["sha"], "pr": r["pr"], "at": self.clock(),
+                                            "source": f"accepted by {by}"}
+        self._set(r, "resolved", f"resolved by {by}{' (accepted)' if accept else ''}"
+                                 f"{f', {self.stable} moved' if stable else ''}: {note}")
+        self.resume()
+        return self.get(rid) or {}
 
     def start_ticking(self, every: float = 30) -> None:
         def loop() -> None:
             while True:
                 time.sleep(every)
-                self.tick()
+                try:
+                    self.tick()
+                except Exception:  # noqa: BLE001 - the loop outlives one bad tick
+                    traceback.print_exc()
 
         threading.Thread(target=loop, name="runs-tick", daemon=True).start()

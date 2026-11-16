@@ -144,6 +144,18 @@ let
           allow_update, allow_create, targets or refresh.
         '';
       };
+      runs = mkOption {
+        type = types.enum [
+          "none"
+          "review"
+        ];
+        default = "none";
+        description = ''
+          review: the token may read verified runs and post verdicts
+          (trigger = "verified"), nothing else on them. A reviewer's token,
+          with infra and nixos at none, so it cannot deploy.
+        '';
+      };
     };
   };
   tokensFile = pkgs.writeText "fleetkit-tokens.json" (
@@ -162,6 +174,7 @@ let
             ;
         }
         // lib.optionalAttrs (t.hives != null) { inherit (t) hives; }
+        // lib.optionalAttrs (t.runs != "none") { inherit (t) runs; }
       ) cfg.tokens;
     }
   );

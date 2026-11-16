@@ -410,6 +410,7 @@ def serve(ctx: click.Context, repo: str | None, listen: str, token_file: str | N
             except ValueError as e:
                 raise click.ClickException(str(e))
             gitops.runs.start_ticking()
+            gitops.runs.resume()
     uvicorn.run(create_app(manager, s, token, gitops, scoped), host=host or "127.0.0.1", port=int(port),
                 log_level="info")
 

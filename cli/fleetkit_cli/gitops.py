@@ -127,9 +127,17 @@ class Repo:
         self.fetch()
         return _git("--git-dir", str(self.mirror), "rev-parse", f"refs/heads/{branch}")
 
-    def messages(self, base: str, sha: str) -> str:
-        """The commit messages of base..sha (where ticket keys are found)."""
-        return _git("--git-dir", str(self.mirror), "log", "--format=%B", f"{base}..{sha}")
+    def is_ancestor(self, a: str, b: str) -> bool:
+        return subprocess.run(["git", "--git-dir", str(self.mirror), "merge-base", "--is-ancestor", a, b],
+                              capture_output=True).returncode == 0
+
+    def first_parents(self, base: str, sha: str) -> list[str]:
+        """The commits the branch itself moved through in base..sha (merges and pushes, not a PR's own)."""
+        return _git("--git-dir", str(self.mirror), "rev-list", "--first-parent", f"{base}..{sha}").split()
+
+    def subjects(self, base: str, sha: str) -> list[str]:
+        """Every commit subject of base..sha (where ticket keys are found)."""
+        return _git("--git-dir", str(self.mirror), "log", "--format=%s", f"{base}..{sha}").splitlines()
 
     def revert(self, base: str, sha: str, branch: str, message: str) -> None:
         """Push `branch`: one commit on the deploy branch's head that undoes
@@ -139,7 +147,10 @@ class Repo:
         with tempfile.TemporaryDirectory() as t:
             _git("clone", "--quiet", "--shared", "--no-checkout", str(self.mirror), t)
             _git("checkout", "--quiet", "--detach", head, cwd=Path(t))
-            diff = subprocess.run(["git", "diff", "--binary", sha, base], cwd=t, capture_output=True, check=True)
+            diff = subprocess.run(["git", "diff", "--binary", "--no-ext-diff", "--no-textconv", sha, base], cwd=t,
+                                  capture_output=True)
+            if diff.returncode != 0:
+                raise GitError(f"git diff {sha[:12]} {base[:12]}: {diff.stderr.decode()[-1000:]}")
             if not diff.stdout:
                 raise GitError(f"{base[:12]}..{sha[:12]} changes nothing: there is nothing to revert")
             p = subprocess.run(["git", "apply", "--3way", "--index"], cwd=t, input=diff.stdout, capture_output=True)
@@ -310,6 +321,8 @@ class GitOps:
             return {"ignored": "merged: FLEETKIT_TRIGGER=push deploys the push"}
         if merged and self.g.trigger == "verified":
             # runs.py: the merge guard, the queue, preview, deploy, review.
+            if self.runs is None:
+                raise RuntimeError("FLEETKIT_TRIGGER=verified but no run pipeline is configured")
             return self.runs.trigger(repo, pr.get("merge_commit_sha") or "", f"merge of #{number}")
         if not merged and pr.get("draft"):
             return {"ignored": "draft"}

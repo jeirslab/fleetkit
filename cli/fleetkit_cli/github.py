@@ -60,22 +60,41 @@ class GitHub:
 
     # ── verified runs (runs.py: the Forge adapter) ───────────────────────
     def merged_pr(self, repo: str, sha: str) -> dict[str, Any] | None:
-        """The merged pull request whose merge commit is `sha`, else None."""
+        """The merged pull request whose merge commit is `sha`, else None.
+        GitHub lists merged pull requests for a commit only once it is on the
+        default branch: the deploy branch must be the repository's default."""
         for pr in self._req("GET", f"/repos/{repo}/commits/{sha}/pulls") or []:
             if pr.get("merged_at") and pr.get("merge_commit_sha") == sha:
                 return pr
         return None
 
     def checks(self, repo: str, sha: str) -> dict[str, str]:
-        """Check name (or status context) -> its conclusion on `sha`; the newest run of a name wins.
-        shortcut: the first 100 check runs only; page when a commit carries more."""
+        """Check-run name (a job's own name, not "workflow / job") or status
+        context -> its outcome on `sha`. Per app the newest run of a name
+        counts; when apps disagree the worst wins, so a later green run
+        elsewhere does not hide a red one."""
         out: dict[str, str] = {}
-        st = self._req("GET", f"/repos/{repo}/commits/{sha}/status") or {}
+        # The combined status holds the newest status of each context.
+        st = self._req("GET", f"/repos/{repo}/commits/{sha}/status?per_page=100") or {}
         for s in st.get("statuses") or []:
-            out.setdefault(s["context"], s["state"])  # newest first
-        runs = (self._req("GET", f"/repos/{repo}/commits/{sha}/check-runs?per_page=100") or {}).get("check_runs") or []
-        for c in sorted(runs, key=lambda c: c["id"]):
-            out[c["name"]] = c.get("conclusion") or c.get("status") or "pending"
+            out[s["context"]] = s["state"]
+        newest: dict[tuple[str, str], dict[str, Any]] = {}
+        page = 1
+        while True:
+            got = (self._req("GET", f"/repos/{repo}/commits/{sha}/check-runs?per_page=100&page={page}") or {})
+            runs = got.get("check_runs") or []
+            for c in runs:
+                k = ((c.get("app") or {}).get("slug", ""), c["name"])
+                if k not in newest or c["id"] > newest[k]["id"]:
+                    newest[k] = c
+            if len(runs) < 100:
+                break
+            page += 1
+        ok = ("success", "neutral", "skipped")
+        for (_, name), c in sorted(newest.items()):
+            v = c.get("conclusion") or c.get("status") or "pending"
+            if out.get(name) in ok or name not in out:
+                out[name] = v
         return out
 
     def fast_forward(self, repo: str, branch: str, sha: str) -> None:

@@ -1,11 +1,18 @@
 """The real adapters of verified runs (runs.py), and the pipeline built from
 the environment. stdlib only.
 
+  FLEETKIT_GITHUB_REPO        owner/name: the one repository the server runs (required)
   FLEETKIT_STABLE_BRANCH      the last verified commit (default stable)
-  FLEETKIT_REQUIRED_CHECKS    check names a merged PR's head must have green (comma-separated)
-  FLEETKIT_PROTECT            fnmatch patterns of <stack>/<key>: any change stops the run
+  FLEETKIT_REQUIRED_CHECKS    check-run names (a job's own name) a merged PR's head must have green
+  FLEETKIT_PROTECT            fnmatch patterns of <stack>/<key>: any change stops the run (required)
+  FLEETKIT_VERIFIED_ON        Colmena --on selector (node names, @tags) a run applies NixOS to;
+                              unset: no NixOS stage. Never a protected node: the Pulumi plan,
+                              which the gate reads, says nothing of a NixOS change
   FLEETKIT_REVIEW_TIMEOUT     seconds a verdict may take (default 1800)
-  FLEETKIT_RUNNER             exec:<command> (the event as JSON on stdin) or http(s)://<url> (POSTed)
+  FLEETKIT_RUNNER             exec:<command> (the event as JSON on stdin) or http(s)://<url> (POSTed).
+                              exec runs ON the deploy server with PATH, HOME, LANG and the names in
+                              FLEETKIT_RUNNER_ENV only; it should hand off to another host (a
+                              reviewer never runs here)
   FLEETKIT_RUNNER_TOKEN(_FILE)  bearer token for an http runner
   FLEETKIT_TRACKER            jira (or unset: no tickets)
   FLEETKIT_JIRA_URL, FLEETKIT_JIRA_USER, FLEETKIT_JIRA_TOKEN(_FILE)
@@ -16,6 +23,7 @@ the environment. stdlib only.
 from __future__ import annotations
 
 import base64
+import fnmatch
 import json
 import os
 import shlex
@@ -73,11 +81,13 @@ class Jira:
 class ExecRunner:
     """Runner: start a command with the event as JSON on stdin; do not wait for it."""
 
-    def __init__(self, command: str):
+    def __init__(self, command: str, env: tuple[str, ...] = ()):
         self.argv = shlex.split(command)
+        # None of the server's credentials: only what is named.
+        self.env = {k: os.environ[k] for k in ("PATH", "HOME", "LANG", *env) if k in os.environ}
 
     def dispatch(self, event: dict[str, Any]) -> None:
-        p = subprocess.Popen(self.argv, stdin=subprocess.PIPE)
+        p = subprocess.Popen(self.argv, stdin=subprocess.PIPE, env=self.env)
         assert p.stdin is not None
         p.stdin.write(json.dumps(event).encode())
         p.stdin.close()
@@ -100,10 +110,11 @@ class JobDeployer:
     def __init__(self, manager: JobManager, wait: float = 5):
         self.manager, self.wait = manager, wait
 
-    def deploy(self, estate: str, sha: str, preview: bool) -> dict[str, Any]:
+    def deploy(self, estate: str, sha: str, preview: bool, on: tuple[str, ...]) -> dict[str, Any]:
+        req = DeployRequest(estate=estate, rev=sha, preview=preview, nixos=bool(on), on=list(on))
         while True:
             try:
-                j = self.manager.submit(DeployRequest(estate=estate, rev=sha, preview=preview), by="pipeline")
+                j = self.manager.submit(req, by="pipeline")
                 break
             except BusyError:  # someone else's job on the estate: wait for it
                 busy = self.manager.jobs.get(self.manager.active.get(estate, ""))
@@ -135,6 +146,15 @@ def pipeline(s: Settings, repo: Any, manager: JobManager) -> Any:
     if not split("FLEETKIT_REQUIRED_CHECKS"):
         raise ValueError("FLEETKIT_TRIGGER=verified needs FLEETKIT_REQUIRED_CHECKS: a merge deploys only when they "
                          "are green")
+    if not env("FLEETKIT_GITHUB_REPO"):
+        raise ValueError("FLEETKIT_TRIGGER=verified needs FLEETKIT_GITHUB_REPO (owner/name)")
+    protect, on = split("FLEETKIT_PROTECT"), split("FLEETKIT_VERIFIED_ON")
+    if not protect:
+        raise ValueError("FLEETKIT_TRIGGER=verified needs FLEETKIT_PROTECT: what no run may change unattended")
+    hit = [n for n in on if any(fnmatch.fnmatch(n, p.rsplit("/", 1)[-1]) for p in protect)]
+    if hit:
+        raise ValueError(f"FLEETKIT_VERIFIED_ON names protected nodes ({', '.join(hit)}): a run would change "
+                         "them without a person")
     tracker = None
     if env("FLEETKIT_TRACKER") == "jira":
         if not (env("FLEETKIT_JIRA_URL") and env("FLEETKIT_JIRA_USER") and _read_secret("FLEETKIT_JIRA_TOKEN")):
@@ -148,16 +168,17 @@ def pipeline(s: Settings, repo: Any, manager: JobManager) -> Any:
     spec = env("FLEETKIT_RUNNER") or ""
     runner: Any = None
     if spec.startswith("exec:"):
-        runner = ExecRunner(spec[5:])
+        runner = ExecRunner(spec[5:], split("FLEETKIT_RUNNER_ENV"))
     elif spec.startswith(("http://", "https://")):
         runner = HttpRunner(spec, _read_secret("FLEETKIT_RUNNER_TOKEN"))
     elif spec:
         raise ValueError(f"FLEETKIT_RUNNER is {spec!r}; exec:<command> or an http(s) URL")
     alert = ntfy(env("FLEETKIT_NTFY_URL", ""), _read_secret("FLEETKIT_NTFY_TOKEN")) if env("FLEETKIT_NTFY_URL") \
         else (lambda msg: None)
-    return Pipeline(s.state_dir, g.branch, g.deploy_on_push, GitHub(g.github_token, g.github_api), tracker, runner,
-                    JobDeployer(manager), repo, stable=env("FLEETKIT_STABLE_BRANCH") or "stable",
-                    required=split("FLEETKIT_REQUIRED_CHECKS"), protect=split("FLEETKIT_PROTECT"),
+    return Pipeline(s.state_dir, env("FLEETKIT_GITHUB_REPO", ""), g.branch, g.deploy_on_push,
+                    GitHub(g.github_token, g.github_api), tracker, runner, JobDeployer(manager), repo,
+                    stable=env("FLEETKIT_STABLE_BRANCH") or "stable",
+                    required=split("FLEETKIT_REQUIRED_CHECKS"), protect=protect, nixos_on=on,
                     timeout=float(env("FLEETKIT_REVIEW_TIMEOUT") or 1800),
                     done_state=env("FLEETKIT_TICKET_DONE") or "Done",
                     reopen_state=env("FLEETKIT_TICKET_REOPEN") or "To Do", public_url=g.public_url, alert=alert)

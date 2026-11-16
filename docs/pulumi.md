@@ -1032,45 +1032,72 @@ branch gate above holds either way).
 
 Merging deploys, a reviewer checks the live result, and a second branch
 records the last commit that passed. `FLEETKIT_BRANCH` is the integration
-branch (e.g. `unstable`); `FLEETKIT_STABLE_BRANCH` (default `stable`) only ever
-fast-forwards to a commit a reviewer passed, and is what a failed run returns
-the estates to.
+branch (e.g. `unstable`, and it must be the repository's default branch:
+GitHub lists the merged pull request of a commit only there);
+`FLEETKIT_STABLE_BRANCH` (default `stable`) only ever fast-forwards to a commit
+a reviewer passed, and is what a failed run returns the estates to. The server
+runs one repository, `FLEETKIT_GITHUB_REPO`.
 
 - **Guard.** A merged PR (webhook) or `POST /v1/runs {repo, sha}` is refused,
   and alerted, unless GitHub says `sha` is the merge commit of a pull request
-  into the branch whose head has every `FLEETKIT_REQUIRED_CHECKS` green. A
-  direct push never deploys; the payload is not trusted, GitHub is asked.
+  into the branch whose head has every `FLEETKIT_REQUIRED_CHECKS` green (check
+  run names: a job's own name, `flake checks`, not `ci / flake checks`; when
+  two apps report a name, the worst wins), descends from stable, and is newer
+  than the last commit a run deployed. The payload is not trusted, GitHub is
+  asked.
+- **The whole range.** A run covers `stable..sha`, and every first-parent
+  commit in it must pass the same guard: a direct push, or a refused merge,
+  that a later green merge carries stops the run as `needs-operator` before
+  anything runs. Rebase merges are refused for the same reason (only their last
+  commit is the PR's merge commit).
 - **One run per repository.** Merges that arrive during a run queue; the next
-  run takes the newest and covers `stable..sha`.
-- **Preview first.** Each estate (`FLEETKIT_DEPLOY_ON_PUSH`) is previewed; a
-  delete, a replace, a guard refusal, or any change to a resource matching
-  `FLEETKIT_PROTECT` (`<stack>/<key>` globs) stops the run as `needs-operator`
-  before anything is applied. The check reads the Pulumi plan only: keep
-  protected nodes out of the hive until it compares their NixOS toplevels.
+  run takes the newest (an older arrival never replaces a newer one).
+- **Preview first, both ways.** Each estate (`FLEETKIT_DEPLOY_ON_PUSH`) is
+  previewed; a delete, a replace, a guard refusal, or any change to a resource
+  matching `FLEETKIT_PROTECT` (`<stack>/<key>` globs, required) stops the run as
+  `needs-operator` before anything is applied. The rollback of a failed run
+  passes the same gate.
+- **NixOS only where it is safe.** The gate reads the Pulumi plan, which says
+  nothing of a NixOS change, so a run applies Colmena only to the nodes
+  `FLEETKIT_VERIFIED_ON` selects (a `--on` selector: names, `@tags`); unset, a
+  run has no NixOS stage. The server refuses to start when a selected name
+  matches `FLEETKIT_PROTECT`; a tag must not cover a protected node either.
 - **Deploy, then review.** Every estate is deployed, then `review.requested`
-  goes to the runner adapter with the range and the ticket keys found in its
-  commit messages.
+  goes to the runner adapter with the range and the ticket keys that prefix its
+  commit subjects (`KEY-1: ...`).
 - **Verdict.** `POST /v1/runs/{id}/verdict {verdict, evidence}`. `pass`
   fast-forwards stable, comments the evidence on each ticket and sets it done.
   `fail` redeploys the stable commit, pushes `fleetkit/revert-<run>` (one
-  commit on the branch head restoring the range) and opens its PR, reopens each
-  ticket with the findings and a link, and dispatches `work.requested`; the
-  queue waits until the revert PR's merge arrives. A ticket labelled
-  `no-auto-revert`, a revert that does not apply, or a failed redeploy stops
-  the queue for a person instead.
+  commit on the branch head restoring the range, titled with the run's ticket
+  keys) and opens its PR, reopens each ticket with the findings and a link, and
+  dispatches `work.requested`. The queue waits until the revert PR's merge
+  arrives; a person or an agent merges it, its checks gate it like any merge,
+  and a revert left unmerged past the timeout is alerted. A ticket labelled
+  `no-auto-revert`, a revert that does not apply, or a rollback the gate stops
+  waits for a person instead.
 - **Timeout.** No verdict within `FLEETKIT_REVIEW_TIMEOUT` seconds (1800):
   `timed-out`, alerted, the queue stops. Nothing is reverted.
-- A stopped run moves on with `POST /v1/runs/{id}/resolve {note}` or, for a
-  verdict after all, `POST /v1/runs/{id}/review`. `GET /v1/runs?state=` lists.
+- **A person decides.** `POST /v1/runs/{id}/resolve {note, accept, stable}`
+  moves a stopped queue on: `accept` vouches for the run's range (the commits
+  the guard refused) and queues its commit again; `stable` fast-forwards stable
+  to the run's commit (verified by hand). A destructive change is applied by
+  the operator with `POST /v1/deploys` and its `allow_*` names, then resolved
+  with `stable`. `POST /v1/runs/{id}/review` asks for a verdict again (a
+  timed-out run too). `GET /v1/runs?state=` lists.
 
-The runs routes take the unscoped token only. Adapters (`adapters.py`):
-tracker `FLEETKIT_TRACKER=jira` (`FLEETKIT_JIRA_URL`, `_USER`, `_TOKEN(_FILE)`,
-`FLEETKIT_TICKET_PATTERN`, `FLEETKIT_TICKET_DONE`, `FLEETKIT_TICKET_REOPEN`);
-runner `FLEETKIT_RUNNER=exec:<command>` (the event as JSON on stdin) or an
-`http(s)://` URL the event is POSTed to (`FLEETKIT_RUNNER_TOKEN(_FILE)`);
-alerts to `FLEETKIT_NTFY_URL` (`FLEETKIT_NTFY_TOKEN(_FILE)`). The GitHub token
-needs contents and pull-request write: it moves stable and opens reverts, and
-the mirror's URL must accept the revert branch's push.
+Tokens: the trigger and `resolve` take the unscoped token; reading runs,
+`review` and `verdict` also take a scoped token with `runs: "review"` (with
+`infra` and `nixos` at `none` it cannot deploy: give the reviewer that one).
+Adapters (`adapters.py`): tracker `FLEETKIT_TRACKER=jira` (`FLEETKIT_JIRA_URL`,
+`_USER`, `_TOKEN(_FILE)`, `FLEETKIT_TICKET_PATTERN`, `FLEETKIT_TICKET_DONE`,
+`FLEETKIT_TICKET_REOPEN`); runner `FLEETKIT_RUNNER=exec:<command>` (the event
+as JSON on stdin; it runs on the deploy server with `PATH`, `HOME`, `LANG` and
+the names in `FLEETKIT_RUNNER_ENV` only, so it should hand off to another host:
+a reviewer never runs on the server) or an `http(s)://` URL the event is POSTed
+to (`FLEETKIT_RUNNER_TOKEN(_FILE)`); alerts to `FLEETKIT_NTFY_URL`
+(`FLEETKIT_NTFY_TOKEN(_FILE)`). The GitHub token needs contents and
+pull-request write: it moves stable and opens reverts, and the mirror's URL
+must accept the revert branch's push.
 
 `nixosModules.fleetkit-server` runs it as a hardened systemd service
 (`services.fleetkit = { enable; repo; branch; previewBranches; deployOnPush;
