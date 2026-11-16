@@ -57,3 +57,30 @@ class GitHub:
                 break
             page += 1
         self._req("POST", f"/repos/{repo}/issues/{pr}/comments", {"body": text})
+
+    # ── verified runs (runs.py: the Forge adapter) ───────────────────────
+    def merged_pr(self, repo: str, sha: str) -> dict[str, Any] | None:
+        """The merged pull request whose merge commit is `sha`, else None."""
+        for pr in self._req("GET", f"/repos/{repo}/commits/{sha}/pulls") or []:
+            if pr.get("merged_at") and pr.get("merge_commit_sha") == sha:
+                return pr
+        return None
+
+    def checks(self, repo: str, sha: str) -> dict[str, str]:
+        """Check name (or status context) -> its conclusion on `sha`; the newest run of a name wins.
+        shortcut: the first 100 check runs only; page when a commit carries more."""
+        out: dict[str, str] = {}
+        st = self._req("GET", f"/repos/{repo}/commits/{sha}/status") or {}
+        for s in st.get("statuses") or []:
+            out.setdefault(s["context"], s["state"])  # newest first
+        runs = (self._req("GET", f"/repos/{repo}/commits/{sha}/check-runs?per_page=100") or {}).get("check_runs") or []
+        for c in sorted(runs, key=lambda c: c["id"]):
+            out[c["name"]] = c.get("conclusion") or c.get("status") or "pending"
+        return out
+
+    def fast_forward(self, repo: str, branch: str, sha: str) -> None:
+        """Move `branch` to `sha`; GitHub refuses (422) unless it is a fast-forward."""
+        self._req("PATCH", f"/repos/{repo}/git/refs/heads/{branch}", {"sha": sha, "force": False})
+
+    def open_pr(self, repo: str, head: str, base: str, title: str, body: str) -> dict[str, Any]:
+        return self._req("POST", f"/repos/{repo}/pulls", {"head": head, "base": base, "title": title, "body": body})

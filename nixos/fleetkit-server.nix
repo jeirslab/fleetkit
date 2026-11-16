@@ -216,12 +216,16 @@ in
       type = types.enum [
         "push"
         "pr"
+        "verified"
       ];
       default = "pr";
       description = ''
         What deploys. pr: a merged pull request (its merge commit), reported
         on the PR; pushes and polling deploy nothing. push: a push to the
-        branch (by the webhook or polling). Either way, pull requests from
+        branch (by the webhook or polling). verified: a merged pull request
+        with green required checks, previewed, deployed, then judged by a
+        reviewer; stable moves only on a pass (docs/pulumi.md, "Verified
+        runs"; its settings go in environmentFile). Either way, pull requests from
         trusted authors are previewed and reported on the PR.
       '';
     };
