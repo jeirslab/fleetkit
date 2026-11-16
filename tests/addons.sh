@@ -60,6 +60,8 @@ for estate, r in all_.items():
     text = json.dumps({"tf": r["tf"], "pulumi": r["pulumi"]})
     if "ansible" in text:
         bad.append(f"{estate}: renders something of the Ansible add-on, which it does not switch on")
+    if "google" in text:
+        bad.append(f"{estate}: renders something of the Google add-on, which it does not switch on")
     if r["stack"] != {"needs": [], "realise": []}:
         bad.append(f"{estate}: its stack needs {r['stack']}, expected nothing")
 

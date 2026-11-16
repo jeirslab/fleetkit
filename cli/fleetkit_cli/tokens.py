@@ -8,7 +8,11 @@ before) and any number of named, scoped ones read from a JSON file
       "sha256": "<hex digest of the value>"  or  "file": "<path to the value>",
       "estates": [...], "hives": [...], "infra": "none|preview|apply",
       "nixos": "none|build|apply", "goals": [...], "revs": "deploy-branch|head|any",
-      "allow": false}}}
+      "allow": false, "runs": "none|review"}}}
+
+`runs: review` lets a token read verified runs and post verdicts (runs.py),
+nothing else on them: a reviewer's token with infra and nixos at none cannot
+deploy.
 
 The file holds no value: a digest, or the path of a file with the value. Only
 digests are kept in memory, and neither a value nor a digest is ever put in a
@@ -41,10 +45,11 @@ GOALS: tuple[str, ...] = get_args(DeployRequest.model_fields["goal"].annotation)
 INFRA = ("none", "preview", "apply")
 NIXOS = ("none", "build", "apply")
 REVS = ("deploy-branch", "head", "any")
+RUNS = ("none", "review")
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 _HEX = re.compile(r"[0-9a-fA-F]{64}")
-_KEYS = {"sha256", "file", "estates", "hives", "infra", "nixos", "goals", "revs", "allow"}
+_KEYS = {"sha256", "file", "estates", "hives", "infra", "nixos", "goals", "revs", "allow", "runs"}
 
 
 class TokenError(Exception):
@@ -60,6 +65,7 @@ class Scope:
     goals: tuple[str, ...] = ("dry-activate",)
     revs: str = "deploy-branch"
     allow: bool = False
+    runs: str = "none"
 
 
 @dataclass(frozen=True)
@@ -156,6 +162,7 @@ def _entry(name: str, e: Any, base: Path) -> Token:
         goals=_strings(name, "goals", e.get("goals", ["dry-activate"]), GOALS),
         revs=_one_of(name, "revs", e.get("revs", "deploy-branch"), REVS),
         allow=e.get("allow", False),
+        runs=_one_of(name, "runs", e.get("runs", "none"), RUNS),
     ))
 
 
@@ -314,6 +321,12 @@ def _free(sc: Scope, req: DeployRequest, name: str) -> Optional[str]:
     return None
 
 
+def _server_only(sc: Scope, req: DeployRequest, name: str) -> Optional[str]:
+    if getattr(req, name) != _default(req, name):
+        return f"only the server's own runs set {name}"
+    return None
+
+
 def _allow(sc: Scope, req: DeployRequest, name: str) -> Optional[str]:
     if not sc.allow and getattr(req, name) != _default(req, name):
         return f"the token may not set {name}"
@@ -335,6 +348,8 @@ _CHECKS: dict[str, Check] = {
     # reports to GitHub only for jobs it started itself.
     "pr": _free,
     "refresh": _allow,
+    # Reads each node's live system over the server's SSH key: verified runs only.
+    "compare": _server_only,
     "targets": _allow,
     "allow_replace": _allow,
     "allow_delete": _allow,

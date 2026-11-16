@@ -14,6 +14,16 @@ With a repo (gitops.py):
   POST /v1/gitops/sync             fetch now and deploy what changed
   POST /v1/hooks/github            GitHub webhook, push and pull_request (HMAC-signed, no bearer)
 
+With FLEETKIT_TRIGGER=verified (runs.py); "review" routes also take a scoped
+token with `runs: review` (a reviewer's, which cannot deploy), the others the
+unscoped token only:
+  POST /v1/runs                    {repo, sha}: a merge to run (the same guard as the webhook)
+  GET  /v1/runs?state=             runs, newest first (review)
+  GET  /v1/runs/{id}               one run (review)
+  POST /v1/runs/{id}/review        ask for a verdict (again; a timed-out run too) (review)
+  POST /v1/runs/{id}/verdict       {verdict: pass|fail, evidence} (review)
+  POST /v1/runs/{id}/resolve       {note, accept, stable}: a person decided; a stopped queue moves on
+
 Every other /v1 route needs `Authorization: Bearer <token>`. A deploy of an
 estate that is already deploying is 409, with the running job's id.
 
@@ -29,7 +39,7 @@ import asyncio
 import hashlib
 import hmac
 import json
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -48,6 +58,24 @@ class RefusalDetail(BaseModel):
     error: str = Field(description="Why the request was refused.")
     field: Optional[str] = Field(
         default=None, description="The request field the token's scope refused (none: the route itself).")
+
+
+class RunRequest(BaseModel):
+    repo: str = Field(description="owner/name of the repository.")
+    sha: str = Field(description="The merge commit on the deploy branch.")
+
+
+class Verdict(BaseModel):
+    verdict: Literal["pass", "fail"]
+    evidence: str = Field(description="What the reviewer checked on the live estates, and what it found.")
+
+
+class Resolution(BaseModel):
+    note: str = Field(description="What the person decided.")
+    accept: bool = Field(default=False, description="Vouch for the run's range (commits the merge guard "
+                                                    "refused) and queue its commit again.")
+    stable: bool = Field(default=False, description="Fast-forward stable to the run's commit (the person "
+                                                    "verified it).")
 
 
 class Refusal(BaseModel):
@@ -213,6 +241,63 @@ def create_app(manager: JobManager, settings: Optional[Settings], token: Optiona
             try:
                 return await asyncio.to_thread(g.sync, "github push", payload.get("after"))
             except Exception as e:  # noqa: BLE001 - reported to the caller
+                raise HTTPException(502, str(e))
+
+    if gitops is not None and gitops.runs is not None:
+        runs = gitops.runs
+
+        def run_of(rid: str) -> dict[str, Any]:
+            r = runs.get(rid)
+            if r is None:
+                raise HTTPException(404, f"no run {rid}")
+            return r
+
+        def reviewer(p: Principal = Depends(auth)) -> Principal:
+            if p.scope is not None and p.scope.runs != "review":
+                raise refuse(p, None, "a scoped token needs runs: review for this route")
+            return p
+
+        def step(f: Any, *a: Any) -> dict[str, Any]:
+            try:
+                return f(*a)
+            except ValueError as e:  # the run is not in a state for this
+                raise HTTPException(409, str(e))
+
+        @app.post("/v1/runs", responses=_REFUSED)
+        async def run_trigger(req: RunRequest, p: Principal = Depends(unscoped)) -> dict[str, Any]:
+            try:
+                return await asyncio.to_thread(runs.trigger, req.repo, req.sha, f"api ({p.name})")
+            except ValueError as e:  # another repository
+                raise HTTPException(400, str(e))
+            except Exception as e:  # noqa: BLE001 - GitHub could not be asked: nothing was queued
+                raise HTTPException(502, str(e))
+
+        @app.get("/v1/runs", dependencies=[Depends(reviewer)], responses=_REFUSED)
+        def runs_list(state: Optional[str] = None, limit: int = 50) -> list[dict[str, Any]]:
+            return runs.list(state)[:limit]
+
+        @app.get("/v1/runs/{rid}", dependencies=[Depends(reviewer)], responses=_REFUSED)
+        def run_one(rid: str) -> dict[str, Any]:
+            return run_of(rid)
+
+        @app.post("/v1/runs/{rid}/review", dependencies=[Depends(reviewer)], responses=_REFUSED)
+        def run_review(rid: str) -> dict[str, Any]:
+            run_of(rid)
+            return step(runs.review, rid)
+
+        @app.post("/v1/runs/{rid}/verdict", responses=_REFUSED)
+        async def run_verdict(rid: str, v: Verdict, p: Principal = Depends(reviewer)) -> dict[str, Any]:
+            run_of(rid)
+            return await asyncio.to_thread(step, runs.verdict, rid, v.verdict, v.evidence, p.name)
+
+        @app.post("/v1/runs/{rid}/resolve", responses=_REFUSED)
+        def run_resolve(rid: str, r: Resolution, p: Principal = Depends(unscoped)) -> dict[str, Any]:
+            run_of(rid)
+            try:
+                return step(runs.resolve, rid, r.note, p.name, r.accept, r.stable)
+            except HTTPException:
+                raise
+            except Exception as e:  # noqa: BLE001 - stable could not be moved: the run is unchanged
                 raise HTTPException(502, str(e))
 
     return app

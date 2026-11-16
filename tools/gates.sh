@@ -93,6 +93,11 @@ bash tests/pulumi_nix.sh >&2 || fidelity=fail
 # after their guests, and each bad declaration of tests/cases-addons.json
 # refused (tests/addons.sh).
 bash tests/addons.sh >&2 || fidelity=fail
+# The Google add-on (addons.google): google_project_service per declared API,
+# the credential a sops reference, the stack <estate>-google only for an estate
+# that switches it on, each bad declaration of tests/cases-google.json refused
+# (tests/google.sh).
+bash tests/google.sh >&2 || fidelity=fail
 # NixOS-module add-ons (addons/nix, nixosModules.addons): off changes nothing,
 # on renders services.tailscale, the cert unit and timer, the Headscale settings.
 bash tests/nix-addons.sh >&2 || fidelity=fail

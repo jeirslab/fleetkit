@@ -402,6 +402,15 @@ def serve(ctx: click.Context, repo: str | None, listen: str, token_file: str | N
         manager = JobManager(s.state_dir, runner, workers)
         gitops = GitOps(s, git, manager)
         gitops.start_polling()
+        if s.git.trigger == "verified":
+            from . import adapters
+
+            try:
+                gitops.runs = adapters.pipeline(s, git, manager)
+            except ValueError as e:
+                raise click.ClickException(str(e))
+            gitops.runs.start_ticking()
+            gitops.runs.resume()
     uvicorn.run(create_app(manager, s, token, gitops, scoped), host=host or "127.0.0.1", port=int(port),
                 log_level="info")
 

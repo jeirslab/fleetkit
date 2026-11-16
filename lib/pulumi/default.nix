@@ -5,9 +5,11 @@
 #     secretRoots: directories besides the estate repo where the runner looks
 #     up every stack's sops files (a tenant's source: a flake input). The same
 #     as the module option `secretRoots`; each stack carries the list.
-#   fromModel { estate; github ? false; adopt ? true; }
-#     -> a module: the stack <estate>-guests (or <estate>-github) rendered from
-#        the model, with its backend from fleet.backends. adopt: each
+#   fromModel { estate; github ? false; google ? false; adopt ? true; }
+#     -> a module: the stack <estate>-guests (or <estate>-github, or
+#        <estate>-google for the Google add-on: no stack at all while the
+#        estate has not switched it on) rendered from the model, with its
+#        backend from fleet.backends. adopt: each
 #        resource's `adopt` (the id of the existing resource it describes) is
 #        computed from the model. The ids are data beside the program
 #        (<stack>.adoptIds, <stack>.adoptUnresolved), never part of it, so
@@ -50,25 +52,31 @@ let
     {
       estate,
       github ? false,
+      google ? false,
       adopt ? true,
     }:
     { fleet, ... }:
     let
+      e = fleet.estates.${estate};
+      # A Google stack of an estate that has not switched the add-on on is no
+      # stack: the module is empty (the render, which refuses, is not evaluated).
+      off = google && !(e.addons.google.enable or false);
       p =
-        if github then
+        if google then
+          self.lib.mkGooglePulumi { inherit fleet estate; }
+        else if github then
           self.lib.mkGithubPulumi { inherit fleet estate adopt; }
         else
           self.lib.mkPulumi { inherit fleet estate adopt; };
-      e = fleet.estates.${estate};
       ansible = import ../ansible.nix { inherit lib fleet estate; };
       backendId = if github then e.git.backend or e.backend or null else e.backend or null;
     in
-    {
+    lib.optionalAttrs (!off) {
       stacks.${p.name} = {
         inherit estate;
         inherit (p) packages variables outputs;
         inherit (p) resources;
-        needs = lib.mkIf (!github) ansible.needs;
+        needs = lib.mkIf (!github && !google) ansible.needs;
         backend = lib.mkIf (backendId != null) (
           import ./backend.nix { inherit lib fleet estate; } {
             id = backendId;

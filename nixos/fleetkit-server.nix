@@ -144,6 +144,18 @@ let
           allow_update, allow_create, targets or refresh.
         '';
       };
+      runs = mkOption {
+        type = types.enum [
+          "none"
+          "review"
+        ];
+        default = "none";
+        description = ''
+          review: the token may read verified runs and post verdicts
+          (trigger = "verified"), nothing else on them. A reviewer's token,
+          with infra and nixos at none, so it cannot deploy.
+        '';
+      };
     };
   };
   tokensFile = pkgs.writeText "fleetkit-tokens.json" (
@@ -162,6 +174,7 @@ let
             ;
         }
         // lib.optionalAttrs (t.hives != null) { inherit (t) hives; }
+        // lib.optionalAttrs (t.runs != "none") { inherit (t) runs; }
       ) cfg.tokens;
     }
   );
@@ -216,12 +229,16 @@ in
       type = types.enum [
         "push"
         "pr"
+        "verified"
       ];
       default = "pr";
       description = ''
         What deploys. pr: a merged pull request (its merge commit), reported
         on the PR; pushes and polling deploy nothing. push: a push to the
-        branch (by the webhook or polling). Either way, pull requests from
+        branch (by the webhook or polling). verified: a merged pull request
+        with green required checks, previewed, deployed, then judged by a
+        reviewer; stable moves only on a pass (docs/pulumi.md, "Verified
+        runs"; its settings go in environmentFile). Either way, pull requests from
         trusted authors are previewed and reported on the PR.
       '';
     };

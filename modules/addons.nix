@@ -10,6 +10,11 @@
 # A playbook is a Nix path or derivation: the runner runs what was evaluated,
 # from the store. Secrets reach a playbook as paths of files on the runner,
 # never as values.
+#
+# addons.google: the Google Cloud APIs enabled on the estate's projects,
+# rendered as google_project_service resources of the hashicorp/google
+# provider in a stack of their own (<estate>-google; lib/google.nix). The
+# credential is a sops ref, resolved like every provider credential.
 { lib, config, ... }:
 let
   inherit (lib) types mkOption;
@@ -83,7 +88,49 @@ let
     };
   };
 
+  projectType = types.submodule {
+    options = {
+      projectId = mkOption {
+        type = types.str;
+        example = "my-project-123456";
+        description = "The Google Cloud project ID (not its number or its display name).";
+      };
+      services = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        example = [
+          "drive.googleapis.com"
+          "calendar-json.googleapis.com"
+        ];
+        description = "The APIs enabled on the project, by service name (<name>.googleapis.com).";
+      };
+      disableOnDestroy = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether removing a service from the model disables the API. false: the declaration is dropped and the API is left as it is.";
+      };
+    };
+  };
+
   addonsType = types.submodule {
+    options.google = {
+      enable = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Enable Google Cloud APIs on the estate's projects (the hashicorp/google provider in the stack <estate>-google).";
+      };
+      credentialRef = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = "sops:homelab/homelab-hosts-dumpy#integrations/google/personal/deployer_key";
+        description = "Sops ref (sops:<estate>/<file>#<key>) of a service account key (the JSON) that may enable services on the projects. Read through the sops provider, never rendered as a value.";
+      };
+      projects = mkOption {
+        type = types.attrsOf projectType;
+        default = { };
+        description = "Projects, by name; the name is part of each resource's key in the stack.";
+      };
+    };
     options.ansible = {
       enable = mkOption {
         type = types.bool;
@@ -172,6 +219,51 @@ let
       }
     ]
     ++ lib.concatLists (lib.mapAttrsToList perPlaybook a.playbooks);
+  serviceName = "[a-z][a-z0-9-]*\\.googleapis\\.com";
+
+  googleAssertions =
+    ename: e:
+    let
+      g = e.addons.google;
+      at = p: "fleet.estates.${ename}.addons.google.${p}";
+      perProject =
+        pname: pr:
+        let
+          w = p: at "projects.${pname}.${p}";
+          bad = lib.filter (s: builtins.match serviceName s == null) pr.services;
+          dup = lib.filter (s: lib.count (x: x == s) pr.services > 1) (lib.unique pr.services);
+        in
+        [
+          {
+            assertion = builtins.match "[a-z][a-z0-9-]{4,28}[a-z0-9]" pr.projectId != null;
+            message = "${w "projectId"}: \"${pr.projectId}\" is not a project ID (6 to 30 characters: lower-case letters, digits, hyphens; a letter first)";
+          }
+          {
+            assertion = bad == [ ];
+            message = "${w "services"}: ${lib.concatStringsSep ", " bad}: not a service name (<name>.googleapis.com)";
+          }
+          {
+            assertion = dup == [ ];
+            message = "${w "services"}: ${lib.concatStringsSep ", " dup} listed twice";
+          }
+        ];
+    in
+    [
+      {
+        assertion = g.enable || g.projects == { };
+        message = "${at "projects"}: ${lib.concatStringsSep ", " (lib.attrNames g.projects)} declared, but addons.google.enable is false; an add-on does nothing until the estate switches it on";
+      }
+      {
+        # Not echoed: a value pasted here would be a key.
+        assertion = g.credentialRef == null || builtins.match "sops:[^/#]+/[^#]+#.+" g.credentialRef != null;
+        message = "${at "credentialRef"}: not a sops reference (sops:<estate>/<file>#<key>); the key is never written into the model";
+      }
+      {
+        assertion = !g.enable || g.credentialRef != null;
+        message = "${at "credentialRef"}: null, and addons.google.enable is true; it names the service account key (sops:<estate>/<file>#<key>)";
+      }
+    ]
+    ++ lib.concatLists (lib.mapAttrsToList perProject g.projects);
 in
 {
   options.fleet.estates = mkOption {
@@ -186,5 +278,7 @@ in
     );
   };
 
-  config.assertions = lib.concatLists (lib.mapAttrsToList playbookAssertions config.fleet.estates);
+  config.assertions =
+    lib.concatLists (lib.mapAttrsToList playbookAssertions config.fleet.estates)
+    ++ lib.concatLists (lib.mapAttrsToList googleAssertions config.fleet.estates);
 }

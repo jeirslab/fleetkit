@@ -27,6 +27,8 @@ class DeployRequest(BaseModel):
     on: list[str] = Field(default_factory=list, description="Colmena --on: node names or @tags.")
     goal: Literal["switch", "test", "boot", "dry-activate"] = "switch"
     preview: bool = Field(default=False, description="pulumi preview and colmena build; nothing changes.")
+    compare: bool = Field(default=False, description="With preview: also report, per --on node, the toplevel "
+                                                     "built and the one live (read over SSH; nothing changes).")
     refresh: bool = Field(default=False, description="Refresh Pulumi state from the providers first.")
     targets: list[str] = Field(default_factory=list, description="Pulumi --target URNs.")
     # The guard (guard.py): a deploy whose plan replaces, deletes or updates a
@@ -65,6 +67,8 @@ def run(s: Settings, req: DeployRequest, ev: Emitter) -> dict[str, Any]:
                 # After infra: the hive is evaluated now, against what was provisioned.
                 nixos.run(s, req.hive or req.estate, ev, req.goal, req.preview, req.on, rundir.dir)
                 result["nixos"] = "built" if req.preview else req.goal
+                if req.preview and req.compare:
+                    result["nixos_changes"] = nixos.changes(s, req.hive or req.estate, ev, req.on, rundir.dir)
         except (guard.GuardError, Cancelled, infra.EngineError) as e:
             # A refused, cancelled or failed deploy still says what it planned
             # and, if an up had started, exactly how far it got (`stopped`).

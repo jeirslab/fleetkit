@@ -34,7 +34,7 @@ SCHEMAS = ROOT / "providers/pulumi/schemas"
 NAMES = ROOT / "providers/pulumi/names"
 # "$${" is a literal "${" (estate text the render escaped), not a reference.
 REF = re.compile(r"(?<!\$)\$\{([A-Za-z0-9_-]+)")
-CRED = {"apiToken", "token", "pemFile", "id", "installationId"}
+CRED = {"apiToken", "token", "pemFile", "id", "installationId", "credentials"}
 
 PRIMITIVE = {"string": str, "integer": int, "number": (int, float), "boolean": bool}
 

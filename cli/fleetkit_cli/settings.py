@@ -31,7 +31,7 @@ class GitSettings:
     poll: int = 0  # seconds between fetches; 0 = only on a webhook or request
     deploy_on_push: list[str] = field(default_factory=list)  # estates
     push_mode: str = "deploy"  # or "preview": plan every push, apply on request
-    trigger: str = "push"  # or "pr": deploy merged pull requests only
+    trigger: str = "push"  # or "pr": deploy merged pull requests only; "verified": runs.py
     github_token: str | None = None  # statuses and comments on pull requests
     github_api: str = "https://api.github.com"
     public_url: str | None = None  # links from GitHub back to jobs
@@ -94,8 +94,8 @@ class Settings:
                 public_url=os.environ.get("FLEETKIT_PUBLIC_URL") or None,
                 preview_branches=[b for b in os.environ.get("FLEETKIT_PREVIEW_BRANCHES", "").split(",") if b],
             )
-            if git.trigger not in ("push", "pr"):
-                raise SettingsError(f"FLEETKIT_TRIGGER is {git.trigger!r}; push or pr")
+            if git.trigger not in ("push", "pr", "verified"):
+                raise SettingsError(f"FLEETKIT_TRIGGER is {git.trigger!r}; push, pr or verified")
             if git.push_mode not in ("deploy", "preview"):
                 raise SettingsError(f"FLEETKIT_PUSH_MODE is {git.push_mode!r}; deploy or preview")
         return cls(

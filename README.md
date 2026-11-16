@@ -45,7 +45,8 @@ outputs = { fleetkit, xgcs, ... }: {
 - Add-ons: an estate switches on extra providers or runners in its
   declaration (`fleet.estates.<e>.addons`, off by default). `ansible` runs
   playbooks against the estate's guests in its guests stack, through the
-  pinned `ansible/ansible` provider; see `docs/addons.md`.
+  pinned `ansible/ansible` provider; see `docs/addons.md`. The `google` add-on enables Google Cloud APIs on an estate's
+  projects (`hashicorp/google`, its own stack `<estate>-google`).
 - `docs/` the model's decisions: `guest-model.md`, `guest-provider-map.md`,
   `deploy.md`, `tenants.md`, `addons.md`, `schema-todo.md` (the inventory of
   untyped blocks).
