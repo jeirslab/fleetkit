@@ -12,7 +12,7 @@
 let
   inherit (lib) mkOption mkEnableOption types mkIf;
   cfg = config.fleetkit.addons.tailscale;
-  cert = cfg.cert;
+  inherit (cfg) cert;
   hs = cfg.headscale.certificates;
   tailscaleBin = lib.getExe' config.services.tailscale.package "tailscale";
 in
