@@ -1058,11 +1058,18 @@ runs one repository, `FLEETKIT_GITHUB_REPO`.
   matching `FLEETKIT_PROTECT` (`<stack>/<key>` globs, required) stops the run as
   `needs-operator` before anything is applied. The rollback of a failed run
   passes the same gate.
-- **NixOS only where it is safe.** The gate reads the Pulumi plan, which says
-  nothing of a NixOS change, so a run applies Colmena only to the nodes
-  `FLEETKIT_VERIFIED_ON` names (plain node names; `@tags` and globs are
-  refused, they cannot be checked); unset, a run has no NixOS stage. The server refuses to start
-  when a named node matches `FLEETKIT_PROTECT`.
+- **NixOS: protected nodes by their toplevel.** A run applies Colmena only to
+  the nodes `FLEETKIT_VERIFIED_ON` names (plain node names; `@tags` and globs
+  are refused); unset, a run has no NixOS stage. The Pulumi plan says nothing
+  of a NixOS change, so each preview also compares, per named node, the
+  toplevel the commit builds (`colmena eval`) with the one the node runs
+  (`readlink /run/current-system` over `colmena exec`; nothing changes). A
+  protected node (tagged `mainnet`, or whose name or a tag matches the last
+  segment of a `FLEETKIT_PROTECT` pattern) whose toplevel would change, or
+  whose live one cannot be read, stops the run as `needs-operator` before
+  anything is applied; so does a preview that did not compare. An unchanged
+  protected node is applied with the rest (a no-op switch). The run's log
+  names the nodes whose toplevel changes. The rollback passes the same check.
 - **Deploy, then review.** Every estate is deployed, then `review.requested`
   goes to the runner adapter with the range and the ticket keys that prefix its
   commit subjects (`KEY-1: ...`).

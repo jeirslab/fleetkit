@@ -16,11 +16,13 @@ failed run returns the estates to. One repository (FLEETKIT_GITHUB_REPO).
             push folded into a later merge stops the run for a person.
   run       preview every estate; a delete or replace, a guard refusal, or any
             change to a resource matching FLEETKIT_PROTECT stops the run
-            (needs-operator) before anything is applied. Then deploy every
-            estate, then dispatch review.requested to the runner adapter.
-            Colmena applies only to the nodes FLEETKIT_VERIFIED_ON selects
-            (none by default): the Pulumi plan says nothing of a NixOS change,
-            so a protected node must never be selected.
+            (needs-operator) before anything is applied. So does a protected
+            node of FLEETKIT_VERIFIED_ON (tagged mainnet, or its name or a tag
+            matching a FLEETKIT_PROTECT pattern's last segment) whose built
+            toplevel is not the one it runs live, or whose live one cannot be
+            read. Then deploy every estate, then dispatch review.requested to
+            the runner adapter. Colmena applies only to the nodes
+            FLEETKIT_VERIFIED_ON selects (none by default).
   verdict   POST /v1/runs/{id}/verdict. pass: fast-forward stable to the run's
             commit, comment the evidence on each ticket, set it done. fail:
             preview and redeploy the stable commit (the same gate as a run),
@@ -347,6 +349,10 @@ class Pipeline:
             self._update(r, None, jobs={**r.get("jobs", {}), f"{what}-preview:{e}": out.get("job")})
             if out["state"] != "succeeded":
                 return f"{what} preview of {e} {out['state']}: {out.get('error')}"
+            changes = (out.get("result") or {}).get("nixos_changes") or {}
+            if changes:
+                moved = sorted(n for n, c in changes.items() if c.get("live") != c.get("built"))
+                self._update(r, f"{what} preview of {e}: NixOS toplevels change on {', '.join(moved) or 'no node'}")
             hits = self.needs_operator(out.get("result") or {})
             if hits:
                 return f"{what} of {e} needs a person: {'; '.join(hits)}"
@@ -394,9 +400,15 @@ class Pipeline:
 
     def needs_operator(self, result: dict[str, Any]) -> list[str]:
         """What in a preview's result stops a run: a refusal, a delete or
-        replace, a change to a protected resource (Pulumi plan; NixOS is kept
-        off protected nodes by FLEETKIT_VERIFIED_ON instead)."""
+        replace, a change to a protected resource (Pulumi plan), a protected
+        node whose toplevel changes or cannot be compared (NixOS)."""
         hits = [f"refused {x['op']} {st}/{x['key']}" for st, xs in (result.get("refused") or {}).items() for x in xs]
+        if self.nixos_on and "nixos_changes" not in result:
+            hits.append("the NixOS toplevels were not compared with the live ones")
+        for n, c in (result.get("nixos_changes") or {}).items():
+            if self.protected_node(n, c.get("tags") or []) and (not c.get("live") or c["live"] != c.get("built")):
+                hits.append(f"NixOS {n}: " + (f"{c['live']} -> {c.get('built')}" if c.get("live")
+                                              else "the live system could not be read") + " (protected)")
         for st, changes in (result.get("plan") or {}).items():
             for c in changes:
                 name = f"{st}/{c['key']}"
@@ -405,6 +417,12 @@ class Pipeline:
                 elif c["op"] != "same" and any(fnmatch.fnmatch(name, p) for p in self.protect):
                     hits.append(f"{c['op']} {name} (protected)")
         return hits
+
+    def protected_node(self, name: str, tags: list[str]) -> bool:
+        """A Colmena node no run changes unattended: tagged mainnet, or its name
+        or a tag matching a FLEETKIT_PROTECT pattern's last segment."""
+        return "mainnet" in tags or any(fnmatch.fnmatch(x, p.rsplit("/", 1)[-1])
+                                        for p in self.protect for x in (name, *tags))
 
     def tickets(self, r: dict[str, Any]) -> list[str]:
         """Keys that prefix a commit subject of the range (`KEY-1: ...`), not every

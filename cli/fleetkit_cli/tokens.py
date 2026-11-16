@@ -342,6 +342,8 @@ _CHECKS: dict[str, Check] = {
     # reports to GitHub only for jobs it started itself.
     "pr": _free,
     "refresh": _allow,
+    # Reads each node's live system over the server's SSH key (verified runs).
+    "compare": _allow,
     "targets": _allow,
     "allow_replace": _allow,
     "allow_delete": _allow,

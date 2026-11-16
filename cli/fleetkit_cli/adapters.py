@@ -6,8 +6,9 @@ the environment. stdlib only.
   FLEETKIT_REQUIRED_CHECKS    check-run names (a job's own name) a merged PR's head must have green
   FLEETKIT_PROTECT            fnmatch patterns of <stack>/<key>: any change stops the run (required)
   FLEETKIT_VERIFIED_ON        Colmena node names (no @tags, no globs) a run applies NixOS to;
-                              unset: no NixOS stage. Never a protected node: the Pulumi plan,
-                              which the gate reads, says nothing of a NixOS change
+                              unset: no NixOS stage. A protected node (tagged mainnet, or its
+                              name or a tag matching FLEETKIT_PROTECT's last segment) may be
+                              named: a run whose toplevel for it differs from the live one stops
   FLEETKIT_REVIEW_TIMEOUT     seconds a verdict may take (default 1800)
   FLEETKIT_RUNNER             exec:<command> (the event as JSON on stdin) or http(s)://<url> (POSTed).
                               exec runs ON the deploy server with PATH, HOME, LANG and the names in
@@ -23,7 +24,6 @@ the environment. stdlib only.
 from __future__ import annotations
 
 import base64
-import fnmatch
 import json
 import os
 import shlex
@@ -122,7 +122,8 @@ class JobDeployer:
         self.manager, self.wait = manager, wait
 
     def deploy(self, estate: str, sha: str, preview: bool, on: tuple[str, ...]) -> dict[str, Any]:
-        req = DeployRequest(estate=estate, rev=sha, preview=preview, nixos=bool(on), on=list(on))
+        req = DeployRequest(estate=estate, rev=sha, preview=preview, nixos=bool(on), on=list(on),
+                            compare=preview and bool(on))
         while True:
             try:
                 j = self.manager.submit(req, by="pipeline")
@@ -165,10 +166,6 @@ def pipeline(s: Settings, repo: Any, manager: JobManager) -> Any:
     if any(n.startswith("@") or any(c in n for c in "*?[") for n in on):
         raise ValueError("FLEETKIT_VERIFIED_ON takes plain node names, not @tags or globs: those cannot be "
                          "checked against FLEETKIT_PROTECT")
-    hit = [n for n in on if any(fnmatch.fnmatch(n, p.rsplit("/", 1)[-1]) for p in protect)]
-    if hit:
-        raise ValueError(f"FLEETKIT_VERIFIED_ON names protected nodes ({', '.join(hit)}): a run would change "
-                         "them without a person")
     tracker = None
     if env("FLEETKIT_TRACKER") == "jira":
         if not (env("FLEETKIT_JIRA_URL") and env("FLEETKIT_JIRA_USER") and _read_secret("FLEETKIT_JIRA_TOKEN")):
