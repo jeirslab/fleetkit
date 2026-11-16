@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from contextlib import contextmanager
@@ -120,6 +121,50 @@ class Repo:
             if on:
                 return sha
         return None
+
+    # ── verified runs (runs.py: the Git adapter) ─────────────────────────
+    def head(self, branch: str) -> str:
+        self.fetch()
+        return _git("--git-dir", str(self.mirror), "rev-parse", f"refs/heads/{branch}")
+
+    def is_ancestor(self, a: str, b: str) -> bool:
+        return subprocess.run(["git", "--git-dir", str(self.mirror), "merge-base", "--is-ancestor", a, b],
+                              capture_output=True).returncode == 0
+
+    def first_parents(self, base: str, sha: str) -> list[str]:
+        """The commits the branch itself moved through in base..sha (merges and pushes, not a PR's own)."""
+        return _git("--git-dir", str(self.mirror), "rev-list", "--first-parent", f"{base}..{sha}").split()
+
+    def log(self, base: str, sha: str) -> list[tuple[str, str]]:
+        """(sha, subject) of every commit of base..sha (where ticket keys are found)."""
+        out = _git("--git-dir", str(self.mirror), "log", "--format=%H %s", f"{base}..{sha}")
+        return [(line[:40], line[41:]) for line in out.splitlines()]
+
+    def same_tree(self, a: str, b: str) -> bool:
+        tree = lambda c: _git("--git-dir", str(self.mirror), "rev-parse", f"{c}^{{tree}}")  # noqa: E731
+        return tree(a) == tree(b)
+
+    def revert(self, base: str, sha: str, branch: str, message: str) -> str:
+        """Push `branch`: one commit on the deploy branch's head that undoes
+        base..sha (merges included, so not `git revert`). -> its sha. GitError
+        when it does not apply cleanly."""
+        head = self.fetch()
+        with tempfile.TemporaryDirectory() as t:
+            _git("clone", "--quiet", "--shared", "--no-checkout", str(self.mirror), t)
+            _git("checkout", "--quiet", "--detach", head, cwd=Path(t))
+            diff = subprocess.run(["git", "diff", "--binary", "--no-ext-diff", "--no-textconv", sha, base], cwd=t,
+                                  capture_output=True)
+            if diff.returncode != 0:
+                raise GitError(f"git diff {sha[:12]} {base[:12]}: {diff.stderr.decode()[-1000:]}")
+            if not diff.stdout:
+                raise GitError(f"{base[:12]}..{sha[:12]} changes nothing: there is nothing to revert")
+            p = subprocess.run(["git", "apply", "--3way", "--index"], cwd=t, input=diff.stdout, capture_output=True)
+            if p.returncode != 0:
+                raise GitError(f"the revert does not apply on {self.g.branch}: {p.stderr.decode()[-1000:]}")
+            _git("-c", "user.name=fleetkit", "-c", "user.email=fleetkit@localhost", "commit", "--quiet",
+                 "-m", message, cwd=Path(t))
+            _git("push", "--quiet", self.g.url, f"HEAD:refs/heads/{branch}", cwd=Path(t))
+            return _git("rev-parse", "HEAD", cwd=Path(t))
 
     def checkout(self, sha: str) -> Path:
         """The checkout of `sha`, made if need be. Only the newest few are
@@ -215,6 +260,7 @@ class GitOps:
         self.lock = threading.Lock()
         self._stop = threading.Event()
         self.gh = GitHub(self.g.github_token, self.g.github_api) if self.g.github_token else None
+        self.runs: Any = None  # runs.Pipeline, with FLEETKIT_TRIGGER=verified
         manager.on_finish.append(self._finished)
 
     def _save(self) -> None:
@@ -225,8 +271,8 @@ class GitOps:
     def sync(self, reason: str, head: str | None = None) -> dict[str, Any]:
         """Deploy every push-deployed estate whose last submitted commit is not
         the branch head."""
-        if self.g.trigger == "pr":
-            return {"ignored": "FLEETKIT_TRIGGER=pr: merged pull requests deploy, not pushes"}
+        if self.g.trigger != "push":
+            return {"ignored": f"FLEETKIT_TRIGGER={self.g.trigger}: merged pull requests deploy, not pushes"}
         head = self.repo.resolve(head)
         out: dict[str, Any] = {"head": head, "reason": reason, "submitted": {}, "skipped": {}}
         with self.lock:
@@ -277,8 +323,13 @@ class GitOps:
             return {"ignored": f"action {action}"}
         if merged and base != self.g.branch:
             return {"ignored": f"merged into {base}, not the deploy branch"}
-        if merged and self.g.trigger != "pr":
+        if merged and self.g.trigger == "push":
             return {"ignored": "merged: FLEETKIT_TRIGGER=push deploys the push"}
+        if merged and self.g.trigger == "verified":
+            # runs.py: the merge guard, the queue, preview, deploy, review.
+            if self.runs is None:
+                raise RuntimeError("FLEETKIT_TRIGGER=verified but no run pipeline is configured")
+            return self.runs.trigger(repo, pr.get("merge_commit_sha") or "", f"merge of #{number}")
         if not merged and pr.get("draft"):
             return {"ignored": "draft"}
         head = pr.get("head") or {}
@@ -355,7 +406,7 @@ class GitOps:
             return
         try:
             self.gh.comment(link["repo"], link["pr"], f"fleetkit:{link['estate']}",
-                            _comment(j, link, self._url(j.id), merge_deploys=self.g.trigger == "pr"))
+                            _comment(j, link, self._url(j.id), merge_deploys=self.g.trigger != "push"))
         except GitHubError as e:
             self._error(e)
 
@@ -366,7 +417,7 @@ class GitOps:
                     "deploy_on_push": self.g.deploy_on_push, **self.state}
 
     def start_polling(self) -> None:
-        if self.g.poll <= 0 or self.g.trigger == "pr":
+        if self.g.poll <= 0 or self.g.trigger != "push":
             return
 
         def loop() -> None:
