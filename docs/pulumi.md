@@ -1067,9 +1067,14 @@ runs one repository, `FLEETKIT_GITHUB_REPO`.
   protected node (tagged `mainnet`, or whose name or a tag matches the last
   segment of a `FLEETKIT_PROTECT` pattern) whose toplevel would change, or
   whose live one cannot be read, stops the run as `needs-operator` before
-  anything is applied; so does a preview that did not compare. An unchanged
-  protected node is applied with the rest (a no-op switch). The run's log
-  names the nodes whose toplevel changes. The rollback passes the same check.
+  anything is applied; so does a preview that did not compare. A protected
+  node whose toplevel does not change is left out of the apply, so a run never
+  touches it (nor uploads its `deployment.keys`). The run's log names the nodes
+  whose toplevel changes. The rollback passes the same check. A real change to
+  a protected node therefore goes through a person: deploy that node by hand at
+  the run's commit (`POST /v1/deploys` with `rev` and `on`), then
+  `resolve` the run with `accept`; its preview now finds the node unchanged.
+  Only the server's own runs set `compare`; a scoped token may not.
 - **Deploy, then review.** Every estate is deployed, then `review.requested`
   goes to the runner adapter with the range and the ticket keys that prefix its
   commit subjects (`KEY-1: ...`).

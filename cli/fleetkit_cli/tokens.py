@@ -321,6 +321,12 @@ def _free(sc: Scope, req: DeployRequest, name: str) -> Optional[str]:
     return None
 
 
+def _server_only(sc: Scope, req: DeployRequest, name: str) -> Optional[str]:
+    if getattr(req, name) != _default(req, name):
+        return f"only the server's own runs set {name}"
+    return None
+
+
 def _allow(sc: Scope, req: DeployRequest, name: str) -> Optional[str]:
     if not sc.allow and getattr(req, name) != _default(req, name):
         return f"the token may not set {name}"
@@ -342,8 +348,8 @@ _CHECKS: dict[str, Check] = {
     # reports to GitHub only for jobs it started itself.
     "pr": _free,
     "refresh": _allow,
-    # Reads each node's live system over the server's SSH key (verified runs).
-    "compare": _allow,
+    # Reads each node's live system over the server's SSH key: verified runs only.
+    "compare": _server_only,
     "targets": _allow,
     "allow_replace": _allow,
     "allow_delete": _allow,

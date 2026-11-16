@@ -270,13 +270,48 @@ def test_a_protected_node_whose_toplevel_changes_stops(env):
     assert applied(env) == [] and env.alerts
 
 
-def test_a_protected_node_that_does_not_change_joins_the_run(env):
+def test_a_protected_node_that_does_not_change_is_never_touched(env):
     env.p.nixos_on = ("web-1", "btc-mainnet-1")
     sha = merge(env, 1, "two\n")
     env.deployer.nixos[sha] = {"web-1": {"built": "/nix/store/b-system", "live": "/nix/store/a-system", "tags": []}}
     env.p.trigger(REPO, sha, "test")
-    only(env.p, "reviewing")
-    assert {c[3] for c in applied(env)} == {("web-1", "btc-mainnet-1")}
+    r = only(env.p, "reviewing")
+    # Left out of the apply: a hand deploy between preview and apply is not undone.
+    assert {c[3] for c in applied(env)} == {("web-1",)} and r["skip_nodes"] == ["btc-mainnet-1"]
+    assert any("not applied to btc-mainnet-1" in x["msg"] for x in r["log"])
+    # The rollback previews afresh: the skip list is its own.
+    env.deployer.calls.clear()
+    env.p.verdict(r["id"], "fail", "bad", "reviewer")
+    assert {c[3] for c in applied(env)} == {("web-1",)}
+
+
+def test_the_job_deployer_asks_a_preview_to_compare():
+    class Job:
+        state, id, result, error, events = "succeeded", "j1", {}, None, []
+
+    class Manager:
+        jobs, active, reqs = {}, {}, []
+
+        def submit(self, req, by):
+            self.reqs.append(req)
+            return Job()
+
+    m = Manager()
+    d = adapters.JobDeployer(m)
+    d.deploy("nj", "abc", True, ("web-1",))
+    d.deploy("nj", "abc", False, ("web-1",))
+    d.deploy("nj", "abc", True, ())
+    assert [(q.compare, q.nixos, q.on) for q in m.reqs] == [(True, True, ["web-1"]), (False, True, ["web-1"]),
+                                                          (False, False, [])]
+
+
+def test_a_scoped_token_may_not_compare():
+    from fleetkit_cli import tokens
+    from fleetkit_cli.pipeline import DeployRequest
+    p = tokens.Principal("tenant", tokens.Scope(estates=("t",), hives=("t",), nixos="apply", allow=True))
+    with pytest.raises(tokens.Refused) as e:
+        tokens.check(p, DeployRequest(estate="t", infra=False, preview=True, on=["n"], compare=True))
+    assert e.value.field == "compare"
 
 
 def test_toplevels_that_cannot_be_compared_fail_closed(env):
@@ -671,10 +706,15 @@ import json, os, sys
 a = sys.argv[1:]
 open(os.environ["CALLS"], "a").write(json.dumps(a) + "\\n")
 if a[0] == "eval":
-    if "boom" in a[-1]:
+    names = json.load(open(a[-1].split("builtins.readFile ")[1].split(")")[0].strip('"')))
+    if "boom" in names:
         sys.exit("error: attribute missing")
     print(json.dumps({{n: {{"built": "/nix/store/b-system", "tags": ["mainnet"] if "btc" in n else []}}
-                      for n in ("web-1", "btc-mainnet-1", "dup-3")}}))
+                      for n in names if n in ("web-1", "btc-mainnet-1", "dup-3", "slow-4")}}))
+elif "slow-4" in " ".join(a):
+    sys.stderr.write("        slow-4 | /nix/store/a-system\\n")
+    sys.stderr.flush()
+    import time; time.sleep(30)
 else:
     sys.stderr.write("[INFO ] Selected 3 nodes.\\n        web-1 | /nix/store/a-system\\n"
                      "btc-mainnet-1 | \\nbtc-mainnet-1 | Failed: ssh timed out\\n"
@@ -687,14 +727,20 @@ else:
     monkeypatch.setenv("CALLS", str(calls))
     s = Settings(flake=tmp_path, state_dir=tmp_path / "state", passphrase="p", colmena=str(fake))
     events = []
-    out = nixos.changes(s, "nj", Emitter(events.append), ["web-1", "btc-mainnet-1", "dup-3"], tmp_path)
+    evil = "${throw (builtins.readFile /etc/hostname)}"
+    out = nixos.changes(s, "nj", Emitter(events.append), ["web-1", "btc-mainnet-1", "dup-3", "gone-9", evil],
+                        tmp_path)
     assert out == {"web-1": {"built": "/nix/store/b-system", "live": "/nix/store/a-system", "tags": []},
                    "btc-mainnet-1": {"built": "/nix/store/b-system", "live": None, "tags": ["mainnet"]},
                    "dup-3": {"built": "/nix/store/b-system", "live": None, "tags": []}}
     ev, ex = [json.loads(x) for x in calls.read_text().splitlines()]
-    assert ev[0] == "eval" and '["web-1", "btc-mainnet-1", "dup-3"]' in ev[-1]
+    # The names are data in a file, never code in the expression.
+    assert ev[0] == "eval" and "${throw" not in ev[-1] and "web-1" not in ev[-1]
     assert ex[:1] == ["exec"] and ex[ex.index("--on") + 1] == "web-1,btc-mainnet-1,dup-3"
     assert ex[-3:] == ["readlink", "-e", "/run/current-system"]
     assert [e["node"] for e in events if e["kind"] == "compare"] == ["web-1", "btc-mainnet-1", "dup-3"]
     with pytest.raises(nixos.NixosError, match="colmena eval"):
         nixos.changes(s, "nj", Emitter(events.append), ["boom"], tmp_path)
+    # A node that answered before the timeout counts; one that did not stays unknown.
+    out = nixos.changes(s, "nj", Emitter(events.append), ["slow-4", "web-1"], tmp_path, timeout=2)
+    assert out["slow-4"]["live"] == "/nix/store/a-system" and out["web-1"]["live"] is None

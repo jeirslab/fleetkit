@@ -22,7 +22,8 @@ failed run returns the estates to. One repository (FLEETKIT_GITHUB_REPO).
             toplevel is not the one it runs live, or whose live one cannot be
             read. Then deploy every estate, then dispatch review.requested to
             the runner adapter. Colmena applies only to the nodes
-            FLEETKIT_VERIFIED_ON selects (none by default).
+            FLEETKIT_VERIFIED_ON selects (none by default), less the protected
+            ones whose toplevel does not change: those are never touched.
   verdict   POST /v1/runs/{id}/verdict. pass: fast-forward stable to the run's
             commit, comment the evidence on each ticket, set it done. fail:
             preview and redeploy the stable commit (the same gate as a run),
@@ -343,7 +344,9 @@ class Pipeline:
 
     # ── a run ────────────────────────────────────────────────────────────
     def _gate(self, r: dict[str, Any], sha: str, what: str) -> Optional[str]:
-        """Preview every estate at `sha`: -> why a person is needed, else None."""
+        """Preview every estate at `sha`: -> why a person is needed, else None.
+        Sets r["skip_nodes"]: the protected nodes the apply leaves alone."""
+        self._update(r, None, skip_nodes=[])
         for e in self.estates:
             out = self.deployer.deploy(e, sha, preview=True, on=self.nixos_on)
             self._update(r, None, jobs={**r.get("jobs", {}), f"{what}-preview:{e}": out.get("job")})
@@ -352,7 +355,12 @@ class Pipeline:
             changes = (out.get("result") or {}).get("nixos_changes") or {}
             if changes:
                 moved = sorted(n for n, c in changes.items() if c.get("live") != c.get("built"))
-                self._update(r, f"{what} preview of {e}: NixOS toplevels change on {', '.join(moved) or 'no node'}")
+                # A protected node that does not change is left out of the apply: never touched.
+                keep = sorted(n for n, c in changes.items() if n not in moved
+                              and self.protected_node(n, c.get("tags") or []))
+                self._update(r, f"{what} preview of {e}: NixOS toplevels change on {', '.join(moved) or 'no node'}"
+                                f"{'; not applied to ' + ', '.join(keep) if keep else ''}",
+                             skip_nodes=sorted({*r.get('skip_nodes', []), *keep}))
             hits = self.needs_operator(out.get("result") or {})
             if hits:
                 return f"{what} of {e} needs a person: {'; '.join(hits)}"
@@ -361,8 +369,9 @@ class Pipeline:
     def _apply(self, r: dict[str, Any], sha: str, what: str) -> Optional[str]:
         # From the first estate on, the estates no longer all run one commit.
         self._update(r, None, applied=None)
+        on = tuple(n for n in self.nixos_on if n not in r.get("skip_nodes", []))
         for e in self.estates:
-            out = self.deployer.deploy(e, sha, preview=False, on=self.nixos_on)
+            out = self.deployer.deploy(e, sha, preview=False, on=on)
             # What is where: each estate's outcome is in the run's log.
             with self.lock:
                 if what == "deploy":
