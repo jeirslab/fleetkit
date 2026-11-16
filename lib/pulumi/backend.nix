@@ -40,8 +40,6 @@ let
       g = fleet.guests.${lib.elemAt parts 0}.${lib.elemAt parts 1};
     in
     g.ipv4.lan or (throw "${where}: garage guest ${gid} has no lan address");
-in
-let
   base =
 if b.type == "local" then
   {
