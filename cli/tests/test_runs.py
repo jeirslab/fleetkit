@@ -607,6 +607,18 @@ def test_github_checks_red_wins_and_pages(monkeypatch):
     assert out["legacy"] == "success" and out["build 99"] == "success"
 
 
+def test_github_token_file_is_read_for_every_request(tmp_path):
+    f = tmp_path / "token"
+    f.write_text("one\n")
+    gh = GitHub("start", token_file=str(f))
+    assert gh._token() == "one"
+    f.write_text("two\n")  # the minter rewrote it
+    assert gh._token() == "two"
+    f.unlink()
+    assert gh._token() == "start"
+    assert GitHub("plain")._token() == "plain"
+
+
 def test_pipeline_settings_take_a_protected_node_but_no_tag_or_glob(tmp_path, monkeypatch):
     s = Settings(flake=None, state_dir=tmp_path, passphrase="p",
                  git=GitSettings(url="x", branch="unstable", github_token="t", trigger="verified"))

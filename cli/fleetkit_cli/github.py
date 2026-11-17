@@ -16,13 +16,21 @@ class GitHubError(Exception):
 
 
 class GitHub:
-    def __init__(self, token: str, api: str = "https://api.github.com"):
-        self.token, self.api = token, api.rstrip("/")
+    def __init__(self, token: str, api: str = "https://api.github.com", token_file: str | None = None):
+        self.token, self.api, self.token_file = token, api.rstrip("/"), token_file
+
+    def _token(self) -> str:
+        if self.token_file:
+            try:
+                return open(self.token_file).read().strip() or self.token
+            except OSError:
+                return self.token  # the value read at start; GitHub says if it has expired
+        return self.token
 
     def _req(self, method: str, path: str, body: Any = None) -> Any:
         data = None if body is None else json.dumps(body).encode()
         r = urllib.request.Request(f"{self.api}{path}", data=data, method=method, headers={
-            "Authorization": f"Bearer {self.token}",
+            "Authorization": f"Bearer {self._token()}",
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
             "Content-Type": "application/json",
