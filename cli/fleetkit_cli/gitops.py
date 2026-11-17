@@ -144,6 +144,22 @@ class Repo:
         tree = lambda c: _git("--git-dir", str(self.mirror), "rev-parse", f"{c}^{{tree}}")  # noqa: E731
         return tree(a) == tree(b)
 
+    def diff(self, base: str, sha: str, limit: int) -> tuple[str, bool]:
+        """The range's change as a reviewer reads it: the stat, then the patch;
+        at most `limit` bytes are read. -> (text, truncated)."""
+        p = subprocess.Popen(["git", "--git-dir", str(self.mirror), "diff", "--stat", "--patch", "--no-ext-diff",
+                              "--no-textconv", base, sha], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        assert p.stdout is not None and p.stderr is not None
+        out = p.stdout.read(limit + 1)
+        if len(out) > limit:
+            p.kill()
+            p.wait()
+            return out[:limit].decode(errors="replace"), True
+        err = p.stderr.read()
+        if p.wait() != 0:
+            raise GitError(f"git diff {base[:12]} {sha[:12]}: {err.decode(errors='replace').strip()[-1000:]}")
+        return out.decode(errors="replace"), False
+
     def revert(self, base: str, sha: str, branch: str, message: str) -> str:
         """Push `branch`: one commit on the deploy branch's head that undoes
         base..sha (merges included, so not `git revert`). -> its sha. GitError

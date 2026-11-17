@@ -1,0 +1,5 @@
+{
+  "name": "fleetkit",
+  "description": "fleetkit's own skills for its deploy pipeline: review a verified run.",
+  "version": "0.1.0"
+}
