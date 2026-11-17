@@ -54,9 +54,7 @@ let
   fleetSsh = pkgs.writeShellScriptBin "fleet-ssh" ''
     host=''${1:?usage: fleet-ssh <host> <command...>}; shift
     case "$host" in -*|*@*|*" "*) echo "fleet-ssh: not a host: $host" >&2; exit 2 ;; esac
-    ${lib.optionalString (cfg.ssh.hosts != [ ]) ''
-      case " ${toString cfg.ssh.hosts} " in *" $host "*) ;; *) echo "fleet-ssh: $host is not one of: ${toString cfg.ssh.hosts}" >&2; exit 2 ;; esac
-    ''}
+    case " ${toString cfg.ssh.hosts} " in *" $host "*) ;; *) echo "fleet-ssh: $host is not one of: ${toString cfg.ssh.hosts}" >&2; exit 2 ;; esac
     [ $# -gt 0 ] || { echo "fleet-ssh: a command is required" >&2; exit 2; }
     exec ${pkgs.openssh}/bin/ssh -F ${sshConfig} -- "$host" "$@"
   '';
@@ -72,7 +70,7 @@ let
         || { echo "fleet-get: only --data-urlencode name=value pairs" >&2; exit 2; }
       args+=(--data-urlencode "$2"); shift 2
     done
-    exec ${pkgs.curl}/bin/curl -sS --max-time 30 --proto =http,https --max-redirs 0 -G "''${args[@]}" -- "$url"
+    exec ${pkgs.curl}/bin/curl -q -sS --max-time 30 --proto =http,https --max-redirs 0 -G "''${args[@]}" -- "$url"
   '';
   hardening = {
     NoNewPrivileges = true;
@@ -174,7 +172,7 @@ in
       hosts = mkOption {
         type = types.listOf types.str;
         default = [ ];
-        description = "The hosts fleet-ssh may reach (addresses or names); empty: any.";
+        description = "The hosts fleet-ssh may reach (addresses or names); at least one.";
       };
     };
     get.allow = mkOption {
@@ -186,6 +184,16 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = cfg.ssh.hosts != [ ];
+        message = "services.fleetkit-reviewer.ssh.hosts: name the hosts fleet-ssh may reach";
+      }
+      {
+        assertion = lib.all (p: builtins.match "https?://[^/@]+/.*" p != null) cfg.get.allow;
+        message = "services.fleetkit-reviewer.get.allow: each prefix is scheme://host[:port]/ (a path after the host)";
+      }
+    ];
     users.users.fleetkit-reviewer = {
       isSystemUser = true;
       group = "fleetkit-reviewer";

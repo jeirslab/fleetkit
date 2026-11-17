@@ -46,6 +46,7 @@ import tempfile
 import threading
 import time
 import traceback
+import uuid
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -112,8 +113,9 @@ def agent_argv(prompt_file: str, notes_file: Optional[str], commands: list[str],
     return argv + (["--model", model] if model else [])
 
 
-def run_agent(d: Path, argv: list[str], timeout: float, env: dict[str, str]) -> None:
-    """Run the agent in run directory `d` on its prompt.txt; write agent.json, then done."""
+def run_agent(d: Path, argv: list[str], timeout: float, env: dict[str, str], nonce: str) -> None:
+    """Run the agent in run directory `d` on its prompt.txt; write agent.<nonce>.json,
+    then done (with the nonce: an answer of an earlier attempt is not this one's)."""
     prompt = (d / "prompt.txt").read_text()
     home = Path(env.get("HOME") or tempfile.gettempdir())
     conf = Path(tempfile.mkdtemp(prefix="claude-", dir=home))  # nothing carries over from another run
@@ -133,25 +135,39 @@ def run_agent(d: Path, argv: list[str], timeout: float, env: dict[str, str]) -> 
             except (ProcessLookupError, PermissionError):
                 pass
             p.wait()
-        (d / "agent.json").write_text(out or "")
-        (d / "done").write_text(json.dumps({"code": code, "stderr": (err or "")[-2000:]}))
+        (d / f"agent.{nonce}.json").write_text(out or "")
+        tmp = d / f".done.{nonce}"
+        tmp.write_text(json.dumps({"code": code, "nonce": nonce, "stderr": (err or "")[-2000:]}))
+        tmp.replace(d / "done")
     finally:
         shutil.rmtree(conf, ignore_errors=True)
 
 
 def agent_loop(spool: Path, argv: list[str], timeout: float, env: dict[str, str], poll: float = 2) -> None:
+    """Take queue/<id> (holding the attempt's nonce) by renaming it, run the
+    attempt if it is still the run's current one, then remove what it took."""
     q = spool / "queue"
+    for f in q.glob(".*"):  # taken by an agent that did not finish: the service asks again
+        f.unlink(missing_ok=True)
     while True:
-        for f in sorted(q.iterdir(), key=lambda x: x.stat().st_mtime):
+        for f in sorted((x for x in q.iterdir() if not x.name.startswith(".")), key=lambda x: x.stat().st_mtime):
             rid = f.name
             try:
-                if RUN_ID.match(rid) and (spool / "runs" / rid / "prompt.txt").is_file():
+                nonce = f.read_text().strip()
+                taken = q / f".{rid}.{nonce}"
+                f.rename(taken)
+            except (OSError, ValueError):
+                continue
+            try:
+                d = spool / "runs" / rid
+                if (RUN_ID.match(rid) and RUN_ID.match(nonce)
+                        and (d / "attempt").is_file() and (d / "attempt").read_text().strip() == nonce):
                     log(f"run {rid}: agent started")
-                    run_agent(spool / "runs" / rid, argv, timeout, env)
+                    run_agent(d, argv, timeout, env, nonce)
             except Exception:  # noqa: BLE001 - the service waits out its timeout
                 traceback.print_exc()
             finally:
-                f.unlink(missing_ok=True)
+                taken.unlink(missing_ok=True)
         time.sleep(poll)
 
 
@@ -207,15 +223,22 @@ class Reviewer:
         return d
 
     def ask(self, rid: str, d: Path) -> Optional[str]:
-        """Queue the run for the agent and wait for its answer; None: none in time."""
-        (self.spool / "queue" / rid).touch()
+        """Queue this attempt for the agent and wait for its answer; None: none in time."""
+        nonce = uuid.uuid4().hex
+        (d / "attempt").write_text(nonce)
+        tmp = self.spool / "queue" / f".new.{rid}.{nonce}"
+        tmp.write_text(nonce)
+        tmp.replace(self.spool / "queue" / rid)
         end = time.time() + self.timeout + 120
         while time.time() < end:
-            if (d / "done").is_file():
-                done = json.loads((d / "done").read_text() or "{}")
+            try:
+                done = json.loads((d / "done").read_text())
+            except (OSError, ValueError):
+                done = None
+            if isinstance(done, dict) and done.get("nonce") == nonce:
                 if done.get("code") != 0:
                     log(f"run {rid}: agent ended with {done.get('code')}: {str(done.get('stderr'))[-500:]}")
-                return (d / "agent.json").read_text()
+                return (d / f"agent.{nonce}.json").read_text()
             time.sleep(self.poll)
         log(f"run {rid}: no answer from the agent in time")
         return None

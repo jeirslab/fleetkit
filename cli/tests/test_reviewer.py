@@ -142,3 +142,22 @@ def test_the_agents_command_line(tmp_path):
     assert argv[argv.index("--allowedTools") + 1] == "Bash(fleet-ssh:*) Bash(fleet-get:*)"
     assert argv[argv.index("--tools") + 1] == "Bash,Read,Grep,Glob" and "--strict-mcp-config" in argv
     assert argv[argv.index("--setting-sources") + 1] == "" and argv[-1] == "S"
+
+
+def test_an_earlier_attempts_answer_is_not_this_ones(tmp_path):
+    sp = spool(tmp_path)
+    d = sp / "runs" / "r1"
+    d.mkdir(parents=True)
+    # An agent of an earlier attempt finishing late, into the new attempt's directory.
+    (d / "agent.old.json").write_text(json.dumps({**OK, "structured_output": {"verdict": "fail", "evidence": "x"}}))
+    (d / "done").write_text(json.dumps({"code": 0, "nonce": "old"}))
+    rv = reviewer.Reviewer(FakeServer(), sp, -119.8, poll=0.02)
+    assert rv.ask("r1", d) is None
+    # A queued entry whose nonce is not the run's current attempt is taken and dropped, never run.
+    (sp / "queue" / "r1").write_text("stale")
+    agent(sp, {**OK, "structured_output": {"verdict": "pass", "evidence": "x"}})
+    for _ in range(200):
+        if not list((sp / "queue").iterdir()):
+            break
+        threading.Event().wait(0.02)
+    assert not list((sp / "queue").iterdir()) and not (d / "env.json").exists()
