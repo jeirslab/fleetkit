@@ -97,6 +97,7 @@ def test_a_run_not_reviewing_is_left_alone_and_a_silent_agent_posts_nothing(tmp_
     rv.timeout = -119.8  # no agent runs: the wait ends at once
     rv.review("r1")
     assert s.posted == [] and (tmp_path / "queue" / "r1").exists()
+    assert not (tmp_path / "runs" / "r1" / "attempt").exists()  # given up: an agent skips it
 
 
 def test_the_runner_endpoint(tmp_path):

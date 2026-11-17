@@ -152,11 +152,11 @@ def agent_loop(spool: Path, argv: list[str], timeout: float, env: dict[str, str]
     while True:
         for f in sorted((x for x in q.iterdir() if not x.name.startswith(".")), key=lambda x: x.stat().st_mtime):
             rid = f.name
-            try:
-                nonce = f.read_text().strip()
-                taken = q / f".{rid}.{nonce}"
+            taken = q / f".{rid}.{uuid.uuid4().hex}"
+            try:  # take it, then read it: a newer attempt replacing it meanwhile is not lost
                 f.rename(taken)
-            except (OSError, ValueError):
+                nonce = taken.read_text().strip()
+            except OSError:
                 continue
             try:
                 d = spool / "runs" / rid
@@ -240,6 +240,7 @@ class Reviewer:
                     log(f"run {rid}: agent ended with {done.get('code')}: {str(done.get('stderr'))[-500:]}")
                 return (d / f"agent.{nonce}.json").read_text()
             time.sleep(self.poll)
+        (d / "attempt").unlink(missing_ok=True)  # given up: an agent that comes back skips it
         log(f"run {rid}: no answer from the agent in time")
         return None
 

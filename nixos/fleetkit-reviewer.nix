@@ -15,7 +15,9 @@
 # only) and `fleet-get <url> [--data-urlencode name=value]...` (GET, the
 # prefixes of get.allow only). Read-only on the hosts is the hosts' part:
 # give the account (ssh.user) no sudo and no group that reads secrets, and
-# the key `restrict` (no forwarding, no pty) in its authorized_keys.
+# its key `restrict` (no forwarding, no pty) and a forced command
+# (`command="..."`) that runs only read-only diagnostics: fleet-ssh hands
+# the command to the host as it is.
 #
 # Put it on a host of its own, never on the deploy server. claude-code is
 # unfree: the host allows it (nixpkgs.config), or sets `agent`. A new host's
