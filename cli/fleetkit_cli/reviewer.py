@@ -226,7 +226,7 @@ class Reviewer:
         """Queue this attempt for the agent and wait for its answer; None: none in time."""
         nonce = uuid.uuid4().hex
         (d / "attempt").write_text(nonce)
-        tmp = self.spool / "queue" / f".new.{rid}.{nonce}"
+        tmp = d / ".queued"  # beside the run, not in queue/: the agent clears queue/'s dotfiles
         tmp.write_text(nonce)
         tmp.replace(self.spool / "queue" / rid)
         end = time.time() + self.timeout + 120
