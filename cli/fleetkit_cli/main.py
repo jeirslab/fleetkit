@@ -416,13 +416,14 @@ def serve(ctx: click.Context, repo: str | None, listen: str, token_file: str | N
 
 
 @cli.command("reviewer")
-def reviewer_cmd() -> None:
+@click.option("--agent", is_flag=True, help="Run the agent's side (another user: no token), not the service.")
+def reviewer_cmd(agent: bool) -> None:
     """The reviewer of verified runs: an http runner target that has an agent
     review each run and posts its verdict (reviewer.py; FLEETKIT_* settings)."""
     from . import reviewer
 
     try:
-        reviewer.main()
+        reviewer.main(agent)
     except ValueError as e:
         raise click.ClickException(str(e))
 

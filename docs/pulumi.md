@@ -1122,15 +1122,19 @@ token (`GET /v1/runs/{id}`, `GET /v1/runs/{id}/diff`: the range's commits,
 diff and tickets, so it needs no access to the repository, and the events of
 the run's deploy jobs), lays them out in a directory and runs headless Claude
 Code there with the plugin's `review-run` skill (`plugin/`) and the site's
-notes; the agent answers `{verdict, evidence}` (a JSON schema) and the reviewer
-posts it. Its tools are read, ssh, curl and jq; nothing else runs. An agent
-that fails, times out or answers nothing valid posts no verdict, so the run
-times out and nothing is reverted. `nixosModules.fleetkit-reviewer`
-(`services.fleetkit-reviewer = { enable; server; listen; openFirewall;
-environmentFile; notes; ssh.user; ssh.keyFile; model; agent; path; }`) runs it;
-put it on a host of its own with read-only access only (an SSH login without
-sudo on the hosts it checks, the site's logs and metrics), and point the
-server's `FLEETKIT_RUNNER` at `http://<host>:8741/`.
+notes; only claude's structured output (`{verdict, evidence}`, a JSON schema,
+no error) is a verdict, and the reviewer posts it. The agent runs as another
+user than the service (`fleetkit reviewer --agent`, a spool directory between
+them), with the model's credential and no token; its Bash runs only
+`fleet-ssh <host> <command>` (no ssh options) and `fleet-get <url>` (GET,
+allowed prefixes), with no settings, no MCP servers and a fresh config
+directory per run. An agent that fails, times out or answers nothing valid
+posts no verdict, so the run times out and nothing is reverted.
+`nixosModules.fleetkit-reviewer` (`services.fleetkit-reviewer = { enable;
+server; listen; openFirewall; environmentFile; agentEnvironmentFile; notes;
+ssh.user; ssh.keyFile; ssh.hosts; get.allow; model; timeout; agent; }`) runs
+both; put it on a host of its own, give the hosts' account no sudo and its key
+`restrict`, and point the server's `FLEETKIT_RUNNER` at `http://<host>:8741/`.
 
 `nixosModules.fleetkit-server` runs it as a hardened systemd service
 (`services.fleetkit = { enable; repo; branch; previewBranches; deployOnPush;

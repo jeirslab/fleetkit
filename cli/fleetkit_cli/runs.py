@@ -104,7 +104,7 @@ class Git(Protocol):
     def first_parents(self, base: str, sha: str) -> list[str]: ...
     def log(self, base: str, sha: str) -> list[tuple[str, str]]: ...
     def same_tree(self, a: str, b: str) -> bool: ...
-    def diff(self, base: str, sha: str) -> str: ...
+    def diff(self, base: str, sha: str, limit: int) -> tuple[str, bool]: ...
     def revert(self, base: str, sha: str, branch: str, message: str) -> str: ...
 
 
@@ -547,21 +547,22 @@ class Pipeline:
 
     def changes(self, rid: str, limit: int = 400_000) -> dict[str, Any]:
         """What a reviewer reads of a run's range without access to the
-        repository: its commits, the diff (cut at `limit` characters) and its
-        tickets as the tracker has them."""
+        repository: its commits, the diff (cut at `limit` bytes) and its
+        tickets as the tracker has them. The diff is the whole repository's,
+        not only the paths of a scoped token's estates."""
         r = self.get(rid)
         if r is None or not r.get("base"):
             raise ValueError(f"run {rid} has no range")
-        diff = self.git.diff(r["base"], r["sha"])
+        diff, truncated = self.git.diff(r["base"], r["sha"], limit)
         tickets: list[dict[str, Any]] = []
         for k in r.get("tickets") or []:
             try:
                 tickets.append(self.tracker.get(k) or {"key": k, "error": "not found"})  # type: ignore[union-attr]
-            except Exception as e:  # noqa: BLE001 - the reviewer is told, not stopped
-                tickets.append({"key": k, "error": str(e)})
+            except Exception:  # noqa: BLE001 - the reviewer is told, not stopped
+                tickets.append({"key": k, "error": "the tracker could not answer"})
         return {"base": r["base"], "sha": r["sha"], "tickets": tickets,
                 "commits": [{"sha": c, "subject": s} for c, s in self.git.log(r["base"], r["sha"])],
-                "diff": diff[:limit], "truncated": len(diff) > limit}
+                "diff": diff, "truncated": truncated}
 
     def review(self, rid: str) -> dict[str, Any]:
         """Ask for a verdict (again): a timed-out run is reviewed anew."""

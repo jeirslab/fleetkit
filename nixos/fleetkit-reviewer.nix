@@ -2,17 +2,24 @@
 # (`fleetkit reviewer`, cli/fleetkit_cli/reviewer.py; ADR-167 decision 5). The
 # deploy server's http runner (FLEETKIT_RUNNER=http://<this host>:<port>/)
 # posts review.requested here; headless Claude Code reviews the run with the
-# plugin's review-run skill and this site's notes, and its verdict is posted
+# plugin's review-run skill and this site's notes, and the verdict is posted
 # with a reviewer's scoped token (runs: review), which cannot deploy.
 #
-# Put it on a host of its own, never on the deploy server, and give the host
-# read-only access only: an SSH login without sudo on the hosts it checks
-# (ssh.*), the site's logs and metrics. Everything secret comes from files or
-# environmentFile at run time, never from a Nix value:
-#   FLEETKIT_RUNNER_TOKEN(_FILE)    the bearer the deploy server sends
-#   FLEETKIT_REVIEWER_TOKEN(_FILE)  the reviewer's API token
-#   ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN  the model's credential
-# claude-code is unfree: the host allows it (nixpkgs.config), or sets `agent`.
+# Two units, two users, one spool directory between them:
+#   fleetkit-reviewer        the service: the runner and reviewer tokens
+#                            (environmentFile), the HTTP endpoint, the posts
+#   fleetkit-review-agent    the agent: the model's credential only
+#                            (agentEnvironmentFile), the SSH key, Claude Code
+# so nothing the agent reads or runs can reach a token. Its Bash runs two
+# commands only: `fleet-ssh <host> <command...>` (no ssh options; ssh.hosts
+# only) and `fleet-get <url> [--data-urlencode name=value]...` (GET, the
+# prefixes of get.allow only). Read-only on the hosts is the hosts' part:
+# give the account (ssh.user) no sudo and no group that reads secrets, and
+# the key `restrict` (no forwarding, no pty) in its authorized_keys.
+#
+# Put it on a host of its own, never on the deploy server. claude-code is
+# unfree: the host allows it (nixpkgs.config), or sets `agent`. A new host's
+# SSH key is trusted on first use (known_hosts in the agent's home).
 { self }:
 {
   config,
@@ -23,7 +30,8 @@
 let
   cfg = config.services.fleetkit-reviewer;
   inherit (lib) mkOption types;
-  home = "/var/lib/fleetkit-reviewer";
+  spool = "/var/lib/fleetkit-review";
+  agentHome = "/var/lib/fleetkit-review-agent";
   port = lib.last (lib.splitString ":" cfg.listen);
   notes = pkgs.writeText "fleetkit-reviewer-notes.md" cfg.notes;
   sshConfig = pkgs.writeText "fleetkit-reviewer-ssh-config" ''
@@ -34,9 +42,68 @@ let
       BatchMode yes
       ConnectTimeout 10
       StrictHostKeyChecking accept-new
-      UserKnownHostsFile ${home}/known_hosts
+      UserKnownHostsFile ${agentHome}/known_hosts
+      ClearAllForwardings yes
       ForwardAgent no
+      ForwardX11 no
+      PermitLocalCommand no
+      ProxyCommand none
+      RequestTTY no
+      ControlMaster no
   '';
+  fleetSsh = pkgs.writeShellScriptBin "fleet-ssh" ''
+    host=''${1:?usage: fleet-ssh <host> <command...>}; shift
+    case "$host" in -*|*@*|*" "*) echo "fleet-ssh: not a host: $host" >&2; exit 2 ;; esac
+    ${lib.optionalString (cfg.ssh.hosts != [ ]) ''
+      case " ${toString cfg.ssh.hosts} " in *" $host "*) ;; *) echo "fleet-ssh: $host is not one of: ${toString cfg.ssh.hosts}" >&2; exit 2 ;; esac
+    ''}
+    [ $# -gt 0 ] || { echo "fleet-ssh: a command is required" >&2; exit 2; }
+    exec ${pkgs.openssh}/bin/ssh -F ${sshConfig} -- "$host" "$@"
+  '';
+  fleetGet = pkgs.writeShellScriptBin "fleet-get" ''
+    url=''${1:?usage: fleet-get <url> [--data-urlencode name=value]...}; shift
+    ok=
+    for p in ${lib.escapeShellArgs cfg.get.allow}; do case "$url" in "$p"*) ok=1 ;; esac; done
+    [ -n "$ok" ] || { echo "fleet-get: $url is not under: ${toString cfg.get.allow}" >&2; exit 2; }
+    args=()
+    while [ $# -gt 0 ]; do
+      # name=value only: curl reads a file for "@file" and "name@file".
+      [ "$1" = --data-urlencode ] && [ $# -ge 2 ] && [[ "$2" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
+        || { echo "fleet-get: only --data-urlencode name=value pairs" >&2; exit 2; }
+      args+=(--data-urlencode "$2"); shift 2
+    done
+    exec ${pkgs.curl}/bin/curl -sS --max-time 30 --proto =http,https --max-redirs 0 -G "''${args[@]}" -- "$url"
+  '';
+  hardening = {
+    NoNewPrivileges = true;
+    ProtectSystem = "strict";
+    ProtectHome = true;
+    PrivateTmp = true;
+    PrivateDevices = true;
+    ProtectProc = "invisible";
+    ProtectKernelTunables = true;
+    ProtectKernelModules = true;
+    ProtectKernelLogs = true;
+    ProtectControlGroups = true;
+    ProtectClock = true;
+    ProtectHostname = true;
+    RestrictNamespaces = true;
+    RestrictSUIDSGID = true;
+    LockPersonality = true;
+    CapabilityBoundingSet = "";
+    RestrictAddressFamilies = [
+      "AF_INET"
+      "AF_INET6"
+      "AF_UNIX"
+    ];
+    UMask = "0007";
+    Restart = "always";
+    RestartSec = 10;
+  };
+  common = {
+    FLEETKIT_REVIEWER_SPOOL = spool;
+    FLEETKIT_REVIEWER_TIMEOUT = toString cfg.timeout;
+  };
 in
 {
   options.services.fleetkit-reviewer = {
@@ -57,6 +124,11 @@ in
       default = null;
       description = "The agent's --model; null: its default.";
     };
+    timeout = mkOption {
+      type = types.int;
+      default = 1200;
+      description = "Seconds an agent may take; keep it under the server's FLEETKIT_REVIEW_TIMEOUT.";
+    };
     server = mkOption {
       type = types.str;
       example = "http://10.0.0.4:8740";
@@ -70,36 +142,46 @@ in
     openFirewall = mkOption {
       type = types.bool;
       default = false;
-      description = "Open the port (restrict the source at the network: only the deploy server calls it).";
+      description = "Open the port (better: admit the deploy server's address only).";
     };
     environmentFile = mkOption {
       type = types.str;
-      description = "EnvironmentFile with the tokens and the model's credential (header), or the *_FILE paths to them.";
+      description = "The service's EnvironmentFile: FLEETKIT_RUNNER_TOKEN(_FILE) and FLEETKIT_REVIEWER_TOKEN(_FILE).";
+    };
+    agentEnvironmentFile = mkOption {
+      type = types.str;
+      description = "The agent's EnvironmentFile: ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN, and nothing else.";
     };
     notes = mkOption {
       type = types.lines;
       default = "";
       description = ''
         What the agent is told about this site, after the skill: the hosts
-        it may reach and how, where logs and metrics are, what each host
-        runs. No secret: it is in the store.
+        it may reach, where logs and metrics are, what each host runs. No
+        secret: it is in the store.
       '';
     };
     ssh = {
       user = mkOption {
         type = types.str;
         default = "fleet-review";
-        description = "The read-only account on the hosts (no sudo).";
+        description = "The read-only account on the hosts.";
       };
       keyFile = mkOption {
         type = types.str;
-        description = "Path of its private key, outside the store, readable by the service.";
+        description = "Path of its private key, outside the store, readable by fleetkit-review-agent only.";
+      };
+      hosts = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "The hosts fleet-ssh may reach (addresses or names); empty: any.";
       };
     };
-    path = mkOption {
-      type = types.listOf types.package;
+    get.allow = mkOption {
+      type = types.listOf types.str;
       default = [ ];
-      description = "More tools on the agent's PATH (it has ssh, curl, jq).";
+      example = [ "http://10.0.0.17:3100/" ];
+      description = "URL prefixes fleet-get may read (logs and metrics query APIs).";
     };
   };
 
@@ -107,56 +189,71 @@ in
     users.users.fleetkit-reviewer = {
       isSystemUser = true;
       group = "fleetkit-reviewer";
-      inherit home;
+      extraGroups = [ "fleetkit-review-agent" ];
     };
     users.groups.fleetkit-reviewer = { };
+    users.users.fleetkit-review-agent = {
+      isSystemUser = true;
+      group = "fleetkit-review-agent";
+      home = agentHome;
+    };
+    users.groups.fleetkit-review-agent = { };
 
+    # The spool: the service writes, the agent reads its run and answers in it.
     systemd.tmpfiles.rules = [
-      "d ${home}/.ssh 0700 fleetkit-reviewer fleetkit-reviewer -"
-      "L+ ${home}/.ssh/config - - - - ${sshConfig}"
+      "d ${spool} 2750 fleetkit-reviewer fleetkit-review-agent -"
+      "d ${spool}/runs 2750 fleetkit-reviewer fleetkit-review-agent 14d"
+      "d ${spool}/queue 2770 fleetkit-reviewer fleetkit-review-agent -"
     ];
 
     systemd.services.fleetkit-reviewer = {
-      description = "fleetkit reviewer of verified runs";
+      description = "fleetkit reviewer of verified runs (service)";
+      wantedBy = [ "multi-user.target" ];
+      wants = [ "network-online.target" ];
+      after = [ "network-online.target" ];
+      environment = common // {
+        FLEETKIT_SERVER = cfg.server;
+        FLEETKIT_REVIEWER_LISTEN = cfg.listen;
+      };
+      serviceConfig = hardening // {
+        ExecStart = "${cfg.package}/bin/fleetkit reviewer";
+        User = "fleetkit-reviewer";
+        Group = "fleetkit-reviewer";
+        SupplementaryGroups = [ "fleetkit-review-agent" ];
+        EnvironmentFile = cfg.environmentFile;
+        ReadWritePaths = [ spool ];
+      };
+    };
+
+    systemd.services.fleetkit-review-agent = {
+      description = "fleetkit reviewer of verified runs (agent)";
       wantedBy = [ "multi-user.target" ];
       wants = [ "network-online.target" ];
       after = [ "network-online.target" ];
       path = [
         cfg.agent
-        pkgs.openssh
-        pkgs.curl
-        pkgs.jq
+        fleetSsh
+        fleetGet
+        pkgs.bash
         pkgs.coreutils
-      ]
-      ++ cfg.path;
-      environment = {
-        HOME = home;
-        FLEETKIT_SERVER = cfg.server;
-        FLEETKIT_REVIEWER_LISTEN = cfg.listen;
-        FLEETKIT_REVIEWER_DIR = "${home}/reviews";
+      ];
+      environment = common // {
+        HOME = agentHome;
         FLEETKIT_REVIEWER_PROMPT_FILE = "${../plugin/skills/review-run/SKILL.md}";
         FLEETKIT_REVIEWER_NOTES_FILE = "${notes}";
+        FLEETKIT_REVIEWER_COMMANDS = "fleet-ssh fleet-get";
         DISABLE_AUTOUPDATER = "1";
         DISABLE_TELEMETRY = "1";
       }
       // lib.optionalAttrs (cfg.model != null) { FLEETKIT_REVIEWER_MODEL = cfg.model; };
-      serviceConfig = {
-        ExecStart = "${cfg.package}/bin/fleetkit reviewer";
-        User = "fleetkit-reviewer";
-        Group = "fleetkit-reviewer";
-        EnvironmentFile = cfg.environmentFile;
-        StateDirectory = "fleetkit-reviewer";
+      serviceConfig = hardening // {
+        ExecStart = "${cfg.package}/bin/fleetkit reviewer --agent";
+        User = "fleetkit-review-agent";
+        Group = "fleetkit-review-agent";
+        EnvironmentFile = cfg.agentEnvironmentFile;
+        StateDirectory = "fleetkit-review-agent";
         StateDirectoryMode = "0700";
-        Restart = "always";
-        RestartSec = 10;
-        NoNewPrivileges = true;
-        ProtectSystem = "strict";
-        ProtectHome = true;
-        PrivateTmp = true;
-        PrivateDevices = true;
-        ProtectKernelTunables = true;
-        ProtectControlGroups = true;
-        RestrictSUIDSGID = true;
+        ReadWritePaths = [ spool ];
       };
     };
 

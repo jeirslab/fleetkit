@@ -1,7 +1,10 @@
-"""The reviewer (reviewer.py) with a fake deploy server and a fake agent: a
-valid answer is posted, anything else posts nothing (the server's timeout
-covers it), a run no longer reviewing is left alone, and the runner endpoint
-takes only the deploy server's bearer. Offline."""
+"""The reviewer (reviewer.py) with a fake deploy server and a fake agent,
+over the real spool between the service and the agent: only claude's
+structured output with no error is a verdict, anything else posts nothing
+(the server's timeout covers it), a run no longer reviewing is left alone,
+the agent gets no token in its environment, and the runner endpoint takes
+only the deploy server's bearer. Offline."""
+import http.client
 import json
 import sys
 import threading
@@ -10,6 +13,8 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 
 from fleetkit_cli import reviewer
+
+OK = {"type": "result", "subtype": "success", "is_error": False}
 
 
 class FakeServer:
@@ -33,51 +38,75 @@ class FakeServer:
         raise AssertionError(path)
 
 
-def agent(answer):
-    # A stand-in for `claude -p --output-format json`: prints `answer`, ignores the prompt.
-    return [sys.executable, "-c", f"print({json.dumps(json.dumps(answer))})"]
+def spool(tmp_path):
+    for d in ("queue", "runs"):
+        (tmp_path / d).mkdir(parents=True, exist_ok=True)
+    return tmp_path
 
 
-def test_a_valid_answer_is_posted_and_the_run_laid_out(tmp_path):
+def agent(tmp_path, answer, env=None):
+    """A stand-in for claude in the agent's loop, in a thread: it prints `answer`
+    (and writes its environment beside it)."""
+    code = ("import json, os, sys; json.dump(dict(os.environ), open('env.json', 'w')); "
+            f"print({json.dumps(json.dumps(answer))})")
+    threading.Thread(target=reviewer.agent_loop, daemon=True,
+                     args=(tmp_path, [sys.executable, "-c", code], 30, {"HOME": str(tmp_path), **(env or {})}, 0.02)
+                     ).start()
+
+
+def review(tmp_path, s, answer, env=None):
+    agent(spool(tmp_path), answer, env)
+    reviewer.Reviewer(s, tmp_path, 10, poll=0.02).review("r1")
+
+
+def test_a_valid_answer_is_posted_and_the_agent_holds_no_token(tmp_path):
     s = FakeServer()
-    rv = reviewer.Reviewer(s, tmp_path, agent({"structured_output": {"verdict": "pass", "evidence": "ok"}}), 30)
-    rv.review("r1")
+    review(tmp_path, s, {**OK, "structured_output": {"verdict": "pass", "evidence": "ok"}},
+           env={"ANTHROPIC_API_KEY": "k", "PATH": "/bin"})
     assert s.posted == [("/v1/runs/r1/verdict", {"verdict": "pass", "evidence": "ok"})]
-    d = tmp_path / "r1"
+    d = tmp_path / "runs" / "r1"
     assert (d / "diff.patch").read_text() == "+x\n" and "diff" not in json.loads((d / "changes.json").read_text())
-    assert json.loads((d / "jobs" / "deploy_nj.json").read_text())["events"]
     assert [p.name for p in (d / "jobs").iterdir()] == ["deploy_nj.json"]  # no path from a job id
+    env = json.loads((d / "env.json").read_text())
+    assert env["ANTHROPIC_API_KEY"] == "k" and not any(k.startswith("FLEETKIT") for k in env)
+    assert env["CLAUDE_CONFIG_DIR"] == env["HOME"] != str(tmp_path)  # a fresh config dir, removed after
+    assert not list((tmp_path / "queue").iterdir())
 
 
-def test_no_valid_answer_posts_nothing(tmp_path):
-    for answer in ({"result": "I could not decide"}, {"structured_output": {"verdict": "pass", "evidence": " "}},
-                   {"structured_output": {"verdict": "maybe", "evidence": "x"}}):
-        s = FakeServer()
-        reviewer.Reviewer(s, tmp_path, agent(answer), 30).review("r1")
-        assert s.posted == []
+def test_only_structured_output_without_error_is_a_verdict(tmp_path):
+    for answer in ({**OK, "result": '{"verdict": "pass", "evidence": "x"}'},
+                   {**OK, "structured_output": {"verdict": "pass", "evidence": " "}},
+                   {**OK, "structured_output": {"verdict": "maybe", "evidence": "x"}},
+                   {**OK, "is_error": True, "structured_output": {"verdict": "pass", "evidence": "x"}},
+                   {**OK, "subtype": "error_max_turns", "structured_output": {"verdict": "pass", "evidence": "x"}}):
+        assert reviewer.verdict_of(json.dumps(answer)) is None, answer
     s = FakeServer()
-    reviewer.Reviewer(s, tmp_path, [sys.executable, "-c", "import sys; sys.exit(1)"], 30).review("r1")
+    review(tmp_path, s, {**OK, "result": '{"verdict": "pass", "evidence": "x"}'})
     assert s.posted == []
-
-
-def test_fail_from_the_last_message_and_a_run_not_reviewing(tmp_path):
     s = FakeServer()
-    a = agent({"result": 'checked\n{"verdict": "fail", "evidence": "unit x failed"}'})
-    reviewer.Reviewer(s, tmp_path, a, 30).review("r1")
+    review(tmp_path / "f", s, {**OK, "structured_output": {"verdict": "fail", "evidence": "unit x failed"}})
     assert s.posted == [("/v1/runs/r1/verdict", {"verdict": "fail", "evidence": "unit x failed"})]
+
+
+def test_a_run_not_reviewing_is_left_alone_and_a_silent_agent_posts_nothing(tmp_path):
     s = FakeServer(state="passed")
-    reviewer.Reviewer(s, tmp_path / "late", [sys.executable, "-c", "raise SystemExit(1)"], 30).review("r1")
-    assert s.posted == [] and not (tmp_path / "late").exists()
+    reviewer.Reviewer(s, spool(tmp_path), 0.1, poll=0.02).review("r1")
+    assert s.posted == [] and not (tmp_path / "runs" / "r1").exists()
+    s = FakeServer()
+    rv = reviewer.Reviewer(s, spool(tmp_path), 0.1, poll=0.02)
+    rv.timeout = -119.8  # no agent runs: the wait ends at once
+    rv.review("r1")
+    assert s.posted == [] and (tmp_path / "queue" / "r1").exists()
 
 
 def test_the_runner_endpoint(tmp_path):
-    rv = reviewer.Reviewer(FakeServer(), tmp_path, [], 30)
+    rv = reviewer.Reviewer(FakeServer(), spool(tmp_path), 30)
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), reviewer.handler(rv, "s3cret"))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    url = f"http://127.0.0.1:{httpd.server_address[1]}/"
+    port = httpd.server_address[1]
 
     def post(body, token="s3cret"):
-        r = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
+        r = urllib.request.Request(f"http://127.0.0.1:{port}/", data=json.dumps(body).encode(), method="POST",
                                    headers={"Authorization": f"Bearer {token}"})
         try:
             with urllib.request.urlopen(r) as resp:
@@ -85,8 +114,19 @@ def test_the_runner_endpoint(tmp_path):
         except urllib.error.HTTPError as e:
             return e.code, None
 
+    def raw(headers):
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        c.putrequest("POST", "/")
+        for k, v in headers.items():
+            c.putheader(k, v)
+        c.endheaders()
+        return c.getresponse().status
+
     try:
         assert post({"event": "review.requested", "run": "r1"}, token="nope")[0] == 401
+        assert raw({"Authorization": "Bearer s3cret", "Content-Length": "-1"}) == 413
+        assert raw({"Authorization": "Bearer s3cret", "Content-Length": "x"}) == 413
+        assert raw({"Authorization": "Bearer \xe9"}) == 401
         assert post({"event": "work.requested", "run": "r1"}) == (202, {"ignored": "work.requested"})
         assert post({"event": "review.requested", "run": "../r1"})[0] == 400
         assert post({"event": "review.requested", "run": "r1"}) == (202, {"queued": True, "run": "r1"})
@@ -94,3 +134,11 @@ def test_the_runner_endpoint(tmp_path):
         assert rv.q.get_nowait() == "r1"
     finally:
         httpd.shutdown()
+
+
+def test_the_agents_command_line(tmp_path):
+    (tmp_path / "skill.md").write_text("S")
+    argv = reviewer.agent_argv(str(tmp_path / "skill.md"), None, ["fleet-ssh", "fleet-get"])
+    assert argv[argv.index("--allowedTools") + 1] == "Bash(fleet-ssh:*) Bash(fleet-get:*)"
+    assert argv[argv.index("--tools") + 1] == "Bash,Read,Grep,Glob" and "--strict-mcp-config" in argv
+    assert argv[argv.index("--setting-sources") + 1] == "" and argv[-1] == "S"

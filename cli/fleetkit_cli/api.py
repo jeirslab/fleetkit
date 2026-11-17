@@ -20,7 +20,7 @@ unscoped token only:
   POST /v1/runs                    {repo, sha}: a merge to run (the same guard as the webhook)
   GET  /v1/runs?state=             runs, newest first (review)
   GET  /v1/runs/{id}               one run (review)
-  GET  /v1/runs/{id}/diff          its range: commits, the diff, the tickets (review)
+  GET  /v1/runs/{id}/diff          its range: commits, the diff (the whole repository's), the tickets (review)
   POST /v1/runs/{id}/review        ask for a verdict (again; a timed-out run too) (review)
   POST /v1/runs/{id}/verdict       {verdict: pass|fail, evidence} (review)
   POST /v1/runs/{id}/resolve       {note, accept, stable}: a person decided; a stopped queue moves on
