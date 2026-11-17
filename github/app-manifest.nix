@@ -19,10 +19,12 @@
   public = false;
 
   tiers = {
-    # What CI needs: read code, report status, comment, dispatch workflows.
+    # What CI needs: read code, report status, comment, dispatch workflows,
+    # and read check runs (the verified-runs merge guard, ADR-167).
     pipeline = {
       metadata = "read";
       contents = "read";
+      checks = "read";
       statuses = "write";
       pull_requests = "write";
       issues = "write";

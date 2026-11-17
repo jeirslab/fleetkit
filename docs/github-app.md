@@ -29,7 +29,7 @@ is still sent because the field requires one; it is never called.
 `redirect_url` is only set when you pass `redirectUrl`.
 
 Every permission key below was checked against GitHub's server-to-server
-permission list, pinned in `github/permission-names.txt` (`actions`, `administration`, `contents`, `issues`,
+permission list, pinned in `github/permission-names.txt` (`actions`, `administration`, `checks`, `contents`, `issues`,
 `members`, `metadata`, `organization_administration`, `pull_requests`,
 `secrets`, `statuses`, `actions_variables`, `workflows`).
 
@@ -77,6 +77,7 @@ managing the org. Selecting both takes the higher level per permission.
 | ---------- | ----- | --- |
 | `metadata` | read | Required by GitHub for every App. |
 | `contents` | read | Check out the repositories the pipeline builds. |
+| `checks` | read | Read check runs: the verified-runs merge guard (ADR-167) refuses a merge whose checks it cannot see. |
 | `statuses` | write | Report the gate's result on a commit. |
 | `pull_requests` | write | Comment on and label pull requests. |
 | `issues` | write | Open and update issues the pipeline raises. |
