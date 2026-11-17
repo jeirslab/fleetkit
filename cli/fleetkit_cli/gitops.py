@@ -259,7 +259,7 @@ class GitOps:
         self.state: dict[str, Any] = json.loads(self.file.read_text()) if self.file.exists() else {}
         self.lock = threading.Lock()
         self._stop = threading.Event()
-        self.gh = GitHub(self.g.github_token, self.g.github_api) if self.g.github_token else None
+        self.gh = GitHub(self.g.github_token, self.g.github_api, self.g.github_token_file) if self.g.github_token else None
         self.runs: Any = None  # runs.Pipeline, with FLEETKIT_TRIGGER=verified
         manager.on_finish.append(self._finished)
 
