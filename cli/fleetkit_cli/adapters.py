@@ -187,7 +187,7 @@ def pipeline(s: Settings, repo: Any, manager: JobManager) -> Any:
     alert = ntfy(env("FLEETKIT_NTFY_URL", ""), _read_secret("FLEETKIT_NTFY_TOKEN")) if env("FLEETKIT_NTFY_URL") \
         else (lambda msg: None)
     return Pipeline(s.state_dir, env("FLEETKIT_GITHUB_REPO", ""), g.branch, g.deploy_on_push,
-                    GitHub(g.github_token, g.github_api), tracker, runner, JobDeployer(manager), repo,
+                    GitHub(g.github_token, g.github_api, g.github_token_file), tracker, runner, JobDeployer(manager), repo,
                     stable=env("FLEETKIT_STABLE_BRANCH") or "stable",
                     required=split("FLEETKIT_REQUIRED_CHECKS"), protect=protect, nixos_on=on,
                     timeout=float(env("FLEETKIT_REVIEW_TIMEOUT") or 1800),

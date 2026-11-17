@@ -33,6 +33,9 @@ class GitSettings:
     push_mode: str = "deploy"  # or "preview": plan every push, apply on request
     trigger: str = "push"  # or "pr": deploy merged pull requests only; "verified": runs.py
     github_token: str | None = None  # statuses and comments on pull requests
+    # FLEETKIT_GITHUB_TOKEN_FILE, read again for every request: a file a minter
+    # rewrites (GitHub App installation tokens live one hour).
+    github_token_file: str | None = None
     github_api: str = "https://api.github.com"
     public_url: str | None = None  # links from GitHub back to jobs
     # PRs into these branches are previewed too (the deploy branch always is),
@@ -90,6 +93,8 @@ class Settings:
                 push_mode=os.environ.get("FLEETKIT_PUSH_MODE", "deploy"),
                 trigger=os.environ.get("FLEETKIT_TRIGGER", "push"),
                 github_token=_read_secret("FLEETKIT_GITHUB_TOKEN"),
+                github_token_file=None if os.environ.get("FLEETKIT_GITHUB_TOKEN")
+                else os.environ.get("FLEETKIT_GITHUB_TOKEN_FILE") or None,
                 github_api=os.environ.get("FLEETKIT_GITHUB_API", "https://api.github.com"),
                 public_url=os.environ.get("FLEETKIT_PUBLIC_URL") or None,
                 preview_branches=[b for b in os.environ.get("FLEETKIT_PREVIEW_BRANCHES", "").split(",") if b],
