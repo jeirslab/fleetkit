@@ -554,6 +554,9 @@ def test_api_and_a_reviewers_token(env):
     assert c.post("/v1/runs", json={"repo": REPO, "sha": sha}, headers=h).json()["started"]
     assert c.get("/v1/runs", headers=ch).status_code == 403
     rid = c.get("/v1/runs?state=reviewing", headers=rh).json()[0]["id"]
+    d = c.get(f"/v1/runs/{rid}/diff", headers=rh).json()
+    assert "+two" in d["diff"] and not d["truncated"] and d["commits"] and d["sha"] == sha
+    assert c.get(f"/v1/runs/{rid}/diff", headers=ch).status_code == 403
     # The reviewer's token cannot deploy.
     assert c.post("/v1/deploys", json={"estate": "nj"}, headers=rh).status_code == 403
     assert c.post(f"/v1/runs/{rid}/verdict", json={"verdict": "maybe", "evidence": ""}, headers=rh).status_code == 422

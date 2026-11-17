@@ -195,6 +195,8 @@
       nixosModules = {
         # Experimental: the deploy server as a NixOS service (GitOps mode).
         fleetkit-server = import ./nixos/fleetkit-server.nix { inherit self; };
+        # ADR-167: the reviewer of the server's verified runs (an http runner target).
+        fleetkit-reviewer = import ./nixos/fleetkit-reviewer.nix { inherit self; };
         # ADR-0009, ADR-0017: sops-nix plus the SSH host key as the identity a
         # host decrypts with.
         secrets = import ./nixos/secrets.nix sops-nix;
