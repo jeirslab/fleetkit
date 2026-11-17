@@ -154,6 +154,12 @@ Pulumi program (`lib.toPulumi`) the resource is
 
 The provider writes a one-host inventory (`name`, in `groups`) and runs
 `ansible-playbook -e hostname=<name> -e <var>='<value>' ... <playbook>`.
+The provider writes the variables into that inventory as `name='<value>'`,
+where Ansible would end a value at an apostrophe and turn `\n` into a newline.
+The `ansible-playbook` on the runner's PATH is therefore a wrapper
+(`cli/fleetkit_cli/ansible_wrapper.py`): it moves those lines into an
+extra-vars JSON file (as unsafe text, so `{{` is not templated) and runs the
+real one. Any string reaches the play unchanged.
 
 ### When a playbook runs
 

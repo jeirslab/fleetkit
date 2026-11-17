@@ -251,6 +251,14 @@
             ansibleBin = pkgs.runCommand "fleetkit-ansible" { } ''
               mkdir -p $out/bin
               for b in ${ansible}/bin/ansible*; do ln -s "$b" $out/bin/; done
+              # ansible-playbook through the wrapper that makes the provider's
+              # inventory variables survive any value (ansible_wrapper.py).
+              rm $out/bin/ansible-playbook
+              cat > $out/bin/ansible-playbook <<EOF
+              #!${pkgs.runtimeShell}
+              exec ${ansible}/bin/python ${./cli/fleetkit_cli/ansible_wrapper.py} ${ansible}/bin/ansible-playbook "\$@"
+              EOF
+              chmod +x $out/bin/ansible-playbook
             '';
           in
           rec {
@@ -275,6 +283,8 @@
                 # tests/test_real_pulumi.py runs the real engine, offline (a file
                 # backend, the random and tls providers that ship beside it).
                 pkgs.pulumi-bin
+                # tests/test_ansible_wrapper.py runs the real ansible-playbook.
+                ansible
               ];
               # The guest list is checked against the pinned provider's name map
               # (tests/test_guests.py), which is not under cli/.
