@@ -144,6 +144,11 @@ class Repo:
         tree = lambda c: _git("--git-dir", str(self.mirror), "rev-parse", f"{c}^{{tree}}")  # noqa: E731
         return tree(a) == tree(b)
 
+    def diff(self, base: str, sha: str) -> str:
+        """The range's change as a reviewer reads it: the stat, then the patch."""
+        return _git("--git-dir", str(self.mirror), "diff", "--stat", "--patch", "--no-ext-diff", "--no-textconv",
+                    base, sha)
+
     def revert(self, base: str, sha: str, branch: str, message: str) -> str:
         """Push `branch`: one commit on the deploy branch's head that undoes
         base..sha (merges included, so not `git revert`). -> its sha. GitError

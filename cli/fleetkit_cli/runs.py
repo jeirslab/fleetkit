@@ -104,6 +104,7 @@ class Git(Protocol):
     def first_parents(self, base: str, sha: str) -> list[str]: ...
     def log(self, base: str, sha: str) -> list[tuple[str, str]]: ...
     def same_tree(self, a: str, b: str) -> bool: ...
+    def diff(self, base: str, sha: str) -> str: ...
     def revert(self, base: str, sha: str, branch: str, message: str) -> str: ...
 
 
@@ -543,6 +544,24 @@ class Pipeline:
         self._each_ticket(r, lambda t, k: (t.comment(k, note), t.set_state(k, self.reopen_state),
                                            t.link(k, pr.get("html_url") or "", title)))
         self._dispatch("work.requested", r, findings=r["verdict"]["evidence"], revert=pr.get("html_url"))
+
+    def changes(self, rid: str, limit: int = 400_000) -> dict[str, Any]:
+        """What a reviewer reads of a run's range without access to the
+        repository: its commits, the diff (cut at `limit` characters) and its
+        tickets as the tracker has them."""
+        r = self.get(rid)
+        if r is None or not r.get("base"):
+            raise ValueError(f"run {rid} has no range")
+        diff = self.git.diff(r["base"], r["sha"])
+        tickets: list[dict[str, Any]] = []
+        for k in r.get("tickets") or []:
+            try:
+                tickets.append(self.tracker.get(k) or {"key": k, "error": "not found"})  # type: ignore[union-attr]
+            except Exception as e:  # noqa: BLE001 - the reviewer is told, not stopped
+                tickets.append({"key": k, "error": str(e)})
+        return {"base": r["base"], "sha": r["sha"], "tickets": tickets,
+                "commits": [{"sha": c, "subject": s} for c, s in self.git.log(r["base"], r["sha"])],
+                "diff": diff[:limit], "truncated": len(diff) > limit}
 
     def review(self, rid: str) -> dict[str, Any]:
         """Ask for a verdict (again): a timed-out run is reviewed anew."""

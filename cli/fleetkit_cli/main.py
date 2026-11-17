@@ -415,6 +415,18 @@ def serve(ctx: click.Context, repo: str | None, listen: str, token_file: str | N
                 log_level="info")
 
 
+@cli.command("reviewer")
+def reviewer_cmd() -> None:
+    """The reviewer of verified runs: an http runner target that has an agent
+    review each run and posts its verdict (reviewer.py; FLEETKIT_* settings)."""
+    from . import reviewer
+
+    try:
+        reviewer.main()
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+
 @cli.group("tailnet")
 def tailnet_group() -> None:
     """Tailnets declared in fleetkit.toml ([[tailnets]]); see tailnet.py."""

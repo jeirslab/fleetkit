@@ -1116,6 +1116,22 @@ to (`FLEETKIT_RUNNER_TOKEN(_FILE)`); alerts to `FLEETKIT_NTFY_URL`
 pull-request write: it moves stable and opens reverts, and the mirror's URL
 must accept the revert branch's push.
 
+**The reviewer** (`fleetkit reviewer`, `cli/fleetkit_cli/reviewer.py`) is an
+http runner target. On `review.requested` it reads the run with the reviewer
+token (`GET /v1/runs/{id}`, `GET /v1/runs/{id}/diff`: the range's commits,
+diff and tickets, so it needs no access to the repository, and the events of
+the run's deploy jobs), lays them out in a directory and runs headless Claude
+Code there with the plugin's `review-run` skill (`plugin/`) and the site's
+notes; the agent answers `{verdict, evidence}` (a JSON schema) and the reviewer
+posts it. Its tools are read, ssh, curl and jq; nothing else runs. An agent
+that fails, times out or answers nothing valid posts no verdict, so the run
+times out and nothing is reverted. `nixosModules.fleetkit-reviewer`
+(`services.fleetkit-reviewer = { enable; server; listen; openFirewall;
+environmentFile; notes; ssh.user; ssh.keyFile; model; agent; path; }`) runs it;
+put it on a host of its own with read-only access only (an SSH login without
+sudo on the hosts it checks, the site's logs and metrics), and point the
+server's `FLEETKIT_RUNNER` at `http://<host>:8741/`.
+
 `nixosModules.fleetkit-server` runs it as a hardened systemd service
 (`services.fleetkit = { enable; repo; branch; previewBranches; deployOnPush;
 trigger; pushMode; poll; publicUrl; listen; firewallInterface; environmentFile;

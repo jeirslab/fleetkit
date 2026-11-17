@@ -20,6 +20,7 @@ unscoped token only:
   POST /v1/runs                    {repo, sha}: a merge to run (the same guard as the webhook)
   GET  /v1/runs?state=             runs, newest first (review)
   GET  /v1/runs/{id}               one run (review)
+  GET  /v1/runs/{id}/diff          its range: commits, the diff, the tickets (review)
   POST /v1/runs/{id}/review        ask for a verdict (again; a timed-out run too) (review)
   POST /v1/runs/{id}/verdict       {verdict: pass|fail, evidence} (review)
   POST /v1/runs/{id}/resolve       {note, accept, stable}: a person decided; a stopped queue moves on
@@ -279,6 +280,11 @@ def create_app(manager: JobManager, settings: Optional[Settings], token: Optiona
         @app.get("/v1/runs/{rid}", dependencies=[Depends(reviewer)], responses=_REFUSED)
         def run_one(rid: str) -> dict[str, Any]:
             return run_of(rid)
+
+        @app.get("/v1/runs/{rid}/diff", dependencies=[Depends(reviewer)], responses=_REFUSED)
+        def run_diff(rid: str) -> dict[str, Any]:
+            run_of(rid)
+            return step(runs.changes, rid)
 
         @app.post("/v1/runs/{rid}/review", dependencies=[Depends(reviewer)], responses=_REFUSED)
         def run_review(rid: str) -> dict[str, Any]:
