@@ -10,6 +10,28 @@
 let
   inherit (lib) mkEnableOption mkOption mkIf mkDefault types;
   cfg = config.infra.data.rabbitmq;
+  ctl = "${pkgs.rabbitmq-server}/bin/rabbitmqctl";
+  # Erlang string literal (the file path and user name are interpolated).
+  erl = s: ''"${lib.replaceStrings [ "\\" "\"" ] [ "\\\\" "\\\"" ] s}"'';
+  # appPasswordFile: the BROKER reads the file (`rabbitmqctl eval`), so the
+  # password is in no argv (visible in /proc to every local user), in no
+  # journal line, and not in the shell. Idempotent: add, or change if present.
+  # Output is swallowed: a failure of eval quotes nothing secret today, but
+  # only success is checked, so it never will.
+  setPasswordFromFile = ''
+    out="$(${ctl} eval ${lib.escapeShellArg ''
+      try
+        {ok, B} = file:read_file(${erl cfg.appPasswordFile}),
+        P = string:trim(B, trailing, "\n"),
+        U = unicode:characters_to_binary(${erl cfg.appUser}),
+        A = <<"rabbitmq-user-setup">>,
+        case rabbit_auth_backend_internal:lookup_user(U) of
+          {error, not_found} -> rabbit_auth_backend_internal:add_user(U, P, A);
+          {ok, _}            -> rabbit_auth_backend_internal:change_password(U, P, A)
+        end
+      catch _:_ -> failed end.''} 2>&1)"
+    [ "$out" = ok ] || { echo "rabbitmq-user-setup: setting the password of ${cfg.appUser} failed" >&2; exit 1; }
+  '';
 in
 {
   options.infra.data.rabbitmq = {
@@ -106,17 +128,14 @@ in
         User = "rabbitmq";
       };
       environment.HOME = "/var/lib/rabbitmq";
-      # appPasswordFile: the password reaches rabbitmqctl as a shell
-      # variable read from the file at run time (the sops secret must be
-      # readable by the rabbitmq user). appPassword: the incumbent script,
+      # appPasswordFile: the broker reads the file at run time (the sops
+      # secret must be readable by the rabbitmq user). appPassword: the incumbent script,
       # byte for byte — the literal hosts' closures must not move on a
       # fleetkit bump (site 1 is frozen on the consumer).
       script = if cfg.appPasswordFile != null then ''
-        pw="$(cat ${lib.escapeShellArg cfg.appPasswordFile})"
-        ${pkgs.rabbitmq-server}/bin/rabbitmqctl add_user ${cfg.appUser} "$pw" 2>/dev/null || \
-          ${pkgs.rabbitmq-server}/bin/rabbitmqctl change_password ${cfg.appUser} "$pw"
-        ${pkgs.rabbitmq-server}/bin/rabbitmqctl set_permissions -p / ${cfg.appUser} ".*" ".*" ".*"
-        ${pkgs.rabbitmq-server}/bin/rabbitmqctl set_user_tags ${cfg.appUser} management
+        ${setPasswordFromFile}
+        ${ctl} set_permissions -p / ${cfg.appUser} ".*" ".*" ".*"
+        ${ctl} set_user_tags ${cfg.appUser} management
       '' else ''
         ${pkgs.rabbitmq-server}/bin/rabbitmqctl add_user ${cfg.appUser} ${cfg.appPassword} 2>/dev/null || \
           ${pkgs.rabbitmq-server}/bin/rabbitmqctl change_password ${cfg.appUser} ${cfg.appPassword}
