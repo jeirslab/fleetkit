@@ -331,6 +331,13 @@ def check_full(doc, cases, all_skipped):
         if not b.get("repository"):
             problems.append(f"{where}: no repository")
 
+    collabs = {(b.get("username"), b.get("permission")) for b in resources.get("github_repository_collaborator", {}).values()}
+    if collabs != {("alice-example", "pull"), ("bob-example", "push")}:
+        problems.append(f"github_repository_collaborator grants are {sorted(map(str, collabs))}")
+    for n, b in resources.get("github_repository_collaborator", {}).items():
+        if not b.get("repository"):
+            problems.append(f"github_repository_collaborator.{n}: no repository")
+
     # A runner is model data: never a resource, but readable from locals.
     for rtype in resources:
         if "runner" in rtype:

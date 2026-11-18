@@ -146,6 +146,7 @@ An estate overrides one with the module system
 | `github_repository_environment` | `<repository>:<environment>` (`:` in the environment as `??`) | |
 | `github_organization_ruleset` | the ruleset's numeric id | always unresolved |
 | `github_issue_label` | `<repository>:<label>` | |
+| `github_repository_collaborator` | `<repository>:<login>` | |
 | `github_actions_variable` | `<repository>:<NAME>` | |
 | `github_repository_file` | `<repository>:<path>:<branch>` (`:` in the path as `??`; an unset branch is empty: the default branch) | |
 | `github_actions_secret` | `<repository>:<NAME>` | the import cannot read the value: the next run writes the model's (an update) |
