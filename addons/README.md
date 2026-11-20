@@ -16,4 +16,5 @@ NixOS modules a host imports.
   `nixosModules.addons` and each one as `nixosModules.addons-<name>`.
 - Tests: `tests/nix-addons.sh` (evaluation only; run by `tools/gates.sh`).
 
-Add-ons: `tailscale` (the client, the node certificate, the Headscale DNS-01 settings).
+Add-ons: `netboot` (one NixOS image to the LAN by PXE, pixiecore in proxy-DHCP mode), `tailscale` (the
+client, the node certificate, the Headscale DNS-01 settings).

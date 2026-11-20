@@ -203,6 +203,7 @@
         # addons/README.md: NixOS-module add-ons under fleetkit.addons.<name>,
         # all off until switched on. `addons` imports every one.
         addons = ./addons/nix;
+        addons-netboot = ./addons/nix/pkgs/netboot;
         addons-tailscale = ./addons/nix/pkgs/tailscale;
       };
 
