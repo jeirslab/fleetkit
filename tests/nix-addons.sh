@@ -2,6 +2,7 @@
 # NixOS-module add-ons (addons/nix, nixosModules.addons). Evaluation only. Checks that:
 #   - importing nixosModules.addons with nothing switched on changes nothing
 #     (tailscale, headscale, the cert unit and timer, warnings, assertions);
+#   - fleetkit.addons.netboot serves a netboot image through pixiecore; no image is refused;
 #   - fleetkit.addons.tailscale.enable sets services.tailscale (enable, package);
 #   - cert.enable renders the tailscale-cert service and timer, the group, the
 #     read-only certFile/keyFile paths; no domain is refused by an assertion;
@@ -47,8 +48,17 @@ if ! nix eval --impure --json --expr "
         challenge.provider = { name = \"cloudflare\"; apiTokenFile = \"/x\"; };
       };
     } ];
+    img = nixpkgs.lib.nixosSystem { modules = [ \"\${nixpkgs}/nixos/modules/installer/netboot/netboot-minimal.nix\" { nixpkgs.hostPlatform = \"x86_64-linux\"; } ]; };
+    nb = sys [ { fleetkit.addons.netboot = { enable = true; system = img; }; } ];
+    nbBad = sys [ { fleetkit.addons.netboot.enable = true; } ];
     svc = cert.systemd.services.tailscale-cert;
   in {
+    offNetboot = plain.services.pixiecore.enable;
+    nbPix = { inherit (nb.services.pixiecore) enable mode port statusPort dhcpNoBind openFirewall; };
+    nbKernel = lib.hasSuffix \"/bzImage\" nb.services.pixiecore.kernel;
+    nbInitrd = lib.hasSuffix \"/initrd\" nb.services.pixiecore.initrd;
+    nbCmd = lib.hasPrefix \"init=/nix/store/\" nb.services.pixiecore.cmdLine;
+    nbBadFails = builtins.length (builtins.filter (a: !a.assertion) nbBad.assertions);
     offTailscale = plain.services.tailscale.enable;
     offHeadscale = plain.services.headscale.enable;
     offCert = plain.systemd.services ? tailscale-cert;
@@ -84,6 +94,10 @@ def want(name, cond):
         bad.append(name)
 want("off: nothing on", not r["offTailscale"] and not r["offHeadscale"] and not r["offCert"]
      and not r["offTimer"] and not r["offGroup"] and r["offWarnings"] == 0)
+want("netboot off", not r["offNetboot"])
+want("netboot pixiecore", r["nbPix"] == {"enable": True, "mode": "boot", "port": 4280, "statusPort": 4280,
+     "dhcpNoBind": True, "openFirewall": True} and r["nbKernel"] and r["nbInitrd"] and r["nbCmd"])
+want("netboot without a system refused", r["nbBadFails"] == 1)
 want("tailscale enable and package", r["tsEnable"] and r["tsPkg"] and r["tsNoCert"])
 want("cert paths", r["certPaths"] == [
     "/var/lib/tailscale-cert/dumpy.tamarin-gray.ts.net.crt",

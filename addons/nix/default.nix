@@ -3,6 +3,7 @@
 # fleetkit.addons.<name>.enable is set.
 {
   imports = [
+    ./pkgs/netboot
     ./pkgs/tailscale
   ];
 }
