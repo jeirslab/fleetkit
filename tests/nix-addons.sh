@@ -2,7 +2,8 @@
 # NixOS-module add-ons (addons/nix, nixosModules.addons). Evaluation only. Checks that:
 #   - importing nixosModules.addons with nothing switched on changes nothing
 #     (tailscale, headscale, the cert unit and timer, warnings, assertions);
-#   - fleetkit.addons.netboot serves a netboot image through pixiecore; no image is refused;
+#   - fleetkit.addons.netboot serves a netboot image through pixiecore (to every
+#     PXE client, or with macs only to those, through api mode); no image is refused;
 #   - fleetkit.addons.tailscale.enable sets services.tailscale (enable, package);
 #   - cert.enable renders the tailscale-cert service and timer, the group, the
 #     read-only certFile/keyFile paths; no domain is refused by an assertion;
@@ -50,6 +51,7 @@ if ! nix eval --impure --json --expr "
     } ];
     img = nixpkgs.lib.nixosSystem { modules = [ \"\${nixpkgs}/nixos/modules/installer/netboot/netboot-minimal.nix\" { nixpkgs.hostPlatform = \"x86_64-linux\"; } ]; };
     nb = sys [ { fleetkit.addons.netboot = { enable = true; system = img; }; } ];
+    nbMac = sys [ { fleetkit.addons.netboot = { enable = true; system = img; macs = [ \"D8:CB:8A:A1:13:45\" ]; }; } ];
     nbBad = sys [ { fleetkit.addons.netboot.enable = true; } ];
     svc = cert.systemd.services.tailscale-cert;
   in {
@@ -58,6 +60,9 @@ if ! nix eval --impure --json --expr "
     nbKernel = lib.hasSuffix \"/bzImage\" nb.services.pixiecore.kernel;
     nbInitrd = lib.hasSuffix \"/initrd\" nb.services.pixiecore.initrd;
     nbCmd = lib.hasPrefix \"init=/nix/store/\" nb.services.pixiecore.cmdLine;
+    nbMacMode = { inherit (nbMac.services.pixiecore) mode apiServer; };
+    nbMacApi = lib.hasInfix \"darkhttpd\" nbMac.systemd.services.netboot-api.serviceConfig.ExecStart;
+    nbOpenNoApi = !(nb.systemd.services ? netboot-api);
     nbBadFails = builtins.length (builtins.filter (a: !a.assertion) nbBad.assertions);
     offTailscale = plain.services.tailscale.enable;
     offHeadscale = plain.services.headscale.enable;
@@ -97,6 +102,8 @@ want("off: nothing on", not r["offTailscale"] and not r["offHeadscale"] and not 
 want("netboot off", not r["offNetboot"])
 want("netboot pixiecore", r["nbPix"] == {"enable": True, "mode": "boot", "port": 4280, "statusPort": 4280,
      "dhcpNoBind": True, "openFirewall": True} and r["nbKernel"] and r["nbInitrd"] and r["nbCmd"])
+want("netboot macs: api mode on localhost", r["nbMacMode"] == {"mode": "api", "apiServer": "http://127.0.0.1:4281"}
+     and r["nbMacApi"] and r["nbOpenNoApi"])
 want("netboot without a system refused", r["nbBadFails"] == 1)
 want("tailscale enable and package", r["tsEnable"] and r["tsPkg"] and r["tsNoCert"])
 want("cert paths", r["certPaths"] == [
